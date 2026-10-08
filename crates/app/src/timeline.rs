@@ -1339,15 +1339,6 @@ impl App {
                 return;
             }
             ui.horizontal(|ui| {
-                // Volumen de la pista como perilla (arrastre vertical, doble clic: 0 dB).
-                let p = self.s.tracks[i].params.clone();
-                let mut vol = widgets::db(p.gain.get()).max(-60.0);
-                let vk = widgets::mini_knob(ui, &mut vol, -60.0, 6.0, 0.0, self.s.tracks[i].color);
-                if vk.changed() {
-                    p.gain.set(if vol <= -59.9 { 0.0 } else { 10f32.powf(vol / 20.0) });
-                }
-                vk.on_hover_text(format!("{} {} · {}", tr("Volumen"), widgets::db_text(p.gain.get()), tr("arrastra arriba/abajo · doble clic: 0 dB")));
-                ui.label(RichText::new(widgets::db_text(p.gain.get())).monospace().size(11.0).color(TEXT));
                 let t = &self.s.tracks[i];
                 match t.kind {
                     TrackKind::Midi => {
@@ -1361,7 +1352,7 @@ impl App {
                     }
                     _ => {
                         let listening = t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed);
-                        widgets::meter_h(ui, if listening { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, (r.width() - 250.0).clamp(60.0, 240.0));
+                        widgets::meter_h(ui, if listening { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, (r.width() - 230.0).clamp(80.0, 260.0));
                         // Ganancia de entrada como perilla.
                         let p = t.params.clone();
                         let mut d = widgets::db(p.in_gain.get());
@@ -1370,6 +1361,7 @@ impl App {
                             p.in_gain.set(10f32.powf(d / 20.0));
                         }
                         k.on_hover_text(format!("{} {d:+.1} dB · {}", tr("Ganancia de entrada"), tr("arrastra arriba/abajo · doble clic: 0 dB")));
+                        ui.label(RichText::new(format!("{d:+.1} dB")).monospace().size(11.0).color(TEXT));
                         self.input_combo(ui, i);
                     }
                 }
