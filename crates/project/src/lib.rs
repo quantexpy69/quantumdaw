@@ -60,6 +60,31 @@ pub struct SongMeta {
     pub publisher: String,
     pub isrc: String,
     pub notes: String,
+    /// Quién creó la canción, cuándo (fecha y hora) y cuándo se guardó por última vez.
+    pub created_by: String,
+    pub created_at: String,
+    pub saved_at: String,
+}
+
+/// Ficha de un proyecto: carpeta que agrupa varias canciones (`proyecto.json`).
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct Collection {
+    pub name: String,
+    pub author: String,
+    pub created_at: String,
+    pub description: String,
+}
+
+impl Collection {
+    pub const FILE: &'static str = "proyecto.json";
+    pub fn load(dir: &Path) -> Option<Self> {
+        serde_json::from_str(&std::fs::read_to_string(dir.join(Self::FILE)).ok()?).ok()
+    }
+    pub fn save(&self, dir: &Path) -> anyhow::Result<()> {
+        std::fs::create_dir_all(dir)?;
+        Ok(std::fs::write(dir.join(Self::FILE), serde_json::to_string_pretty(self)?)?)
+    }
 }
 
 impl Default for Project {

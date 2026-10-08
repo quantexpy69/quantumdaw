@@ -47,6 +47,18 @@ fn home() -> PathBuf {
 }
 
 /// Carpeta por defecto de los proyectos: ~/Documentos/Quantum DAW (fuera del código fuente).
+/// Fecha y hora local legibles («08/10/2026 19:45»).
+fn now_text() -> String {
+    std::process::Command::new("date").arg("+%d/%m/%Y %H:%M").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+}
+
+/// Nombre del usuario del sistema (nombre completo si está configurado).
+fn user_name() -> String {
+    let user = std::env::var("USER").unwrap_or_default();
+    let full = std::process::Command::new("getent").args(["passwd", &user]).output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).split(':').nth(4).map(|s| s.split(',').next().unwrap_or("").trim().to_string()));
+    full.filter(|s| !s.is_empty()).unwrap_or(user)
+}
+
 fn projects_dir() -> PathBuf {
     let docs = ["Documentos", "Documents"].iter().map(|d| home().join(d)).find(|d| d.is_dir()).unwrap_or_else(home);
     docs.join("Quantum DAW")
@@ -75,6 +87,8 @@ struct Config {
     hide_welcome: bool,
     /// Idioma de la interfaz (0 español, 1 inglés, 2 portugués).
     lang: u8,
+    /// Nombre de quien crea los proyectos (se recuerda).
+    author: String,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
 }
@@ -781,6 +795,7 @@ impl App {
     }
 
     fn save(&mut self) {
+        self.meta.saved_at = now_text();
         let r = self.to_project().save(&self.dir);
         self.report(format!("Proyecto guardado en {}", self.dir.display()), r);
     }
@@ -1706,6 +1721,8 @@ fn theme(ctx: &egui::Context) {
         }
         (s.visuals.window_corner_radius, s.visuals.menu_corner_radius) = ((r + 4).into(), r.into());
         s.spacing.button_padding = egui::vec2(8.0, 4.0);
+        // Las etiquetas no se seleccionan como texto: el puntero sigue siendo la flecha.
+        s.interaction.selectable_labels = false;
         // Texto algo más grande que el de egui por defecto, legible en cualquier pantalla.
         use egui::{FontId, TextStyle};
         for (style, size) in [(TextStyle::Body, 13.5), (TextStyle::Button, 13.5), (TextStyle::Small, 10.5), (TextStyle::Heading, 19.0), (TextStyle::Monospace, 13.0)] {
