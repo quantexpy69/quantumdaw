@@ -240,6 +240,8 @@ pub struct Params {
     pub meter: AtomicF32,
     /// Polaridad invertida (botón Ø).
     pub invert: AtomicBool,
+    /// La automatización mueve fader y panorama (falso en modo Off o mientras se escribe).
+    pub auto_read: AtomicBool,
     /// Ganancias efectivas L/R y de monitoreo del bloque anterior (suavizado sin clics).
     cur: [AtomicF32; 3],
 }
@@ -256,6 +258,7 @@ impl Default for Params {
             monitor: f(),
             in_gain: AtomicF32::new(1.0),
             invert: f(),
+            auto_read: AtomicBool::new(true),
             in_meter: Default::default(),
             meter: Default::default(),
             cur: Default::default(),
@@ -536,10 +539,11 @@ impl Engine {
                 fx.process(tmp, sr, bpm_now, offline);
             }
             // La automatización (modo lectura) mueve el fader y el panorama.
-            if let Some(v) = automation_at(&node.vol_auto, end).filter(|_| playing) {
+            let read = playing && p.auto_read.load(Relaxed);
+            if let Some(v) = automation_at(&node.vol_auto, end).filter(|_| read) {
                 p.gain.set(fader_gain(v));
             }
-            if let Some(v) = automation_at(&node.pan_auto, pos).filter(|_| playing) {
+            if let Some(v) = automation_at(&node.pan_auto, pos).filter(|_| read) {
                 p.pan.set(v);
             }
             // Exportando una sola pista, solo ella va a la salida (sus envíos se siguen calculando).

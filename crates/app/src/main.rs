@@ -269,6 +269,12 @@ struct Track {
     takes: Vec<Vec<Clip>>,
     comp: Vec<(u64, u64, usize)>,
     show_takes: bool,
+    /// Automatización: modo (0 Read, 1 Off, 2 Touch, 3 Latch, 4 Write), fader o panorama tocados en
+    /// este cuadro, Latch enganchado y última posición escrita.
+    auto_mode: u8,
+    touching: bool,
+    latched: bool,
+    write_last: Option<u64>,
 }
 
 pub const TRACK_H: f32 = 100.0;
@@ -302,6 +308,10 @@ impl Track {
             takes: vec![],
             comp: vec![],
             show_takes: false,
+            auto_mode: 0,
+            touching: false,
+            latched: false,
+            write_last: None,
         }
     }
     fn auto_mut(&mut self) -> &mut Vec<(u64, f32)> {
@@ -658,6 +668,7 @@ impl App {
             pr.pan.set(ts.pan);
             pr.mute.store(ts.mute, Relaxed);
             pr.invert.store(ts.invert, Relaxed);
+            t.auto_mode = ts.auto_mode.min(4);
             pr.solo.store(ts.solo, Relaxed);
             pr.monitor.store(ts.monitor, Relaxed);
             pr.in_gain.set(10f32.powf(ts.in_gain_db / 20.0));
@@ -748,6 +759,7 @@ impl App {
             let mut ts = TrackState::new(t.name.clone(), t.kind, rgb3(t.color));
             ts.sends = t.sends.iter().filter_map(|&(id, g)| Some((index(id)?, g))).collect();
             (ts.no_master, ts.show_takes, ts.invert) = (!t.to_master, t.show_takes, t.params.invert.load(Relaxed));
+            ts.auto_mode = t.auto_mode;
             ts.takes = t.takes.iter().map(|take| take.iter().map(|c| clip_state(c, sr)).collect()).collect();
             ts.comp = t.comp.iter().map(|&(a, b, k)| (a as f64 / sr, if b == u64::MAX { f64::MAX } else { b as f64 / sr }, k)).collect();
             let p = &t.params;
@@ -1490,6 +1502,47 @@ impl App {
         self.s.tracks.iter_mut().filter(|t| t.selected).for_each(|t| t.group = Some(g));
     }
 
+    /// Escribe la automatización de volumen y panorama mientras se reproduce: Touch mientras se
+    /// mueve el fader o el panorama, Latch desde que se toca hasta parar, Write siempre.
+    fn write_automation(&mut self) {
+        let (playing, pos) = (self.playing(), self.pos());
+        let writing: Vec<bool> = self
+            .s
+            .tracks
+            .iter_mut()
+            .map(|t| {
+                let touching = std::mem::take(&mut t.touching);
+                t.latched = playing && (t.latched || (t.auto_mode == 3 && touching));
+                playing
+                    && match t.auto_mode {
+                        2 => touching,
+                        3 => t.latched,
+                        4 => true,
+                        _ => false,
+                    }
+            })
+            .collect();
+        if writing.iter().zip(&self.s.tracks).any(|(w, t)| *w && t.write_last.is_none()) {
+            self.edit();
+        }
+        for (t, &w) in self.s.tracks.iter_mut().zip(&writing) {
+            t.params.auto_read.store(t.auto_mode != 1 && !w, Relaxed);
+            if !w {
+                // Al terminar de escribir, el motor recibe la curva nueva.
+                self.dirty |= t.write_last.take().is_some();
+                continue;
+            }
+            let from = t.write_last.unwrap_or(pos);
+            let (a, b) = (from.min(pos), from.max(pos));
+            for (pts, v) in [(&mut t.vol_auto, engine::fader_pos(t.params.gain.get())), (&mut t.pan_auto, t.params.pan.get())] {
+                pts.retain(|p| p.0 < a || p.0 > b);
+                let k = pts.partition_point(|p| p.0 < pos);
+                pts.insert(k, (pos, v));
+            }
+            t.write_last = Some(pos);
+        }
+    }
+
     fn remove_group(&mut self, g: usize) {
         self.edit();
         self.s.groups.remove(g);
@@ -1790,6 +1843,7 @@ impl eframe::App for App {
         self.video_window(&ctx);
         self.welcome_window(&ctx);
         self.apply_deletes();
+        self.write_automation();
         if self.dirty {
             self.sync();
         }

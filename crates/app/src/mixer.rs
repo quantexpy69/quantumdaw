@@ -143,6 +143,12 @@ impl App {
                 });
                 ui.add_space((top_h - top.response.rect.height()).max(0.0));
                 sep(ui);
+                // Envíos, grupo y modo de automatización, sobre el panorama.
+                if let Some(i) = i {
+                    self.strip_slots(ui, i);
+                    sep(ui);
+                }
+                let mut touched = false;
                 match &params {
                     Some(p) => {
                         let mut pan = p.pan.get();
@@ -151,7 +157,7 @@ impl App {
                             v if v < 0 => format!("L{}", -v),
                             v => format!("R{v}"),
                         };
-                        widgets::pan_knob(ui, &mut pan).on_hover_text(tr("Panorama · arrastra arriba/abajo · doble clic: centro"));
+                        touched |= widgets::pan_knob(ui, &mut pan).on_hover_text(tr("Panorama · arrastra arriba/abajo · doble clic: centro")).dragged();
                         p.pan.set(pan);
                         ui.label(RichText::new(text).size(11.0).strong().color(if pan.abs() < 0.005 { TEXT_DIM } else { ACCENT }));
                     }
@@ -167,12 +173,14 @@ impl App {
                         self.peaks[li] = 0.0;
                     }
                 });
-                widgets::fader(ui, gain, level, fader_h);
+                touched |= widgets::fader(ui, gain, level, fader_h).dragged();
                 sep(ui);
                 if let Some(i) = i {
+                    self.s.tracks[i].touching |= touched;
+                    // Mute y Solo grandes y cuadrados; grabar y monitoreo al lado.
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 3.0;
-                        self.flag_buttons(ui, i);
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        self.mute_solo(ui, i);
                     });
                     let t = &self.s.tracks[i];
                     let group = t.group.and_then(|g| self.s.groups.get(g));
@@ -215,6 +223,81 @@ impl App {
         if let Some(item) = r.dnd_release_payload::<LibItem>() {
             self.drop_item(&item, Some(i), self.pos());
         }
+    }
+
+    /// Botones cuadrados M (rojo) y S (amarillo), y R / I pequeños.
+    fn mute_solo(&mut self, ui: &mut egui::Ui, i: usize) {
+        for (k, label, on_color, tip, size) in [
+            (1, "M", METER[2], "Mute (silenciar)", vec2(30.0, 26.0)),
+            (2, "S", Color32::from_rgb(0xFF, 0xD2, 0x3F), "Solo", vec2(30.0, 26.0)),
+            (0, "R", METER[2], "Armar grabación", vec2(20.0, 20.0)),
+            (3, "I", METER[0], "Monitoreo de entrada", vec2(20.0, 20.0)),
+        ] {
+            let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
+            let (r, resp) = ui.allocate_exact_size(size, Sense::click());
+            let fill = if on { on_color } else if resp.hovered() { Color32::from_gray(70) } else { Color32::from_gray(48) };
+            let big = size.x > 24.0;
+            ui.painter().rect(r, rr(if big { 4.0 } else { 10.0 }), fill, Stroke::new(1.0, if on { on_color } else { Color32::from_gray(30) }), StrokeKind::Inside);
+            let ink = if on { if k == 2 { BG } else { TEXT } } else { Color32::from_gray(200) };
+            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(if big { 15.0 } else { 11.0 }), ink);
+            if resp.on_hover_text(tr(tip)).clicked() {
+                for m in self.flag_targets(i, k) {
+                    flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
+                }
+            }
+        }
+    }
+
+    /// Ranuras sobre el panorama: envíos (abre el ruteo), grupo y modo de automatización.
+    fn strip_slots(&mut self, ui: &mut egui::Ui, i: usize) {
+        let w = STRIP_W - 8.0;
+        let slot = |text: String, color: Color32| egui::Button::new(RichText::new(text).size(11.0).color(color)).fill(BG).min_size(vec2(w, 20.0)).truncate();
+        // Envíos.
+        let n = self.s.tracks[i].sends.len();
+        let text = if n == 0 { tr("Envíos").to_string() } else { format!("{} · {n}", tr("Envíos")) };
+        if ui.add(slot(text, if n > 0 { ACCENT } else { TEXT_DIM })).on_hover_text(tr("Envíos a buses: clic para abrir el ruteo")).clicked() {
+            self.route_window = Some(i);
+        }
+        // Grupo.
+        let group = self.s.tracks[i].group.and_then(|g| self.s.groups.get(g)).map(|g| (g.name.clone(), g.color));
+        let (text, color) = group.clone().unwrap_or_else(|| (tr("Grupo").to_string(), TEXT_DIM));
+        egui::containers::menu::MenuButton::from_button(slot(text, color)).ui(ui, |ui| {
+            widgets::menu_style(ui);
+            for g in 0..self.s.groups.len() {
+                let label = RichText::new(&self.s.groups[g].name).color(self.s.groups[g].color);
+                if ui.selectable_label(self.s.tracks[i].group == Some(g), label).clicked() {
+                    self.edit();
+                    self.s.tracks[i].group = Some(g);
+                }
+            }
+            ui.separator();
+            if ui.button(tr("Nuevo grupo con las seleccionadas")).clicked() {
+                self.s.tracks[i].selected = true;
+                self.group_selected();
+            }
+            if group.is_some() && ui.button(tr("Quitar del grupo")).clicked() {
+                self.edit();
+                self.s.tracks[i].group = None;
+            }
+        });
+        // Modo de automatización.
+        const MODES: [(&str, &str, Color32); 5] = [
+            ("Read", "Lee la automatización", METER[0]),
+            ("Off", "Ignora la automatización", TEXT_DIM),
+            ("Touch", "Escribe mientras mueves el fader o el panorama", Color32::from_rgb(0xFF, 0xD2, 0x3F)),
+            ("Latch", "Escribe desde que tocas un control hasta parar", METER[1]),
+            ("Write", "Escribe siempre mientras se reproduce", METER[2]),
+        ];
+        let mode = self.s.tracks[i].auto_mode.min(4) as usize;
+        egui::containers::menu::MenuButton::from_button(slot(MODES[mode].0.to_string(), MODES[mode].2)).ui(ui, |ui| {
+            widgets::menu_style(ui);
+            for (k, (name, tip, color)) in MODES.iter().enumerate() {
+                if ui.selectable_label(mode == k, RichText::new(*name).color(*color)).on_hover_text(tr(tip)).clicked() {
+                    self.s.tracks[i].auto_mode = k as u8;
+                    ui.close();
+                }
+            }
+        });
     }
 
     /// Ranuras de efectos: clic abre el plugin, clic derecho bypass/quitar, "+" añade.

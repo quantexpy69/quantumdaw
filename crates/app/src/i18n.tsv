@@ -551,3 +551,13 @@ Canciones sin proyecto	Songs without a project	Músicas sem projeto
 Arrastra para cambiar el ancho de las pistas	Drag to change the track width	Arraste para mudar a largura das faixas
 arrastra arriba/abajo · doble clic: 0 dB	drag up/down · double-click: 0 dB	arraste para cima/baixo · clique duplo: 0 dB
 Ganancia de entrada	Input gain	Ganho de entrada
+Envíos	Sends	Envios
+Envíos a buses: clic para abrir el ruteo	Sends to buses: click to open routing	Envios para buses: clique para abrir o roteamento
+Mute (silenciar)	Mute	Mudo
+Armar grabación	Arm recording	Armar gravação
+Monitoreo de entrada	Input monitoring	Monitoramento de entrada
+Lee la automatización	Reads the automation	Lê a automação
+Ignora la automatización	Ignores the automation	Ignora a automação
+Escribe mientras mueves el fader o el panorama	Writes while you move the fader or pan	Grava enquanto você move o fader ou o pan
+Escribe desde que tocas un control hasta parar	Writes from the moment you touch a control until stop	Grava desde que você toca um controle até parar
+Escribe siempre mientras se reproduce	Always writes during playback	Grava sempre durante a reprodução
