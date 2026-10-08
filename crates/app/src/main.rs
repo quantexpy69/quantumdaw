@@ -319,6 +319,21 @@ struct Session {
     tempo: Vec<(u64, f32)>,
     /// Marcas de la línea de tiempo (frame, nombre), ordenadas.
     markers: Vec<(u64, String)>,
+    /// Acordes y secciones del arreglo: (inicio, fin, nombre), ordenados.
+    chords: Vec<(u64, u64, String)>,
+    sections: Vec<(u64, u64, String)>,
+}
+
+/// Arrastre de un acorde o sección: tipo, índice, modo (0 mover, 1 borde izq., 2 borde der.), agarre y rango original.
+type SpanDrag = (NameKind, usize, u8, i64, (u64, u64));
+
+/// Qué se renombra en el diálogo de nombre.
+#[derive(Clone, Copy, PartialEq)]
+enum NameKind {
+    Marker,
+    Chord,
+    Section,
+    Group,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -355,6 +370,8 @@ enum Dialog {
     Transpose(f32),
     /// Tempo de un tramo: inicio, fin, BPM y si se adapta (estira) el audio y el MIDI.
     Tempo(u64, u64, f32, bool),
+    /// Nombre de una marca, acorde, sección o grupo (índice y texto en edición).
+    Name(NameKind, usize, String),
 }
 
 struct App {
@@ -404,6 +421,13 @@ struct App {
     bar_two_rows: bool,
     /// Editor de audio del panel inferior.
     aedit: Option<audioedit::AudioEdit>,
+    /// Pista de video que muestra el visor.
+    video_track: Option<u64>,
+    /// Arrastre en los carriles de acordes/arreglo: tipo, índice, modo (0 mover, 1 borde izq., 2 borde der.), agarre y original.
+    span_drag: Option<SpanDrag>,
+    span_ctx: Option<(NameKind, u64, Option<usize>)>,
+    show_chords: bool,
+    show_arrange: bool,
     /// Contador de tempo: instantes de los toques y BPM estimado.
     taps: Vec<f64>,
     tempo_guess: Option<f32>,
@@ -512,6 +536,11 @@ impl App {
             bar_widths: vec![],
             bar_two_rows: false,
             aedit: None,
+            video_track: None,
+            span_drag: None,
+            span_ctx: None,
+            show_chords: true,
+            show_arrange: true,
             taps: vec![],
             tempo_guess: None,
             meta: Default::default(),
@@ -614,7 +643,7 @@ impl App {
             pr.monitor.store(ts.monitor, Relaxed);
             pr.in_gain.set(10f32.powf(ts.in_gain_db / 20.0));
             let midi = ts.kind == TrackKind::Midi;
-            let mut load = |cs: &[ClipState]| cs.iter().filter_map(|c| load_clip(&self.dir, e.sample_rate, c, midi, &mut cache, &mut missing)).collect::<Vec<_>>();
+            let mut load = |cs: &[ClipState]| cs.iter().filter_map(|c| load_clip(&self.dir, e.sample_rate, c, midi || c.file.is_empty(), &mut cache, &mut missing)).collect::<Vec<_>>();
             t.clips = load(&ts.clips);
             t.takes = ts.takes.iter().map(|take| load(take)).collect();
             t.comp = ts.comp.iter().map(|&(a, b, k)| (f(a), if b >= 1e300 { u64::MAX } else { f(b) }, k)).collect();
@@ -645,6 +674,12 @@ impl App {
                     Err(err) => missing.push(format!("{} ({err})", ts.video)),
                 }
                 t.video_start = f(ts.video_start);
+                // Proyectos anteriores: el video sin regiones pasa a ser una región en su inicio.
+                if t.clips.is_empty()
+                    && let Some(v) = &t.video
+                {
+                    t.clips.push(video::region(None, t.video_start, (v.duration() * sr) as u64));
+                }
             }
             (t.group, t.input) = (ts.group.filter(|g| *g < p.groups.len()), ts.input);
             t.height = if ts.height > 0.0 { ts.height } else { TRACK_H };
@@ -666,7 +701,10 @@ impl App {
             false => p.tempo_map.iter().map(|&(s, b)| (f(s), b)).collect(),
         };
         let markers = p.markers.iter().map(|(s, n)| (f(*s), n.clone())).collect();
-        self.s = Session { tracks, groups, tempo, markers };
+        let spans = |v: &[(f64, f64, String)]| v.iter().map(|(a, b, n)| (f(*a), f(*b), n.clone())).collect();
+        let (chords, sections) = (spans(&p.chords), spans(&p.sections));
+        self.s = Session { tracks, groups, tempo, markers, chords, sections };
+        self.pin_video();
         self.meta = p.meta.clone();
         (self.undo, self.redo, self.dirty, self.time_sel, self.fx_window, self.route_window) = (vec![], vec![], true, None, None, None);
         self.roll.close();
@@ -725,6 +763,8 @@ impl App {
             comp_xfade_ms: self.xfade_ms,
             meta: self.meta.clone(),
             markers: self.s.markers.iter().map(|(f, n)| (*f as f64 / sr, n.clone())).collect(),
+            chords: self.s.chords.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
+            sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             ..Default::default()
         }
     }
@@ -1172,13 +1212,32 @@ impl App {
         Ok(())
     }
 
-    /// Añade una marca en `at` con un nombre numerado.
+    /// Añade una marca en `at` con un nombre numerado y abre el diálogo para nombrarla.
     fn add_marker(&mut self, at: u64) {
         self.edit();
         let name = format!("{} {}", tr("Marca"), self.s.markers.len() + 1);
-        self.status = format!("{name} · {:.2} s", at as f64 / self.sr());
-        self.s.markers.push((at, name));
+        self.s.markers.push((at, name.clone()));
         self.s.markers.sort_by_key(|m| m.0);
+        let k = self.s.markers.iter().position(|m| m.0 == at && m.1 == name).unwrap_or(0);
+        self.dialog = Some(Dialog::Name(NameKind::Marker, k, name));
+    }
+
+    /// Añade un acorde o una sección en `[a, b)` y abre el diálogo para nombrarlo.
+    fn add_span(&mut self, kind: NameKind, a: u64, b: u64) {
+        self.edit();
+        let (list, name) = match kind {
+            NameKind::Chord => (&mut self.s.chords, "C".to_string()),
+            _ => (&mut self.s.sections, tr("Estrofa").to_string()),
+        };
+        list.push((a, b, name.clone()));
+        list.sort_by_key(|s| s.0);
+        let k = list.iter().position(|s| s.0 == a).unwrap_or(0);
+        self.dialog = Some(Dialog::Name(kind, k, name));
+    }
+
+    /// Las pistas de video van siempre arriba de todo (en su orden).
+    fn pin_video(&mut self) {
+        self.s.tracks.sort_by_key(|t| t.kind != TrackKind::Video);
     }
 
     /// Cambia el BPM del tramo de tempo donde está el cursor (desde el LCD).
@@ -1337,6 +1396,7 @@ impl App {
         self.edit();
         let t = self.s.tracks.remove(from);
         self.s.tracks.insert(if to > from { to - 1 } else { to }, t);
+        self.pin_video();
         self.fx_window = None;
         self.roll.close();
     }

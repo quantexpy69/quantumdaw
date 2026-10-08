@@ -41,6 +41,9 @@ pub struct Project {
     pub meta: SongMeta,
     /// Marcas de la línea de tiempo: (segundos, nombre).
     pub markers: Vec<(f64, String)>,
+    /// Pista de acordes y pista de arreglo (Intro, Estrofa, Coro…): (inicio, fin en segundos, nombre).
+    pub chords: Vec<(f64, f64, String)>,
+    pub sections: Vec<(f64, f64, String)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -79,6 +82,8 @@ impl Default for Project {
             tempo_map: vec![],
             meta: SongMeta::default(),
             markers: vec![],
+            chords: vec![],
+            sections: vec![],
         }
     }
 }

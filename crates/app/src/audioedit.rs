@@ -85,6 +85,16 @@ const INTERVALS: [(f32, &str); 13] = [
     (12.0, "Octava arriba"),
 ];
 
+/// Edición con portapapeles dentro del editor.
+#[derive(Clone, Copy, PartialEq)]
+pub enum EditAct {
+    Cut,
+    Copy,
+    Paste,
+    Delete,
+    SelectAll,
+}
+
 /// Región abierta en el editor y sus ajustes.
 pub struct AudioEdit {
     track: u64,
@@ -104,6 +114,10 @@ pub struct AudioEdit {
     silence_ms: f32,
     peaks: Vec<u64>,
     silences: Vec<(u64, u64)>,
+    /// Vista (inicio y duración en frames; duración 0 = toda la región), cursor de edición y portapapeles.
+    view: (f64, f64),
+    cursor: Option<u64>,
+    clipboard: Arc<Vec<[f32; 2]>>,
 }
 
 fn smpte(f: u64, sr: f64) -> String {
@@ -129,6 +143,9 @@ impl App {
             silence_ms: 250.0,
             peaks: vec![],
             silences: vec![],
+            view: (0.0, 0.0),
+            cursor: None,
+            clipboard: self.aedit.as_ref().map(|e| e.clipboard.clone()).unwrap_or_default(),
         };
         self.aedit = Some(e);
         (self.show_mixer, self.bottom_tab) = (true, 3);
@@ -154,22 +171,63 @@ impl App {
     /// Aplica un proceso a la selección (o a toda la región) y lo escribe como audio nuevo.
     fn aedit_apply(&mut self, op: Process) -> anyhow::Result<()> {
         let (part, a, z) = self.aedit_range().ok_or_else(|| anyhow::anyhow!("la selección está vacía"))?;
+        let sel = process(part[a..z].to_vec(), op);
+        self.aedit_replace(a, z, sel, op.tag(), op == Process::Trim, (a, z) == (0, part.len()))
+    }
+
+    /// Sustituye el tramo `[a, z)` de la región por `sel` (o deja solo `sel` si `trim`) y lo escribe
+    /// como audio nuevo; la selección pasa a cubrir lo insertado.
+    fn aedit_replace(&mut self, a: usize, z: usize, sel: Vec<[f32; 2]>, tag: &str, trim: bool, whole: bool) -> anyhow::Result<()> {
         let (i, j, b) = self.aedit_target().ok_or_else(|| anyhow::anyhow!("no hay región abierta"))?;
         let c = self.s.tracks[i].clips[j].clone();
-        let sel = process(part[a..z].to_vec(), op);
+        let part = &b.frames[c.offset as usize..((c.offset + c.len) as usize).min(b.frames.len())];
         let n = sel.len();
-        let frames: Vec<[f32; 2]> = if op == Process::Trim { sel } else { part[..a].iter().chain(&sel).chain(&part[z..]).copied().collect() };
+        let frames: Vec<[f32; 2]> = if trim { sel } else { part[..a].iter().chain(&sel).chain(&part[z.min(part.len())..]).copied().collect() };
+        anyhow::ensure!(frames.len() > 16, "la región quedaría vacía");
         self.edit();
-        let buf = self.write_audio(&b.file, op.tag(), frames)?;
+        let buf = self.write_audio(&b.file, tag, frames)?;
         let len = buf.frames.len() as u64;
-        let start = if op == Process::Trim { c.start + a as u64 } else { c.start };
+        let start = if trim { c.start + a as u64 } else { c.start };
         self.s.tracks[i].clips[j] = Clip { fade_in: c.fade_in.min(len / 2), fade_out: c.fade_out.min(len / 2), gain: c.gain, selected: true, ..Clip::audio(buf, start) };
         if let Some(e) = &mut self.aedit {
-            e.sel = (op != Process::Trim && (a, z) != (0, part.len())).then_some((a as u64, (a + n) as u64));
+            e.sel = (!trim && !whole && n > 0).then_some((a as u64, (a + n) as u64));
+            e.cursor = Some(a as u64);
             (e.peaks, e.silences) = (vec![], vec![]);
+            e.view.1 = e.view.1.min(len as f64);
         }
         self.dirty = true;
         Ok(())
+    }
+
+    /// El editor de audio está visible y tiene una región abierta (recibe Supr y Ctrl+C/X/V).
+    pub fn aedit_active(&self) -> bool {
+        self.show_mixer && self.bottom_tab == 3 && self.aedit.is_some()
+    }
+
+    /// Cortar, copiar, pegar (en el cursor o sobre la selección), eliminar y seleccionar todo.
+    pub fn aedit_edit(&mut self, act: EditAct) {
+        let Some((part, a, z)) = self.aedit_range() else { return };
+        let Some(e) = self.aedit.as_mut() else { return };
+        let has_sel = e.sel.is_some();
+        let r = match act {
+            EditAct::SelectAll => {
+                e.sel = Some((0, part.len() as u64));
+                Ok(())
+            }
+            EditAct::Copy | EditAct::Cut if has_sel => {
+                e.clipboard = Arc::new(part[a..z].to_vec());
+                if act == EditAct::Cut { self.aedit_replace(a, z, vec![], "editado", false, false) } else { Ok(()) }
+            }
+            EditAct::Delete if has_sel => self.aedit_replace(a, z, vec![], "editado", false, false),
+            EditAct::Paste if !e.clipboard.is_empty() => {
+                let at = e.cursor.unwrap_or(0).min(part.len() as u64) as usize;
+                let (a, z) = if has_sel { (a, z) } else { (at, at) };
+                let clip = e.clipboard.to_vec();
+                self.aedit_replace(a, z, clip, "editado", false, false)
+            }
+            _ => Ok(()),
+        };
+        self.report(tr("Edición aplicada"), r);
     }
 
     fn aedit_run(&mut self, op: Process) {
@@ -198,6 +256,7 @@ impl App {
         let per_bar = self.engine.beats.load(Relaxed).max(1) as f64;
         let bars_of = |app: &Self, from: u64, len: u64| (app.beats((from + len) as f64) - app.beats(from as f64)) / per_bar;
         let bpm = engine::bpm_at(&self.s.tempo, c.start as f64);
+        let mut edit_act = None;
         let (mut run, mut preview_req, mut go_to, mut tempo_from_sel, mut fit_loop, mut close) = (None, None, None, None, None, false);
         let Some(mut e) = self.aedit.take() else { return };
         let (sa, sz) = e.sel.unwrap_or((0, c.len));
@@ -208,6 +267,21 @@ impl App {
         egui::Frame::new().fill(ELEVATED).corner_radius(rr(8.0)).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 widgets::menu_style(ui);
+                ui.menu_button(RichText::new(tr("Editar")).strong(), |ui| {
+                    widgets::menu_style(ui);
+                    for (label, key, act) in [
+                        ("Cortar", "Ctrl+X", EditAct::Cut),
+                        ("Copiar", "Ctrl+C", EditAct::Copy),
+                        ("Pegar en el cursor", "Ctrl+V", EditAct::Paste),
+                        ("Eliminar selección", "Supr", EditAct::Delete),
+                        ("Seleccionar todo", "Ctrl+A", EditAct::SelectAll),
+                    ] {
+                        if ui.add(egui::Button::new(tr(label)).shortcut_text(key)).clicked() {
+                            edit_act = Some(act);
+                            ui.close();
+                        }
+                    }
+                });
                 ui.menu_button(RichText::new(tr("Procesar")).strong(), |ui| {
                     widgets::menu_style(ui);
                     for (label, op) in [
@@ -306,12 +380,30 @@ impl App {
 
         let side = if e.tpm { 340.0 } else { 0.0 };
         let wave = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width() - side - 8.0, ui.available_height().max(80.0)));
-        let resp = ui.allocate_rect(wave, Sense::click_and_drag());
+        ui.allocate_rect(wave, Sense::hover());
+        // Id fijo: si dependiera del orden de los widgets, el arrastre se cortaría al aparecer la selección.
+        let resp = ui.interact(wave, egui::Id::new("aedit-wave"), Sense::click_and_drag());
         let p = ui.painter_at(wave);
         p.rect_filled(wave, rr(8.0), BG);
         let len = c.len.max(1);
-        let x_of = |f: u64| wave.left() + f as f32 / len as f32 * wave.width();
-        let f_at = |x: f32| (((x - wave.left()) / wave.width()).clamp(0.0, 1.0) * len as f32) as u64;
+        // Zoom con la rueda (alrededor del ratón) y desplazamiento con Shift+rueda.
+        let mut vlen = if e.view.1 <= 0.0 { len as f64 } else { e.view.1.clamp(64.0, len as f64) };
+        let mut v0 = e.view.0.clamp(0.0, len as f64 - vlen);
+        if let Some(m) = resp.hover_pos() {
+            let (d, shift) = ui.input(|i| (i.smooth_scroll_delta, i.modifiers.shift));
+            let rel = ((m.x - wave.left()) / wave.width()) as f64;
+            if shift {
+                v0 -= (d.x + d.y) as f64 / wave.width() as f64 * vlen;
+            } else if d.y != 0.0 {
+                let anchor = v0 + rel * vlen;
+                vlen = (vlen / 1.002f64.powf(d.y as f64)).clamp(64.0, len as f64);
+                v0 = anchor - rel * vlen;
+            }
+            v0 = v0.clamp(0.0, len as f64 - vlen);
+        }
+        e.view = (v0, if vlen >= len as f64 { 0.0 } else { vlen });
+        let x_of = |f: u64| wave.left() + ((f as f64 - v0) / vlen) as f32 * wave.width();
+        let f_at = |x: f32| (v0 + ((x - wave.left()) / wave.width()).clamp(0.0, 1.0) as f64 * vlen) as u64;
         if let Some((a, z)) = e.sel {
             p.rect_filled(Rect::from_x_y_ranges(x_of(a)..=x_of(z), wave.y_range()), 0.0, ACCENT.gamma_multiply(0.22));
         }
@@ -319,14 +411,14 @@ impl App {
             p.rect_filled(Rect::from_x_y_ranges(x_of(a)..=x_of(z), wave.y_range()), 0.0, Color32::from_white_alpha(10));
         }
         // Forma de onda por canal (L arriba, R abajo).
-        let fpp = len as f64 / wave.width() as f64;
+        let fpp = vlen / wave.width() as f64;
         for ch in 0..2 {
             let h = wave.height() / 2.0;
             let mid = wave.top() + h * (ch as f32 + 0.5);
             p.hline(wave.x_range(), mid, Stroke::new(1.0, BORDER));
             let mut mesh = egui::Mesh::default();
             for x in 0..wave.width() as usize {
-                let (f0, f1) = (c.offset as f64 + x as f64 * fpp, c.offset as f64 + (x + 1) as f64 * fpp);
+                let (f0, f1) = (c.offset as f64 + v0 + x as f64 * fpp, c.offset as f64 + v0 + (x + 1) as f64 * fpp);
                 let v = if fpp >= PEAK_BLOCK as f64 {
                     b.peaks[(f0 as usize / PEAK_BLOCK).min(b.peaks.len().saturating_sub(1))..(f1 as usize / PEAK_BLOCK).clamp(f0 as usize / PEAK_BLOCK + 1, b.peaks.len())].iter().fold(0f32, |m, v| m.max(*v))
                 } else {
@@ -350,7 +442,16 @@ impl App {
         if pos >= c.start && pos <= c.end() {
             p.vline(x_of(pos - c.start), wave.y_range(), Stroke::new(1.5, TEXT));
         }
-        p.text(wave.left_top() + vec2(8.0, 6.0), Align2::LEFT_TOP, tr("Arrastra para seleccionar · clic: mover el cursor"), FontId::proportional(11.0), TEXT_DIM);
+        if let Some(k) = e.cursor {
+            p.vline(x_of(k), wave.y_range(), Stroke::new(1.0, METER[1]));
+        }
+        p.text(
+            wave.left_top() + vec2(8.0, 6.0),
+            Align2::LEFT_TOP,
+            tr("Arrastra para seleccionar · clic: cursor · rueda: zoom · Shift+rueda: desplazar · Supr, Ctrl+X/C/V"),
+            FontId::proportional(11.0),
+            TEXT_DIM,
+        );
         if let Some(pp) = resp.interact_pointer_pos() {
             let f = f_at(pp.x);
             if resp.drag_started() {
@@ -361,7 +462,7 @@ impl App {
                 e.bars = 0.0;
             }
             if resp.clicked() {
-                (e.sel, e.bars) = (None, 0.0);
+                (e.sel, e.bars, e.cursor) = (None, 0.0, Some(f));
                 go_to = Some(c.start + f);
             }
         }
@@ -445,6 +546,9 @@ impl App {
         if let Some(op) = run {
             self.engine.preview.store(None);
             self.aedit_run(op);
+        }
+        if let Some(act) = edit_act {
+            self.aedit_edit(act);
         }
         if let Some(op) = preview_req {
             self.aedit_preview(op);

@@ -55,9 +55,7 @@ impl App {
         egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
             ui.horizontal_top(|ui| {
                 for i in 0..n {
-                    if self.s.tracks[i].kind != TrackKind::Video {
-                        self.strip(ui, Some(i), top_h, fader_h, compact);
-                    }
+                    self.strip(ui, Some(i), top_h, fader_h, compact);
                 }
                 if ui.add_sized([40.0, fader_h + 120.0], egui::Button::new(RichText::new("+").size(22.0).color(TEXT_DIM))).on_hover_text(tr("Nueva pista")).clicked() {
                     self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));

@@ -9,6 +9,7 @@ const RULER_H: f32 = 30.0;
 const TITLE_H: f32 = 16.0;
 const TEMPO_H: f32 = 22.0;
 const MARK_H: f32 = 22.0;
+const SPAN_H: f32 = 24.0;
 const MARK: Color32 = Color32::from_rgb(0xFF, 0xC8, 0x57);
 /// Columna de grupos (barra vertical con el nombre, como en Ardour).
 const GROUP_W: f32 = 20.0;
@@ -65,13 +66,17 @@ impl App {
         let full = ui.max_rect();
         let (sr, n) = (self.sr(), self.s.tracks.len());
         let x0 = full.left() + HEADER_W;
-        let lanes_top = full.top() + MARK_H + RULER_H + TEMPO_H;
+        let (arr_h, chord_h) = (if self.show_arrange { SPAN_H } else { 0.0 }, if self.show_chords { SPAN_H } else { 0.0 });
+        let lanes_top = full.top() + MARK_H + RULER_H + arr_h + chord_h + TEMPO_H;
         // Carril de marcas arriba de todo, con los números de compás.
         let mark_lane = Rect::from_min_max(pos2(x0, full.top()), pos2(full.right(), full.top() + MARK_H));
         let body = Rect::from_min_max(pos2(x0, lanes_top), full.max);
         let ruler = Rect::from_min_max(pos2(x0, mark_lane.bottom()), pos2(full.right(), mark_lane.bottom() + RULER_H));
         // Carril de tempo, siempre visible sobre la pista 1.
-        let tempo_lane = Rect::from_min_max(pos2(x0, ruler.bottom()), pos2(full.right(), lanes_top));
+        // Carriles de arreglo (Intro, Estrofa, Coro…) y de acordes, bajo la regla.
+        let arr_lane = Rect::from_min_max(pos2(x0, ruler.bottom()), pos2(full.right(), ruler.bottom() + arr_h));
+        let chord_lane = Rect::from_min_max(pos2(x0, arr_lane.bottom()), pos2(full.right(), arr_lane.bottom() + chord_h));
+        let tempo_lane = Rect::from_min_max(pos2(x0, chord_lane.bottom()), pos2(full.right(), lanes_top));
         let heads = Rect::from_min_max(pos2(full.left(), lanes_top), pos2(x0, full.bottom()));
 
         // Rueda del ratón según los atajos configurados (por defecto: vertical, Shift horizontal,
@@ -231,23 +236,30 @@ impl App {
             self.s.markers.sort_by_key(|m| m.0);
         }
         let x = ptr.unwrap_or_default().x;
-        if mark_r.double_clicked() && mark_hit(&self.s, x).is_none() {
-            self.add_marker(snap(frame_at(x)));
+        if mark_r.double_clicked() {
+            match mark_hit(&self.s, x) {
+                Some(k) => self.dialog = Some(Dialog::Name(NameKind::Marker, k, self.s.markers[k].1.clone())),
+                None => self.add_marker(snap(frame_at(x))),
+            }
         } else if mark_r.clicked() {
             self.go(mark_hit(&self.s, x).map_or(frame_at(x) as u64, |k| self.s.markers[k].0));
         }
         if mark_r.secondary_clicked() {
             self.mark_ctx = Some((snap(frame_at(x)), mark_hit(&self.s, x)));
         }
-        mark_r.context_menu(|ui| {
-            widgets::menu_style(ui);
+        widgets::edit_menu(&mark_r, |ui| {
             let Some((f, hit)) = self.mark_ctx else { return };
             ui.label(RichText::new(tr("Marcas")).strong());
             match hit.filter(|&k| k < self.s.markers.len()) {
                 Some(k) => {
                     ui.text_edit_singleline(&mut self.s.markers[k].1);
+                    if ui.button(tr("Renombrar…")).clicked() {
+                        self.dialog = Some(Dialog::Name(NameKind::Marker, k, self.s.markers[k].1.clone()));
+                        ui.close();
+                    }
                     if ui.button(tr("Ir a la marca")).clicked() {
                         self.go(self.s.markers[k].0);
+                        ui.close();
                     }
                     if ui.button(tr("Quitar marca")).clicked() {
                         self.edit();
@@ -258,14 +270,21 @@ impl App {
                 None => {
                     if ui.button(tr("Añadir marca aquí")).clicked() {
                         self.add_marker(f);
+                        ui.close();
                     }
                 }
             }
             if ui.add_enabled(!self.s.markers.is_empty(), egui::Button::new(tr("Quitar todas las marcas"))).clicked() {
                 self.edit();
                 self.s.markers.clear();
+                ui.close();
             }
         });
+        for (lane, kind) in [(arr_lane, NameKind::Section), (chord_lane, NameKind::Chord)] {
+            if lane.height() > 0.0 {
+                self.span_lane(ui, lane, kind, &x_of, &frame_at, &snap, press, ptr);
+            }
+        }
         ruler_r.context_menu(|ui| {
             widgets::menu_style(ui);
             ui.label(RichText::new(tr("Regla")).strong());
@@ -385,6 +404,7 @@ impl App {
                         self.status = "Región dividida".into();
                     }
                     Some((i, j, _)) if body_r.double_clicked() && self.s.tracks[i].midi() => self.open_roll(i, j),
+                    Some((i, _, _)) if body_r.double_clicked() && self.s.tracks[i].kind == TrackKind::Video => self.open_video(i),
                     Some((i, j, _)) if body_r.double_clicked() && self.s.tracks[i].clips[j].buf().is_some() => self.open_audio_editor(i, j),
                     Some((i, j, zone)) if body_r.drag_started() && self.tool == Tool::Select && zone != Zone::Body => {
                         self.edit();
@@ -528,17 +548,20 @@ impl App {
             let Some(v) = self.s.tracks[i].video.clone() else {
                 continue;
             };
-            let (top, h) = (lane_y(i) + 4.0, main(i) - 8.0);
-            let tw = (h * v.w as f32 / v.h as f32).max(8.0);
-            let start = self.s.tracks[i].video_start;
-            let end = start + (v.duration() * sr) as u64;
-            let (xs, xe) = (x_of(start).max(x0), x_of(end).min(full.right()));
-            let mut x = x_of(start) + ((xs - x_of(start)) / tw).floor() * tw;
-            while x < xe {
-                if let Some((tex, _)) = self.video_texture(i, frame_at(x + tw / 2.0) as u64) {
-                    thumbs.push((Rect::from_min_size(pos2(x, top), vec2(tw, h)), tex));
+            // Fotogramas dentro de cada región (arriba), dejando ver la onda de su audio debajo.
+            for c in self.s.tracks[i].clips.clone() {
+                let r = clip_rect(i, &c);
+                let area = Rect::from_min_max(pos2(r.left(), r.top() + TITLE_H + 2.0), pos2(r.right(), r.bottom() - 2.0));
+                let h = if c.buf().is_some() { area.height() * 0.62 } else { area.height() };
+                let tw = (h * v.w as f32 / v.h as f32).max(8.0);
+                let (xs, xe) = (area.left().max(x0), area.right().min(full.right()));
+                let mut x = area.left() + ((xs - area.left()) / tw).floor() * tw;
+                while x < xe {
+                    if let Some((tex, _)) = self.video_texture(i, frame_at(x + tw / 2.0) as u64) {
+                        thumbs.push((Rect::from_min_size(pos2(x, area.top()), vec2(tw, h)), tex, area.intersect(body)));
+                    }
+                    x += tw;
                 }
-                x += tw;
             }
         }
 
@@ -594,6 +617,11 @@ impl App {
             tp.rect_filled(Rect::from_x_y_ranges(xa..=xb, tempo_lane.y_range()), 0.0, ACCENT.gamma_multiply(if k % 2 == 0 { 0.12 } else { 0.22 }));
             tp.vline(xa, tempo_lane.y_range(), Stroke::new(2.0, ACCENT));
             tp.text(pos2(xa + 5.0, tempo_lane.center().y), Align2::LEFT_CENTER, format!("{bpm:.1} BPM"), FontId::proportional(11.5), TEXT);
+        }
+        for (lane, kind) in [(arr_lane, NameKind::Section), (chord_lane, NameKind::Chord)] {
+            if lane.height() > 0.0 {
+                self.draw_spans(ui, lane, kind, &x_of);
+            }
         }
         if let Some(Drag::Tempo(a, b)) = &self.drag {
             tp.rect_filled(Rect::from_x_y_ranges(x_of((*a).min(*b))..=x_of((*a).max(*b)), tempo_lane.y_range()), 0.0, METER[1].gamma_multiply(0.45));
@@ -747,9 +775,10 @@ impl App {
                 lp.text(pos2(x0 + 8.0, top + lh - 8.0), Align2::LEFT_BOTTOM, tr(label), FontId::proportional(11.0), c);
             }
         }
-        for (r, tex) in &thumbs {
-            lp.image(tex.id(), *r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-            lp.rect_stroke(*r, 0.0, Stroke::new(1.0, BG), StrokeKind::Inside);
+        for (r, tex, clip) in &thumbs {
+            let tp = lp.with_clip_rect(*clip);
+            tp.image(tex.id(), *r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            tp.rect_stroke(*r, 0.0, Stroke::new(1.0, BG), StrokeKind::Inside);
         }
         if let Some(Drag::Swipe(i, k, a, b)) = &self.drag {
             let y = lane_y(*i) + main(*i) + *k as f32 * TAKE_H;
@@ -846,10 +875,7 @@ impl App {
                 if r.clicked() {
                     self.s.tracks.iter_mut().for_each(|t| t.selected = t.group == Some(g));
                 }
-                r.context_menu(|ui| {
-                    widgets::menu_style(ui);
-                    self.group_menu(ui, g);
-                });
+                widgets::edit_menu(&r, |ui| self.group_menu(ui, g));
             }
             k += 1;
         }
@@ -863,8 +889,152 @@ impl App {
         painter.rect_filled(Rect::from_min_max(full.min, pos2(x0, lanes_top)), 0.0, PANEL);
         painter.text(pos2(full.left() + 12.0, tempo_lane.center().y), Align2::LEFT_CENTER, tr("TEMPO"), FontId::proportional(11.0), ACCENT);
         painter.text(pos2(full.left() + 12.0, mark_lane.center().y), Align2::LEFT_CENTER, tr("MARCAS"), FontId::proportional(11.0), MARK);
+        for (lane, label, hint) in [(arr_lane, "ARREGLO", "doble clic: Intro, Estrofa, Coro…"), (chord_lane, "ACORDES", "doble clic: añadir acorde")] {
+            if lane.height() > 0.0 {
+                painter.text(pos2(full.left() + 12.0, lane.center().y), Align2::LEFT_CENTER, tr(label), FontId::proportional(11.0), METER[1]);
+                painter.text(pos2(x0 - 8.0, lane.center().y), Align2::RIGHT_CENTER, tr(hint), FontId::proportional(10.0), TEXT_DIM);
+            }
+        }
         painter.text(pos2(x0 - 8.0, mark_lane.center().y), Align2::RIGHT_CENTER, tr("doble clic o M: añadir marca"), FontId::proportional(10.0), TEXT_DIM);
         painter.text(pos2(x0 - 8.0, tempo_lane.center().y), Align2::RIGHT_CENTER, tr("arrastra para cambiar el tempo de un tramo"), FontId::proportional(10.0), TEXT_DIM);
+    }
+
+    /// Carril de acordes o de arreglo: doble clic añade (o renombra), arrastrar mueve o estira por los
+    /// bordes, clic en una sección selecciona su rango de tiempo, clic derecho abre las opciones.
+    #[allow(clippy::too_many_arguments)]
+    fn span_lane(&mut self, ui: &mut egui::Ui, lane: Rect, kind: NameKind, x_of: &dyn Fn(u64) -> f32, frame_at: &dyn Fn(f32) -> f64, snap: &dyn Fn(f64) -> u64, press: Option<Pos2>, ptr: Option<Pos2>) {
+        let chord = kind == NameKind::Chord;
+        let list = |s: &Session| if chord { s.chords.clone() } else { s.sections.clone() };
+        let spans = list(&self.s);
+        let hit = |x: f32| spans.iter().rposition(|sp| x >= x_of(sp.0) - 4.0 && x < x_of(sp.1) + 4.0);
+        let tip = if chord {
+            "Acordes: doble clic para añadir o cambiar · arrastra para mover o estirar por los bordes · clic derecho: opciones"
+        } else {
+            "Arreglo: doble clic para añadir (Coro, Estrofa…) · clic: seleccionar su rango · arrastra para mover o estirar · clic derecho: opciones"
+        };
+        let r = ui.interact(lane, Id::new(("span-lane", chord)), Sense::click_and_drag()).on_hover_text(tr(tip));
+        let edge = |x: f32, k: usize| match () {
+            _ if (x - x_of(spans[k].0)).abs() < 6.0 => 1u8,
+            _ if (x - x_of(spans[k].1)).abs() < 6.0 => 2,
+            _ => 0,
+        };
+        if let Some(p) = r.hover_pos()
+            && let Some(k) = hit(p.x)
+            && edge(p.x, k) > 0
+        {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        }
+        if r.drag_started()
+            && let Some(p) = press
+            && let Some(k) = hit(p.x)
+        {
+            self.edit();
+            let (a, b) = (spans[k].0, spans[k].1);
+            self.span_drag = Some((kind, k, edge(p.x, k), frame_at(p.x) as i64 - a as i64, (a, b)));
+        }
+        let min_len = self.engine.beat_frames() as u64;
+        if r.dragged()
+            && let (Some((kd, k, mode, grab, (a, b))), Some(p)) = (self.span_drag, ptr)
+            && kd == kind
+        {
+            let f = frame_at(p.x);
+            let sp = &mut (if chord { &mut self.s.chords } else { &mut self.s.sections })[k];
+            match mode {
+                0 => {
+                    let na = snap((f - grab as f64).max(0.0));
+                    (sp.0, sp.1) = (na, na + (b - a));
+                }
+                1 => sp.0 = snap(f).min(b.saturating_sub(min_len)),
+                _ => sp.1 = snap(f).max(a + min_len),
+            }
+        }
+        if r.drag_stopped() && self.span_drag.is_some_and(|d| d.0 == kind) {
+            self.span_drag = None;
+            (if chord { &mut self.s.chords } else { &mut self.s.sections }).sort_by_key(|s| s.0);
+        }
+        let x = ptr.unwrap_or_default().x;
+        if r.double_clicked() {
+            match hit(x) {
+                Some(k) => self.dialog = Some(Dialog::Name(kind, k, spans[k].2.clone())),
+                None => {
+                    let a = snap(frame_at(x));
+                    self.add_span(kind, a, a + self.bar_frames() * if chord { 1 } else { 4 });
+                }
+            }
+        } else if r.clicked()
+            && let Some(k) = hit(x)
+        {
+            if !chord {
+                (self.time_sel, self.razor_lanes) = (Some((spans[k].0, spans[k].1)), None);
+            }
+            self.go(spans[k].0);
+        }
+        if r.secondary_clicked() {
+            self.span_ctx = Some((kind, snap(frame_at(x)), hit(x)));
+        }
+        widgets::edit_menu(&r, |ui| {
+            let Some((kd, f, hit)) = self.span_ctx.filter(|c| c.0 == kind) else { return };
+            ui.label(RichText::new(tr(if chord { "Acordes" } else { "Arreglo" })).strong());
+            match hit.filter(|&k| k < spans.len()) {
+                Some(k) => {
+                    let (a, b) = (spans[k].0, spans[k].1);
+                    if ui.button(tr("Renombrar…")).clicked() {
+                        self.dialog = Some(Dialog::Name(kd, k, spans[k].2.clone()));
+                        ui.close();
+                    }
+                    if !chord {
+                        if ui.button(tr("Seleccionar su rango")).clicked() {
+                            (self.time_sel, self.razor_lanes) = (Some((a, b)), None);
+                            ui.close();
+                        }
+                        if ui.button(tr("Loop de esta sección")).clicked() {
+                            self.set_loop(a, b);
+                            ui.close();
+                        }
+                    }
+                    if ui.button(tr("Duplicar a continuación")).clicked() {
+                        self.edit();
+                        let list = if chord { &mut self.s.chords } else { &mut self.s.sections };
+                        list.push((b, b + (b - a), spans[k].2.clone()));
+                        list.sort_by_key(|s| s.0);
+                        ui.close();
+                    }
+                    if ui.button(RichText::new(tr("Quitar")).color(METER[2])).clicked() {
+                        self.edit();
+                        (if chord { &mut self.s.chords } else { &mut self.s.sections }).remove(k);
+                        ui.close();
+                    }
+                }
+                None => {
+                    if ui.button(tr(if chord { "Añadir acorde aquí" } else { "Añadir sección aquí" })).clicked() {
+                        self.add_span(kind, f, f + self.bar_frames() * if chord { 1 } else { 4 });
+                        ui.close();
+                    }
+                }
+            }
+            if ui.add_enabled(!spans.is_empty(), egui::Button::new(tr("Quitar todos"))).clicked() {
+                self.edit();
+                (if chord { &mut self.s.chords } else { &mut self.s.sections }).clear();
+                ui.close();
+            }
+        });
+    }
+
+    /// Dibujo de un carril de acordes o arreglo: secciones con color según su nombre; acordes en azul.
+    fn draw_spans(&self, ui: &egui::Ui, lane: Rect, kind: NameKind, x_of: &dyn Fn(u64) -> f32) {
+        let chord = kind == NameKind::Chord;
+        let list = if chord { &self.s.chords } else { &self.s.sections };
+        let p = ui.painter().with_clip_rect(lane);
+        p.rect_filled(lane, 0.0, Color32::from_rgb(0x1A, 0x1A, 0x1F));
+        p.hline(lane.x_range(), lane.bottom() - 0.5, Stroke::new(1.0, BORDER));
+        for (k, (a, b, name)) in list.iter().enumerate() {
+            let rect = Rect::from_x_y_ranges(x_of(*a)..=x_of(*b), lane.top() + 2.0..=lane.bottom() - 2.0);
+            let color = if chord { Color32::from_rgb(0x8A, 0xB4, 0xFF) } else { rgb(PALETTE[name.to_lowercase().bytes().map(|b| b as usize).sum::<usize>() % PALETTE.len()]) };
+            let on = self.span_drag.is_some_and(|d| d.0 == kind && d.1 == k);
+            p.rect_filled(rect, rr(5.0), color.gamma_multiply(if on { 0.6 } else { 0.32 }));
+            p.rect_stroke(rect, rr(5.0), Stroke::new(1.0, color), StrokeKind::Inside);
+            p.with_clip_rect(rect.intersect(lane)).text(rect.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, name, FontId::proportional(if chord { 13.5 } else { 12.5 }), TEXT);
+        }
     }
 
     /// Menú de un grupo: nombre, color, edición vinculada, selección y disolver.
@@ -874,6 +1044,10 @@ impl App {
         };
         ui.label(RichText::new(tr("Grupo")).strong());
         ui.add(egui::TextEdit::singleline(&mut grp.name).hint_text(tr("Nombre del grupo")).desired_width(200.0));
+        if ui.button(tr("Renombrar…")).clicked() {
+            self.dialog = Some(Dialog::Name(NameKind::Group, g, grp.name.clone()));
+            ui.close();
+        }
         egui::widgets::color_picker::color_picker_color32(ui, &mut grp.color, egui::widgets::color_picker::Alpha::Opaque);
         ui.checkbox(&mut grp.edit, tr("Edición vinculada (seleccionar y mover juntas)"));
         ui.separator();
@@ -1049,6 +1223,9 @@ impl App {
             let m = ui.input(|i| i.modifiers);
             self.select_track(i, m);
         }
+        if resp.double_clicked() && self.s.tracks[i].kind == TrackKind::Video {
+            self.open_video(i);
+        }
         if resp.drag_started() {
             self.track_drag = Some((i, i));
         }
@@ -1148,7 +1325,7 @@ impl App {
                     }
                     TrackKind::Click => _ = ui.label(RichText::new(tr("Metrónomo como audio")).size(11.0).color(TEXT_DIM)),
                     TrackKind::Video => {
-                        let info = t.video.as_ref().map_or("sin video".to_string(), |v| format!("{:.1} s · visor en Ver → Visor de video", v.duration()));
+                        let info = t.video.as_ref().map_or("sin video".to_string(), |v| format!("{:.1} s · doble clic: abrir el visor", v.duration()));
                         ui.label(RichText::new(info).size(11.0).color(TEXT_DIM));
                     }
                     _ => {

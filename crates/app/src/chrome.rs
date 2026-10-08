@@ -135,6 +135,8 @@ impl App {
                 }
                 ui.checkbox(&mut self.show_auto, tr("Automatización (A)"));
                 ui.checkbox(&mut self.show_video, tr("Visor de video"));
+                ui.checkbox(&mut self.show_arrange, tr("Pista de arreglo (Intro, Estrofa, Coro…)"));
+                ui.checkbox(&mut self.show_chords, tr("Pista de acordes"));
                 ui.separator();
                 ui.checkbox(&mut self.lib_float, tr("Biblioteca flotante"));
                 ui.checkbox(&mut self.mixer_float, tr("Mixer flotante"));
@@ -470,6 +472,7 @@ impl App {
             Tempo(u64, u64, f32, bool),
             Export(Format, u8, u8, usize),
             DissolveGroup(usize),
+            Name(NameKind, usize, String),
         }
         // Editor de atajos: necesita `self` completo, así que se maneja aparte del resto.
         if let Some(Dialog::Keys(mut capture)) = self.dialog {
@@ -733,6 +736,60 @@ impl App {
                         close |= ui.button(tr("Cancelar")).clicked();
                     });
                 }
+                Dialog::Name(kind, k, name) => {
+                    ui.set_width(460.0);
+                    let title = match kind {
+                        NameKind::Marker => "Nombre de la marca",
+                        NameKind::Chord => "Acorde",
+                        NameKind::Section => "Sección del arreglo",
+                        NameKind::Group => "Nombre del grupo",
+                    };
+                    ui.heading(tr(title));
+                    let r = ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY).font(egui::FontId::proportional(18.0)));
+                    if ui.memory(|m| m.focused().is_none()) {
+                        r.request_focus();
+                    }
+                    let chip = |ui: &mut egui::Ui, text: &str, on: bool| ui.add(egui::Button::selectable(on, RichText::new(text).size(14.0)).min_size(vec2(38.0, 28.0))).clicked();
+                    match kind {
+                        NameKind::Chord => {
+                            // Acorde = raíz + tipo; los botones cambian una parte y conservan la otra.
+                            let split = name.char_indices().nth(1).filter(|(_, c)| *c == '#' || *c == 'b').map_or(name.chars().next().map_or(0, |c| c.len_utf8()), |(i, c)| i + c.len_utf8());
+                            let (root, quality) = (name[..split].to_string(), name[split..].to_string());
+                            ui.label(RichText::new(tr("Raíz")).color(TEXT_DIM));
+                            ui.horizontal_wrapped(|ui| {
+                                for r in ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"] {
+                                    if chip(ui, r, root == r) {
+                                        *name = format!("{r}{quality}");
+                                    }
+                                }
+                            });
+                            ui.label(RichText::new(tr("Tipo")).color(TEXT_DIM));
+                            ui.horizontal_wrapped(|ui| {
+                                for q in ["", "m", "7", "maj7", "m7", "sus2", "sus4", "dim", "aug", "add9", "6", "9"] {
+                                    if chip(ui, if q.is_empty() { tr("Mayor") } else { q }, quality == q) {
+                                        *name = format!("{root}{q}");
+                                    }
+                                }
+                            });
+                        }
+                        NameKind::Section => {
+                            ui.horizontal_wrapped(|ui| {
+                                for s in ["Intro", "Estrofa", "Pre coro", "Coro", "Puente", "Solo", "Instrumental", "Outro"] {
+                                    if chip(ui, tr(s), name == tr(s)) {
+                                        *name = tr(s).to_string();
+                                    }
+                                }
+                            });
+                        }
+                        _ => {}
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new(RichText::new(tr("Aceptar")).strong()).fill(ACCENT)).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+                            act = Some(Act::Name(*kind, *k, name.clone()));
+                        }
+                        close |= ui.button(tr("Cancelar")).clicked();
+                    });
+                }
                 Dialog::Groups => {
                     ui.heading(tr("Grupos"));
                     if groups.is_empty() {
@@ -812,6 +869,21 @@ impl App {
                 self.dialog = None;
             }
             Some(Act::DissolveGroup(g)) => self.remove_group(g),
+            Some(Act::Name(kind, k, name)) => {
+                let s = &mut self.s;
+                let slot = match kind {
+                    NameKind::Marker => s.markers.get_mut(k).map(|m| &mut m.1),
+                    NameKind::Chord => s.chords.get_mut(k).map(|m| &mut m.2),
+                    NameKind::Section => s.sections.get_mut(k).map(|m| &mut m.2),
+                    NameKind::Group => s.groups.get_mut(k).map(|g| &mut g.name),
+                };
+                if let Some(slot) = slot
+                    && !name.trim().is_empty()
+                {
+                    *slot = name.trim().to_string();
+                }
+                self.dialog = None;
+            }
             None => {}
         }
     }

@@ -500,3 +500,38 @@ Añadir marca en el cursor	Add marker at cursor	Adicionar marcador no cursor
 Desactivar loop	Disable loop	Desativar loop
 Activar loop	Enable loop	Ativar loop
 Cerrar editor	Close editor	Fechar editor
+Aceptar	OK	Aceitar
+Acorde	Chord	Acorde
+Acordes	Chords	Acordes
+ACORDES	CHORDS	ACORDES
+Acordes: doble clic para añadir o cambiar · arrastra para mover o estirar por los bordes · clic derecho: opciones	Chords: double-click to add or change · drag to move or stretch by the edges · right-click: options	Acordes: clique duplo para adicionar ou alterar · arraste para mover ou esticar pelas bordas · clique direito: opções
+Arrastra para seleccionar · clic: cursor · rueda: zoom · Shift+rueda: desplazar · Supr, Ctrl+X/C/V	Drag to select · click: cursor · wheel: zoom · Shift+wheel: scroll · Del, Ctrl+X/C/V	Arraste para selecionar · clique: cursor · roda: zoom · Shift+roda: rolar · Del, Ctrl+X/C/V
+Arreglo	Arrangement	Arranjo
+ARREGLO	ARRANGEMENT	ARRANJO
+Arreglo: doble clic para añadir (Coro, Estrofa…) · clic: seleccionar su rango · arrastra para mover o estirar · clic derecho: opciones	Arrangement: double-click to add (Chorus, Verse…) · click: select its range · drag to move or stretch · right-click: options	Arranjo: clique duplo para adicionar (Refrão, Estrofe…) · clique: selecionar seu intervalo · arraste para mover ou esticar · clique direito: opções
+Añadir acorde aquí	Add chord here	Adicionar acorde aqui
+Añadir sección aquí	Add section here	Adicionar seção aqui
+Coro	Chorus	Refrão
+Duplicar a continuación	Duplicate after	Duplicar em seguida
+Edición aplicada	Edit applied	Edição aplicada
+Estrofa	Verse	Estrofe
+Instrumental	Instrumental	Instrumental
+Intro	Intro	Intro
+Ir al final del video	Go to video end	Ir para o fim do vídeo
+Ir al inicio del video	Go to video start	Ir para o início do vídeo
+Loop de esta sección	Loop this section	Loop desta seção
+Nombre de la marca	Marker name	Nome do marcador
+Outro	Outro	Final
+Pista de acordes	Chord track	Faixa de acordes
+Pista de arreglo (Intro, Estrofa, Coro…)	Arrangement track (Intro, Verse, Chorus…)	Faixa de arranjo (Intro, Estrofe, Refrão…)
+Pre coro	Pre-chorus	Pré-refrão
+Puente	Bridge	Ponte
+Quitar todos	Remove all	Remover todos
+Renombrar…	Rename…	Renomear…
+Sección del arreglo	Arrangement section	Seção do arranjo
+Seleccionar su rango	Select its range	Selecionar seu intervalo
+Solo	Solo	Solo
+Tipo	Type	Tipo
+Raíz	Root	Tônica
+doble clic: Intro, Estrofa, Coro…	double-click: Intro, Verse, Chorus…	clique duplo: Intro, Estrofe, Refrão…
+doble clic: añadir acorde	double-click: add chord	clique duplo: adicionar acorde

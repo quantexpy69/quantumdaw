@@ -224,6 +224,7 @@ impl App {
             Cmd::Home => self.go(0),
             Cmd::End => self.go(self.project_end()),
             Cmd::Delete if self.bottom_tab == 1 && self.roll.has_selection() => self.roll_delete_selected(),
+            Cmd::Delete if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Delete),
             Cmd::Delete => self.delete(),
             Cmd::Save => self.save(),
             Cmd::SaveAs => {
@@ -233,6 +234,7 @@ impl App {
             Cmd::Split => self.split(self.pos()),
             Cmd::Undo => self.undo(),
             Cmd::Redo => self.redo(),
+            Cmd::SelectAll if self.aedit_active() => self.aedit_edit(audioedit::EditAct::SelectAll),
             Cmd::SelectAll => self.select_all(),
             Cmd::Automation => self.show_auto = !self.show_auto,
             Cmd::NewTrack => self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None)),
@@ -260,6 +262,9 @@ impl App {
         let typing = self.roll.typing && self.show_mixer && self.bottom_tab == 1;
         for e in ctx.input(|i| i.events.clone()) {
             match e {
+                Event::Copy if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Copy),
+                Event::Cut if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Cut),
+                Event::Paste(_) if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Paste),
                 Event::Copy => self.copy(false),
                 Event::Cut => self.copy(true),
                 Event::Paste(_) => self.paste(),

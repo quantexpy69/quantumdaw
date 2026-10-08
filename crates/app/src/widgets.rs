@@ -287,6 +287,14 @@ pub fn console_knob(ui: &mut egui::Ui, t: &mut f32, default: f32, color: Color32
     resp.on_hover_text(tr("Arrastra arriba/abajo (Shift: ajuste fino) · doble clic: valor por defecto"))
 }
 
+/// Menú contextual que solo se cierra al hacer clic fuera (para menús con campos de texto).
+pub fn edit_menu(resp: &Response, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Popup::context_menu(resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+        menu_style(ui);
+        add(ui);
+    });
+}
+
 /// Menús contextuales con tipografía más grande y filas más altas.
 pub fn menu_style(ui: &mut egui::Ui) {
     let st = ui.style_mut();

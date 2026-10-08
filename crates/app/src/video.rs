@@ -49,6 +49,14 @@ impl VideoData {
     }
 }
 
+/// Región de una pista de video: su audio (si tiene) o una región muda de la duración del video.
+pub fn region(audio: Option<Arc<AudioBuf>>, at: u64, len: u64) -> Clip {
+    match audio {
+        Some(b) => Clip::audio(b, at),
+        None => Clip::new(Source::Midi(Arc::new(vec![])), at, len),
+    }
+}
+
 /// Resultado de importar un video: datos, audio extraído (archivo y muestras) y posición.
 pub struct Imported {
     pub data: Arc<VideoData>,
@@ -119,14 +127,15 @@ impl App {
             self.video_jobs.remove(k);
             match r {
                 Ok(imp) => {
+                    // Una sola pista de video, arriba de todo: la región lleva la imagen y su sonido,
+                    // así se mueve, corta y recorta junto.
                     let name = Path::new(&imp.data.file).file_stem().unwrap_or_default().to_string_lossy().to_string();
                     self.add_track(format!("Video · {name}"), TrackKind::Video);
+                    let len = (imp.data.duration() * self.sr()) as u64;
                     let t = self.s.tracks.last_mut().unwrap();
-                    (t.video, t.video_start, t.height) = (Some(imp.data), imp.at, 70.0);
-                    if let Some((file, frames)) = imp.audio {
-                        self.add_track(format!("Audio · {name}"), TrackKind::AudioStereo);
-                        self.s.tracks.last_mut().unwrap().clips.push(Clip::audio(AudioBuf::new(file, frames), imp.at));
-                    }
+                    t.clips.push(region(imp.audio.map(|(file, frames)| AudioBuf::new(file, frames)), imp.at, len));
+                    (t.video, t.video_start, t.height) = (Some(imp.data), imp.at, 96.0);
+                    self.pin_video();
                     self.show_video = true;
                     self.status = format!("Video «{name}» importado");
                 }
@@ -139,7 +148,12 @@ impl App {
     pub fn video_texture(&mut self, i: usize, pos: u64) -> Option<(egui::TextureHandle, [u32; 2])> {
         let t = &self.s.tracks[i];
         let v = t.video.clone()?;
-        let secs = (pos as f64 - t.video_start as f64) / self.sr();
+        // El fotograma sale de la región bajo `pos` (respetando su recorte); sin regiones, del inicio del video.
+        let secs = match t.clips.iter().rev().find(|c| pos >= c.start && pos < c.end()) {
+            Some(c) => (pos - c.start + c.offset) as f64 / self.sr(),
+            None if t.clips.is_empty() => (pos as f64 - t.video_start as f64) / self.sr(),
+            None => return None,
+        };
         if secs < 0.0 || secs > v.duration() {
             return None;
         }
@@ -155,21 +169,56 @@ impl App {
         Some((self.video_cache[&key].clone(), [v.w, v.h]))
     }
 
-    /// Visor de video flotante, sincronizado con el cursor de reproducción.
+    /// Abre el visor de la pista de video `i` (doble clic en su región o cabecera).
+    pub fn open_video(&mut self, i: usize) {
+        (self.video_track, self.show_video) = (Some(self.s.tracks[i].id), true);
+    }
+
+    /// Visor de video flotante con controles de transporte, sincronizado con el cursor.
     pub fn video_window(&mut self, ctx: &egui::Context) {
-        let Some(i) = self.s.tracks.iter().position(|t| t.video.is_some()).filter(|_| self.show_video) else {
+        let chosen = self.video_track.and_then(|id| self.s.tracks.iter().position(|t| t.id == id && t.video.is_some()));
+        let Some(i) = chosen.or_else(|| self.s.tracks.iter().position(|t| t.video.is_some())).filter(|_| self.show_video) else {
             return;
         };
         let mut open = true;
         let frame = self.video_texture(i, self.pos());
-        egui::Window::new("Video").id(egui::Id::new("video-win")).open(&mut open).default_size([480.0, 300.0]).show(ctx, |ui| {
+        let title = self.s.tracks[i].name.clone();
+        let (a, b) = self.s.tracks[i].clips.iter().fold((u64::MAX, 0), |(a, b), c| (a.min(c.start), b.max(c.end())));
+        egui::Window::new(title).id(egui::Id::new("video-win")).open(&mut open).default_size([520.0, 360.0]).show(ctx, |ui| {
             let w = ui.available_width();
             match frame {
                 Some((tex, [vw, vh])) => _ = ui.add(egui::Image::new(&tex).fit_to_exact_size(egui::vec2(w, w * vh as f32 / vw as f32)).corner_radius(widgets::rr(6.0))),
-                None => _ = ui.label(egui::RichText::new(tr("El cursor está fuera del video")).color(TEXT_DIM)),
+                None => {
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(w, w * 9.0 / 16.0), egui::Sense::hover());
+                    ui.painter().rect_filled(r, widgets::rr(6.0), Color32::BLACK);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("El cursor está fuera del video"), egui::FontId::proportional(14.0), TEXT_DIM);
+                }
             }
-            let s = self.pos() as f64 / self.sr();
-            ui.label(egui::RichText::new(format!("{:02}:{:02}:{:02}.{:02}", (s / 3600.0) as u32, (s / 60.0) as u32 % 60, s as u32 % 60, ((s.fract()) * 100.0) as u32)).monospace().size(15.0));
+            // Barra de posición dentro del video.
+            if b > a {
+                let mut t = (self.pos().clamp(a, b) - a) as f64;
+                let slider = egui::Slider::new(&mut t, 0.0..=(b - a) as f64).show_value(false);
+                if ui.add_sized([w, 18.0], slider).changed() {
+                    self.go(a + t as u64);
+                }
+            }
+            ui.horizontal(|ui| {
+                if widgets::icon_button(ui, false, widgets::draw_prev).on_hover_text(tr("Ir al inicio del video")).clicked() {
+                    self.go(if a == u64::MAX { 0 } else { a });
+                }
+                let playing = self.playing();
+                if widgets::icon_button(ui, playing, if playing { widgets::draw_pause } else { widgets::draw_play }).on_hover_text(tr("Reproducir / pausa (Espacio)")).clicked() {
+                    self.toggle_play();
+                }
+                if widgets::icon_button(ui, false, widgets::draw_stop).on_hover_text(tr("Detener")).clicked() {
+                    self.stop();
+                }
+                if widgets::icon_button(ui, false, widgets::draw_next).on_hover_text(tr("Ir al final del video")).clicked() {
+                    self.go(b);
+                }
+                let s = self.pos() as f64 / self.sr();
+                ui.label(egui::RichText::new(format!("{:02}:{:02}:{:02}.{:02}", (s / 3600.0) as u32, (s / 60.0) as u32 % 60, s as u32 % 60, ((s.fract()) * 100.0) as u32)).monospace().size(16.0));
+            });
         });
         self.show_video &= open;
     }

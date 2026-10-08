@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.1.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.2.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -18,9 +18,12 @@ Versión actual: **0.1.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
   cortar/copiar/pegar, duplicar, normalizar, invertir, cuantizar y deshacer/rehacer ilimitado.
 - **Time-stretch** y **transposición** de regiones, pistas o grupos.
 - **Mapa de tempo** con cambios por tramo, metrónomo que lo sigue y **marcas** en la línea de tiempo (tecla `M`).
+- **Pista de arreglo** (Intro, Estrofa, Pre coro, Coro, Puente…): clic en una sección para seleccionar su rango o hacer loop.
+- **Pista de acordes** con selector de raíz y tipo (m, 7, maj7, sus4, dim…).
 - **Contador de tempo inteligente**: TAP o detección automática del BPM del audio.
 
 ### Editor de audio (doble clic en una región)
+- Selección de rangos con zoom (rueda), cortar, copiar, pegar y eliminar partes del audio (`Supr`, `Ctrl+X/C/V`).
 - Normalizar, cambiar ganancia, fundidos de entrada/salida, silencio, invertir fase, invertir (reverse),
   acortar y eliminar desplazamiento de CC.
 - **Time & Pitch Machine**: transposición por intervalos y cents, duración en %, BPM destino, muestras,
@@ -46,6 +49,8 @@ Versión actual: **0.1.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
 
 ### Proyecto e interfaz
 - Biblioteca con archivos (discos y carpetas), efectos, instrumentos y plugins VST3/LV2/CLAP instalados.
+- **Pista de video** siempre arriba: la región lleva la imagen y su audio juntos, se mueve, corta y recorta
+  como cualquier región; doble clic abre el visor con controles de reproducción.
 - Importación WAV/FLAC/OGG/MP3/M4A y video (vía ffmpeg) sincronizado; exportación WAV/FLAC/MP3/OGG
   de la mezcla, de una pista o en stems.
 - Menú principal con nueva canción, datos de la canción y copyright, recientes y demo.
