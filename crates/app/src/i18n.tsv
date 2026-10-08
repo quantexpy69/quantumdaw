@@ -1,0 +1,502 @@
+   (vacía)	   (empty)	   (vazia)
++  Nueva pista	+  New track	+  Nova faixa
++ Añadir efecto	+ Add effect	+ Adicionar efeito
++ Añadir envío a…	+ Add send to…	+ Adicionar envio para…
++ Crear pista MIDI	+ Create MIDI track	+ Criar faixa MIDI
++ Nuevo bus con reverb	+ New reverb bus	+ Novo bus com reverb
++ efecto	+ effect	+ efeito
+ANALIZADOR	ANALYZER	ANALISADOR
+AUDIO FX	AUDIO FX	EFEITOS DE ÁUDIO
+Abrir	Open	Abrir
+Abrir en piano roll	Open in piano roll	Abrir no piano roll
+Abrir la demo	Open the demo	Abrir a demo
+Abrir otra carpeta de proyecto…	Open another project folder…	Abrir outra pasta de projeto…
+Abrir proyecto…	Open project…	Abrir projeto…
+Acerca de	About	Sobre
+Acercar	Zoom in	Aproximar
+Acoplar mixer	Dock mixer	Acoplar mixer
+Actualizar discos	Refresh drives	Atualizar discos
+Adaptar el audio y el MIDI de todas las pistas a este tempo	Conform audio and MIDI of all tracks to this tempo	Adaptar o áudio e o MIDI de todas as faixas a este tempo
+Afecta a las pistas seleccionadas (o a todas). También puedes arrastrar el borde inferior de cada cabecera.	Affects the selected tracks (or all). You can also drag the bottom edge of each header.	Afeta as faixas selecionadas (ou todas). Também pode arrastar a borda inferior de cada cabeçalho.
+Afinación	Pitch	Afinação
+Afinación automática o manual de voces	Automatic or manual vocal tuning	Afinação automática ou manual de vozes
+Afinación de voz automática a la tonalidad y escala, o manual a una nota fija.	Automatic vocal tuning to key and scale, or manual to a fixed note.	Afinação de voz automática para tom e escala, ou manual para uma nota fixa.
+Agregar mis efectos…	Add my effects…	Adicionar meus efeitos…
+Agrupar seleccionadas	Group selected	Agrupar selecionadas
+Agudos dB	Treble dB	Agudos dB
+Ajusta el inicio de las notas a la rejilla	Snaps note starts to the grid	Ajusta o início das notas à grade
+Ajustar a la rejilla	Snap to grid	Ajustar à grade
+Ajustar a la rejilla (N)	Snap to grid (N)	Ajustar à grade (N)
+Ajustar a la rejilla de tiempos (N)	Snap to the beat grid (N)	Ajustar à grade de tempos (N)
+Ajustar proyecto a la ventana	Fit project to window	Ajustar projeto à janela
+Al estirar con el ratón:	When stretching with the mouse:	Ao esticar com o mouse:
+Alejar	Zoom out	Afastar
+Altura de las pistas	Track height	Altura das faixas
+Altura de pistas	Track height	Altura das faixas
+Amortiguación	Damping	Amortecimento
+Analizador	Analyzer	Analisador
+Anchura	Width	Largura
+Aplicar	Apply	Aplicar
+Archivo	File	Arquivo
+Arrastra a una pista o canal · doble clic: añadir a la pista seleccionada	Drag onto a track or channel · double-click: add to the selected track	Arraste para uma faixa ou canal · clique duplo: adicionar à faixa selecionada
+Arrastra arriba/abajo (Shift: ajuste fino) · doble clic: valor por defecto	Drag up/down (Shift: fine) · double-click: default value	Arraste para cima/baixo (Shift: ajuste fino) · clique duplo: valor padrão
+Arrastra para mover esta caja (al lado de otra o a otra línea)	Drag to move this box (next to another or to another row)	Arraste para mover esta caixa (ao lado de outra ou para outra linha)
+Arrastra para reordenar · clic: seleccionar · clic derecho: opciones	Drag to reorder · click: select · right-click: options	Arraste para reordenar · clique: selecionar · clique direito: opções
+Artista	Artist	Artista
+Atajos de teclado y ratón	Keyboard and mouse shortcuts	Atalhos de teclado e mouse
+Atajos de teclado y ratón…	Keyboard and mouse shortcuts…	Atalhos de teclado e mouse…
+Atajos: Herramientas → Atajos de teclado y ratón.	Shortcuts: Tools → Keyboard and mouse shortcuts.	Atalhos: Ferramentas → Atalhos de teclado e mouse.
+Ataque	Attack	Ataque
+Ataque ms	Attack ms	Ataque ms
+Automatización	Automation	Automação
+Automatización (A)	Automation (A)	Automação (A)
+Automático	Automatic	Automático
+Automático (según el nombre)	Automatic (from the name)	Automático (pelo nome)
+Añadir a las pistas seleccionadas	Add to selected tracks	Adicionar às faixas selecionadas
+Biblioteca	Library	Biblioteca
+Biblioteca (Y)	Library (Y)	Biblioteca (Y)
+Biblioteca flotante	Floating library	Biblioteca flutuante
+Borrar automatización	Clear automation	Apagar automação
+Buffers pequeños = menos latencia y más CPU. Al aplicar se reinicia el motor de audio.	Small buffers = less latency and more CPU. Applying restarts the audio engine.	Buffers pequenos = menos latência e mais CPU. Ao aplicar, o motor de áudio é reiniciado.
+Cada nota que toques (teclado del PC o teclas de la izquierda) se escribe en el cursor con la duración de la rejilla, y el cursor avanza	Each note you play (PC keyboard or the keys on the left) is written at the cursor with the grid length, and the cursor advances	Cada nota que tocar (teclado do PC ou teclas à esquerda) é escrita no cursor com a duração da grade, e o cursor avança
+Cada pista por separado (stems)	Each track separately (stems)	Cada faixa separada (stems)
+Calidez y distorsión	Warmth and distortion	Calor e distorção
+Cambia el tono sin cambiar la duración (en MIDI mueve las notas).	Changes pitch without changing length (in MIDI it moves the notes).	Muda o tom sem mudar a duração (no MIDI move as notas).
+Cambia la duración de las regiones seleccionadas sin cambiar el tono.	Changes the length of the selected regions without changing pitch.	Muda a duração das regiões selecionadas sem mudar o tom.
+Cambiar…	Change…	Alterar…
+Cancelar	Cancel	Cancelar
+Cancelar / quitar selección	Cancel / clear selection	Cancelar / limpar seleção
+Cantidad	Amount	Quantidade
+Cargando…	Loading…	Carregando…
+Cargarlos en las pistas llega en la próxima versión.	Loading them on tracks arrives in the next version.	Carregá-los nas faixas chega na próxima versão.
+Caída	Decay	Decaimento
+Cerrar	Close	Fechar
+Clic (metrónomo)	Click (metronome)	Clique (metrônomo)
+Clic del metrónomo · sigue el tempo y la métrica · se exporta como stem	Metronome click · follows tempo and meter · exported as a stem	Clique do metrônomo · segue o tempo e a métrica · exportado como stem
+Clic: abrir · arrastra para cambiar el orden de las pestañas	Click: open · drag to reorder the tabs	Clique: abrir · arraste para mudar a ordem das abas
+Clic: escuchar esta toma completa (A/B) · barre en su carril para elegir tramos	Click: listen to this whole take (A/B) · swipe its lane to pick sections	Clique: ouvir este take inteiro (A/B) · arraste na sua faixa para escolher trechos
+Clic: escuchar · doble clic: importar · arrastrar: a una pista o al espacio vacío	Click: listen · double-click: import · drag: onto a track or empty space	Clique: ouvir · clique duplo: importar · arrastar: para uma faixa ou espaço vazio
+Clic: seleccionar (Ctrl: varias) · arrastra para reordenar · clic derecho: opciones	Click: select (Ctrl: several) · drag to reorder · right-click: options	Clique: selecionar (Ctrl: várias) · arraste para reordenar · clique direito: opções
+Clic: usar en la pista MIDI seleccionada (o descargar) · arrastrar: sobre una pista MIDI	Click: use on the selected MIDI track (or download) · drag: onto a MIDI track	Clique: usar na faixa MIDI selecionada (ou baixar) · arrastar: para uma faixa MIDI
+Color	Color	Cor
+Color de la pista	Track color	Cor da faixa
+Color y saturación	Color and saturation	Cor e saturação
+Compacta	Compact	Compacta
+Compresor	Compressor	Compressor
+Configuración de audio y MIDI	Audio and MIDI settings	Configurações de áudio e MIDI
+Configuración de audio…	Audio settings…	Configurações de áudio…
+Consolidar comp (quitar tomas)	Consolidate comp (remove takes)	Consolidar comp (remover takes)
+Continuar con el proyecto	Continue with the project	Continuar com o projeto
+Controla la dinámica	Controls dynamics	Controla a dinâmica
+Controla la dinámica bajando los picos sobre el umbral. Ataque, release, rodilla suave y mezcla paralela.	Controls dynamics by lowering peaks above the threshold. Attack, release, soft knee and parallel mix.	Controla a dinâmica baixando os picos acima do limiar. Ataque, release, joelho suave e mixagem paralela.
+Copiar	Copy	Copiar
+Copiar selección	Copy selection	Copiar seleção
+Copyright ©	Copyright ©	Copyright ©
+Cortar	Cut	Recortar
+Cortar selección	Cut selection	Recortar seleção
+Corte	Cutoff	Corte
+Corte agudos	High cut	Corte de agudos
+Corte graves	Low cut	Corte de graves
+Crear canción	Create song	Criar música
+Cromática	Chromatic	Cromática
+Cuadrada	Square	Quadrada
+Cuantizar	Quantize	Quantizar
+Cuantizar a 1/16	Quantize to 1/16	Quantizar para 1/16
+Cuchilla (B)	Blade (B)	Lâmina (B)
+Datos de la canción	Song details	Dados da música
+Datos de la canción y copyright…	Song details and copyright…	Dados da música e copyright…
+Demo y recursos	Demo and resources	Demo e recursos
+Desafinar	Detune	Desafinar
+Desarrollo: Ivan Cheaib — QUANTUM DAW	Developed by: Ivan Cheaib — QUANTUM DAW	Desenvolvimento: Ivan Cheaib — QUANTUM DAW
+Deshacer	Undo	Desfazer
+Desinstalado:	Uninstalled:	Desinstalado:
+Desinstalar	Uninstall	Desinstalar
+Desinstalar (mover a la papelera)…	Uninstall (move to trash)…	Desinstalar (mover para a lixeira)…
+Desinstalar…	Uninstall…	Desinstalar…
+Desplazar en el tiempo (horizontal)	Scroll in time (horizontal)	Rolar no tempo (horizontal)
+Desplazar pistas (vertical)	Scroll tracks (vertical)	Rolar faixas (vertical)
+Detener	Stop	Parar
+Dinámica	Dynamics	Dinâmica
+Disolver	Dissolve	Dissolver
+Disolver grupo	Dissolve group	Dissolver grupo
+Dividir en el cursor	Split at cursor	Dividir no cursor
+División	Division	Divisão
+Doble clic para crear una región MIDI	Double-click to create a MIDI region	Clique duplo para criar uma região MIDI
+Drive dB	Drive dB	Drive dB
+Duplicar	Duplicate	Duplicar
+Duplicar pista	Duplicate track	Duplicar faixa
+Duración	Length	Duração
+Duro	Hard	Duro
+EFECTOS DE AUDIO	AUDIO EFFECTS	EFEITOS DE ÁUDIO
+ENVÍOS (post-fader)	SENDS (post-fader)	ENVIOS (pós-fader)
+EQ 3 bandas	3-band EQ	EQ 3 bandas
+EQ y filtros	EQ and filters	EQ e filtros
+Ecos con feedback	Echoes with feedback	Ecos com feedback
+Ecualizador de 3 bandas con frecuencias ajustables: realza o atenúa graves, medios y agudos.	3-band equalizer with adjustable frequencies: boosts or cuts lows, mids and highs.	Equalizador de 3 bandas com frequências ajustáveis: realça ou atenua graves, médios e agudos.
+Edición vinculada	Linked editing	Edição vinculada
+Edición vinculada (seleccionar y mover juntas)	Linked editing (select and move together)	Edição vinculada (selecionar e mover juntas)
+Editar	Edit	Editar
+Editar este tramo…	Edit this section…	Editar este trecho…
+Editar sonido	Edit sound	Editar som
+El cursor está fuera del video	The cursor is outside the video	O cursor está fora do vídeo
+El mixer está en una ventana flotante.	The mixer is in a floating window.	O mixer está em uma janela flutuante.
+Eliminar	Delete	Excluir
+Eliminar pista	Delete track	Excluir faixa
+Eliminar pistas seleccionadas	Delete selected tracks	Excluir faixas selecionadas
+Eliminar selección	Delete selection	Excluir seleção
+Eliminar todas las pistas seleccionadas	Delete all selected tracks	Excluir todas as faixas selecionadas
+Entrada	Input	Entrada
+Entrada MIDI	MIDI input	Entrada MIDI
+Env. filtro	Filter env.	Env. filtro
+Escala	Scale	Escala
+Escuchar	Listen	Ouvir
+Espacio y ambiente	Space and ambience	Espaço e ambiência
+Estación de audio digital escrita en Rust.	Digital audio workstation written in Rust.	Estação de áudio digital escrita em Rust.
+Estirar tiempo	Time stretch	Esticar tempo
+Estirar tiempo (time-stretch)…	Time stretch…	Esticar tempo (time-stretch)…
+Exportar	Export	Exportar
+Exportar…	Export…	Exportar…
+Fin	End	Fim
+Formato	Format	Formato
+Frec. agudos	Treble freq.	Freq. agudos
+Frec. graves	Bass freq.	Freq. graves
+Frec. medios	Mid freq.	Freq. médios
+Frecuencia de muestreo	Sample rate	Taxa de amostragem
+Ganancia dB	Gain dB	Ganho dB
+Ganancia de entrada (doble clic para escribir)	Input gain (double-click to type)	Ganho de entrada (clique duplo para digitar)
+Grabar	Record	Gravar
+Grabar en pistas armadas (Ctrl+R)	Record on armed tracks (Ctrl+R)	Gravar nas faixas armadas (Ctrl+R)
+Grande	Large	Grande
+Graves dB	Bass dB	Graves dB
+Graves, medios y agudos	Lows, mids and highs	Graves, médios e agudos
+Grupo	Group	Grupo
+Grupos	Groups	Grupos
+Grupos…	Groups…	Grupos…
+Guardar	Save	Salvar
+Guardar como	Save as	Salvar como
+Guardar como…	Save as…	Salvar como…
+Guardar datos	Save details	Salvar dados
+Haz clic en un atajo y pulsa la nueva combinación. Esc cancela, Retroceso lo deja vacío.	Click a shortcut and press the new combination. Esc cancels, Backspace clears it.	Clique em um atalho e pressione a nova combinação. Esc cancela, Backspace o deixa vazio.
+Haz doble clic en una región MIDI para editarla, o en un carril MIDI vacío para crear una.	Double-click a MIDI region to edit it, or an empty MIDI lane to create one.	Clique duplo em uma região MIDI para editá-la, ou em uma faixa MIDI vazia para criar uma.
+Herramienta cuchilla	Blade tool	Ferramenta lâmina
+Herramienta lápiz	Pencil tool	Ferramenta lápis
+Herramienta selección	Selection tool	Ferramenta seleção
+Herramientas	Tools	Ferramentas
+INSTRUMENTO	INSTRUMENT	INSTRUMENTO
+INSTRUMENTOS REALES · gratis y libres	REAL INSTRUMENTS · free and open	INSTRUMENTOS REAIS · grátis e livres
+Icono de la pista	Track icon	Ícone da faixa
+Icono de la pista · clic para cambiarlo	Track icon · click to change it	Ícone da faixa · clique para alterá-lo
+Idioma	Language	Idioma
+Importar audio	Import audio	Importar áudio
+Importar audio…	Import audio…	Importar áudio…
+Importar en la pista seleccionada	Import into the selected track	Importar na faixa selecionada
+Importar en una pista nueva (en el cursor)	Import into a new track (at cursor)	Importar em uma nova faixa (no cursor)
+Importar video…	Import video…	Importar vídeo…
+Inicio	Home	Início
+Instalado en el sistema: se desinstala con el gestor de paquetes (dnf).	Installed system-wide: uninstall it with the package manager (dnf).	Instalado no sistema: desinstale com o gerenciador de pacotes (dnf).
+Instrumento	Instrument	Instrumento
+Instrumento y efectos de la pista	Track instrument and effects	Instrumento e efeitos da faixa
+Instrumento y efectos…	Instrument and effects…	Instrumento e efeitos…
+Instrumentos reales gratuitos: en la Biblioteca (Y) → Instrumentos, o desde el piano roll.	Free real instruments: in the Library (Y) → Instruments, or from the piano roll.	Instrumentos reais gratuitos: na Biblioteca (Y) → Instrumentos, ou no piano roll.
+Interfaz redondeada	Rounded interface	Interface arredondada
+Invertir (reverse)	Reverse	Inverter (reverse)
+Ir al final	Go to end	Ir para o fim
+Ir al final (Fin)	Go to end (End)	Ir para o fim (End)
+Ir al inicio	Go to start	Ir para o início
+Ir al inicio (Inicio)	Go to start (Home)	Ir para o início (Home)
+Ir al menú principal…	Go to main menu…	Ir para o menu principal…
+Liberación	Release	Liberação
+Loop (L) · arrastra en la regla para definir el rango	Loop (L) · drag on the ruler to set the range	Loop (L) · arraste na régua para definir o intervalo
+Loop = selección	Loop = selection	Loop = seleção
+Loop = selección de tiempo	Loop = time selection	Loop = seleção de tempo
+Loop de todo el proyecto	Loop the whole project	Loop do projeto inteiro
+Los fades se ajustan arrastrando los puntos de la barra de título	Fades are set by dragging the points on the title bar	Os fades são ajustados arrastando os pontos da barra de título
+Lápiz de automatización (P)	Automation pencil (P)	Lápis de automação (P)
+Manual	Manual	Manual
+Mayor	Major	Maior
+Medios dB	Mids dB	Médios dB
+Menor	Minor	Menor
+Metrónomo	Metronome	Metrônomo
+Metrónomo (K)	Metronome (K)	Metrônomo (K)
+Metrónomo como audio	Metronome as audio	Metrônomo como áudio
+Mezcla	Mix	Mixagem
+Mezcla completa del proyecto	Full project mix	Mixagem completa do projeto
+Mixer flotante	Floating mixer	Mixer flutuante
+Modo	Mode	Modo
+Mostrar al iniciar	Show at startup	Mostrar ao iniciar
+Mostrar automatización	Show automation	Mostrar automação
+Mostrar biblioteca	Show library	Mostrar biblioteca
+Mostrar carriles de tomas	Show take lanes	Mostrar faixas de takes
+Mostrar mixer	Show mixer	Mostrar mixer
+Mostrar plugins ocultos	Show hidden plugins	Mostrar plugins ocultos
+Mostrar salidas HDMI / DisplayPort	Show HDMI / DisplayPort outputs	Mostrar saídas HDMI / DisplayPort
+Mostrar u ocultar los carriles de tomas (comping)	Show or hide take lanes (comping)	Mostrar ou ocultar as faixas de takes (comping)
+Mover abajo	Move down	Mover para baixo
+Mover arriba	Move up	Mover para cima
+Muy grande	Very large	Muito grande
+Ninguna	None	Nenhuma
+No	Off	Não
+No hay grupos. Selecciona pistas y usa Pista → Agrupar seleccionadas.	No groups. Select tracks and use Track → Group selected.	Não há grupos. Selecione faixas e use Faixa → Agrupar selecionadas.
+No se encontraron plugins VST3/LV2/CLAP. Instala por ejemplo LSP o x42 y pulsa «Volver a buscar».	No VST3/LV2/CLAP plugins found. Install e.g. LSP or x42 and press "Rescan".	Nenhum plugin VST3/LV2/CLAP encontrado. Instale por exemplo LSP ou x42 e clique em «Procurar novamente».
+No se pudo desinstalar	Could not uninstall	Não foi possível desinstalar
+Nombre	Name	Nome
+Nombre de la canción	Song title	Nome da música
+Nombre del grupo	Group name	Nome do grupo
+Normal	Normal	Normal
+Normalizar	Normalize	Normalizar
+Nota manual	Manual note	Nota manual
+Notas	Notes	Notas
+Nueva canción	New song	Nova música
+Nueva pista	New track	Nova faixa
+Nueva pista MIDI con este instrumento	New MIDI track with this instrument	Nova faixa MIDI com este instrumento
+Nueva pista…	New track…	Nova faixa…
+Nueva región MIDI aquí	New MIDI region here	Nova região MIDI aqui
+Nuevas pistas	New tracks	Novas faixas
+Nuevo grupo con las seleccionadas	New group from selected	Novo grupo com as selecionadas
+Nuevo proyecto…	New project…	Novo projeto…
+Ocultar (Y)	Hide (Y)	Ocultar (Y)
+Ocultar de la lista	Hide from the list	Ocultar da lista
+Ocultar panel (X)	Hide panel (X)	Ocultar painel (X)
+Onda	Wave	Onda
+Opcional; se numeran si son varias	Optional; numbered if there are several	Opcional; numeradas se forem várias
+PLANTILLA	TEMPLATE	MODELO
+Panel inferior (X)	Bottom panel (X)	Painel inferior (X)
+Panorama	Pan	Pan
+Panorama · arrastra arriba/abajo · doble clic: centro	Pan · drag up/down · double-click: center	Pan · arraste para cima/baixo · clique duplo: centro
+Pegar en el cursor	Paste at cursor	Colar no cursor
+Pendiente	Slope	Inclinação
+Piano roll	Piano roll	Piano roll
+Pico retenido · clic para reiniciar	Peak hold · click to reset	Pico retido · clique para reiniciar
+Pista	Track	Faixa
+Pistas	Tracks	Faixas
+Plugins VST3 / LV2 / CLAP instalados	Installed VST3 / LV2 / CLAP plugins	Plugins VST3 / LV2 / CLAP instalados
+Por defecto del sistema	System default	Padrão do sistema
+Pre-delay ms	Pre-delay ms	Pré-delay ms
+Proyecto de demostración con batería, bajo y pad para probar el mixer y los efectos.	Demo project with drums, bass and pad to try the mixer and effects.	Projeto de demonstração com bateria, baixo e pad para testar o mixer e os efeitos.
+Proyectos recientes	Recent projects	Projetos recentes
+Q medios	Mid Q	Q médios
+Quitar	Remove	Remover
+Quitar del grupo	Remove from group	Remover do grupo
+Quitar esta marca de tempo	Remove this tempo marker	Remover este marcador de tempo
+Quitar fades	Remove fades	Remover fades
+Qué exportar	What to export	O que exportar
+RECIENTES	RECENT	RECENTES
+Rango	Range	Intervalo
+Rango de loop	Loop range	Intervalo de loop
+Región	Region	Região
+Regla	Ruler	Régua
+Rehacer	Redo	Refazer
+Reiniciar picos	Reset peaks	Reiniciar picos
+Reiniciar picos de todos los canales	Reset peaks on all channels	Reiniciar picos de todos os canais
+Rejilla	Grid	Grade
+Release ms	Release ms	Release ms
+Repeticiones con feedback, ping-pong estéreo, filtros en las repeticiones y sincronía al tempo.	Repeats with feedback, stereo ping-pong, filters on the repeats and tempo sync.	Repetições com feedback, ping-pong estéreo, filtros nas repetições e sincronia com o tempo.
+Reproduce el proyecto para ver el espectro	Play the project to see the spectrum	Reproduza o projeto para ver o espectro
+Reproducir / pausa	Play / pause	Reproduzir / pausar
+Reproducir / pausa (Espacio)	Play / pause (Space)	Reproduzir / pausar (Espaço)
+Resolución	Resolution	Resolução
+Resolución de grabación	Recording resolution	Resolução de gravação
+Resonancia	Resonance	Ressonância
+Restablecer disposición	Reset layout	Restaurar disposição
+Restaurar valores por defecto	Restore defaults	Restaurar padrões
+Retener picos	Hold peaks	Reter picos
+Rodilla dB	Knee dB	Joelho dB
+Rueda del ratón	Mouse wheel	Roda do mouse
+Ruteo (ROUTE)…	Routing (ROUTE)…	Roteamento (ROUTE)…
+Ruteo: salida, envíos y buses	Routing: output, sends and buses	Roteamento: saída, envios e buses
+Salida	Output	Saída
+Salida al master (Stereo Out)	Output to master (Stereo Out)	Saída para o master (Stereo Out)
+Salida dB	Output dB	Saída dB
+Salir	Quit	Sair
+Saturación	Saturation	Saturação
+Saturación analógica suave, dura o de válvula, con control de tono y salida.	Soft, hard or tube analog saturation, with tone and output control.	Saturação analógica suave, dura ou valvulada, com controle de tom e saída.
+Se moverá a la papelera. Las pistas que lo usen quedarán con el QUANTUM Synth.	It will be moved to the trash. Tracks using it will switch to the QUANTUM Synth.	Será movido para a lixeira. As faixas que o usam ficarão com o QUANTUM Synth.
+Seleccionar sus pistas	Select its tracks	Selecionar suas faixas
+Seleccionar todas las pistas	Select all tracks	Selecionar todas as faixas
+Seleccionar todo	Select all	Selecionar tudo
+Seleccionar una región selecciona también las del resto del grupo en ese tiempo	Selecting a region also selects the rest of the group's regions at that time	Selecionar uma região também seleciona as do resto do grupo nesse tempo
+Selección (V)	Selection (V)	Seleção (V)
+Selección (razor)	Selection (razor)	Seleção (razor)
+Selección de tiempo	Time selection	Seleção de tempo
+Seno	Sine	Senoidal
+Si está desactivado, al hacer clic en un audio se escucha al momento	If off, clicking an audio file plays it right away	Se desativado, ao clicar em um áudio ele toca na hora
+Sierra	Saw	Dente de serra
+Simula un espacio: tamaño, amortiguación, pre-delay, corte de graves y anchura estéreo.	Simulates a space: size, damping, pre-delay, low cut and stereo width.	Simula um espaço: tamanho, amortecimento, pré-delay, corte de graves e largura estéreo.
+Sin efectos. Añade uno abajo o arrástralo desde la Biblioteca.	No effects. Add one below or drag it from the Library.	Sem efeitos. Adicione um abaixo ou arraste da Biblioteca.
+Sin envíos. Envía a un bus para compartir efectos (reverb, delay…).	No sends. Send to a bus to share effects (reverb, delay…).	Sem envios. Envie para um bus para compartilhar efeitos (reverb, delay…).
+Sincronía	Sync	Sincronia
+Solo previsualizar con ▶	Preview only with ▶	Pré-visualizar só com ▶
+Solo una pista:	Single track:	Só uma faixa:
+Sostenido	Sustain	Sustentação
+Suave	Soft	Suave
+Suavizado	Smoothing	Suavização
+Subir en la cadena	Move up the chain	Subir na cadeia
+Suelta aquí para crear una línea nueva	Drop here to create a new row	Solte aqui para criar uma nova linha
+Supr	Del	Del
+Sí	On	Sim
+TEMPO	TEMPO	TEMPO
+Tamaño	Size	Tamanho
+Tamaño de buffer	Buffer size	Tamanho do buffer
+Tamaño de la interfaz	Interface size	Tamanho da interface
+También: arrastra la esquina inferior derecha de la región	Also: drag the region's bottom-right corner	Também: arraste o canto inferior direito da região
+Teclado	Keyboard	Teclado
+Tempo	Tempo	Tempo
+Tempo del tramo	Section tempo	Tempo do trecho
+Tempo en la posición del cursor · arrastra o doble clic para escribir	Tempo at the cursor · drag or double-click to type	Tempo na posição do cursor · arraste ou clique duplo para digitar
+Tempo y métrica	Tempo and meter	Tempo e métrica
+Tempo único (quitar todos los cambios)	Single tempo (remove all changes)	Tempo único (remover todas as mudanças)
+Tempo: arrastra para elegir un tramo y cambiar su tempo · clic: editar el tramo · clic derecho en una marca: quitarla	Tempo: drag to pick a section and change its tempo · click: edit the section · right-click a marker: remove it	Tempo: arraste para escolher um trecho e mudar seu tempo · clique: editar o trecho · clique direito em um marcador: removê-lo
+Tiempo ms	Time ms	Tempo ms
+Tiempo y espacio	Time and space	Tempo e espaço
+Toca con A W S E D F T G Y H U J K O L P · Z/X cambian de octava · con R y grabación activa, las notas se escriben en la pista	Play with A W S E D F T G Y H U J K O L P · Z/X change octave · with R and recording on, notes are written to the track	Toque com A W S E D F T G Y H U J K O L P · Z/X mudam a oitava · com R e gravação ativa, as notas são escritas na faixa
+Todo el proyecto	Whole project	Projeto inteiro
+Todos los dispositivos	All devices	Todos os dispositivos
+Tomas (comping)	Takes (comping)	Takes (comping)
+Tonalidad	Key	Tonalidade
+Tono	Tone	Tom
+Transformar	Transform	Transformar
+Transponer	Transpose	Transpor
+Transponer…	Transpose…	Transpor…
+Triángulo	Triangle	Triangular
+Ubicación	Location	Local
+Umbral dB	Threshold dB	Limiar dB
+Usar en la pista MIDI seleccionada	Use on the selected MIDI track	Usar na faixa MIDI selecionada
+Velocidad	Velocity	Velocidade
+Velocidad ms	Speed ms	Velocidade ms
+Ver	View	Exibir
+Video no disponible	Video not available	Vídeo indisponível
+Visor de video	Video viewer	Visualizador de vídeo
+Volumen	Volume	Volume
+Volumen de previsualización	Preview volume	Volume da pré-visualização
+Volumen del fader	Fader volume	Volume do fader
+Volumen · doble clic: 0 dB	Volume · double-click: 0 dB	Volume · clique duplo: 0 dB
+Volver a buscar	Rescan	Procurar novamente
+Válvula	Tube	Válvula
+Zoom de altura de pistas	Track height zoom	Zoom da altura das faixas
+Zoom horizontal	Horizontal zoom	Zoom horizontal
+arrastra para cambiar el tempo de un tramo	drag to change a section's tempo	arraste para mudar o tempo de um trecho
+clic derecho: desinstalar u ocultar	right-click: uninstall or hide	clique direito: desinstalar ou ocultar
+el tramo de tempo está vacío	the tempo section is empty	o trecho de tempo está vazio
+licencia	license	licença
+parámetros	parameters	parâmetros
+selecciona una o más regiones	select one or more regions	selecione uma ou mais regiões
+© 2026 Nombre del titular	© 2026 Rights holder name	© 2026 Nome do titular
+Graves	Bass	Graves
+Medios	Mids	Médios
+Agudos	Treble	Agudos
+Umbral	Threshold	Limiar
+Ganancia	Gain	Ganho
+Rodilla	Knee	Joelho
+Tiempo	Time	Tempo
+Drive	Drive	Drive
+Pre-delay	Pre-delay	Pré-delay
+Cuerdas	Strings	Cordas
+Guitarras	Guitars	Guitarras
+Bajos	Basses	Baixos
+Batería y percusión	Drums and percussion	Bateria e percussão
+Teclados	Keyboards	Teclados
+Instrumentos	Instruments	Instrumentos
+Efectos	Effects	Efeitos
+Archivos	Files	Arquivos
+Plugins	Plugins	Plugins
+Crear pista	Create track	Criar faixa
+Instalado	Installed	Instalado
+COMPÁS	BAR	COMPASSO
+TIEMPO	TIME	TEMPO
+MÉTRICA	METER	MÉTRICA
+Audio mono	Mono audio	Áudio mono
+Audio estéreo	Stereo audio	Áudio estéreo
+Video	Video	Vídeo
+Voz, guitarra o bajo por una entrada	Vocals, guitar or bass on one input	Voz, guitarra ou baixo por uma entrada
+Sintetizadores, loops y pares de micrófonos	Synths, loops and microphone pairs	Sintetizadores, loops e pares de microfones
+MIDI / instrumento	MIDI / instrument	MIDI / instrumento
+Piano roll con instrumentos reales o el QUANTUM Synth	Piano roll with real instruments or the QUANTUM Synth	Piano roll com instrumentos reais ou o QUANTUM Synth
+Pista de clic	Click track	Faixa de clique
+El metrónomo como audio, exportable como stem	The metronome as audio, exportable as a stem	O metrônomo como áudio, exportável como stem
+Mis plugins	My plugins	Meus plugins
+Baterías y percusión	Drums and percussion	Baterias e percussão
+Acortar (dejar solo la selección)	Trim (keep only the selection)	Recortar (manter só a seleção)
+Ajustar el tempo del proyecto a la selección	Set project tempo from the selection	Ajustar o tempo do projeto à seleção
+Ajustar tempo por selección y localizadores	Adjust tempo from selection and locators	Ajustar tempo pela seleção e localizadores
+Análisis	Analysis	Análise
+Aplicar al tempo del proyecto	Apply to project tempo	Aplicar ao tempo do projeto
+Arrastra para seleccionar · clic: mover el cursor	Drag to select · click: move the cursor	Arraste para selecionar · clique: mover o cursor
+Añadir marca aquí	Add marker here	Adicionar marcador aqui
+Buscar picos	Find peaks	Buscar picos
+Buscar silencios	Find silences	Buscar silêncios
+Cambiar ganancia	Change gain	Alterar ganho
+Cerrar el editor	Close the editor	Fechar o editor
+Compases	Bars	Compassos
+Contador de tempo	Tempo counter	Contador de tempo
+Contador de tempo: marca el pulso o detecta el BPM del audio	Tempo counter: tap the beat or detect the audio's BPM	Contador de tempo: marque o pulso ou detecte o BPM do áudio
+Cuarta abajo	Fourth down	Quarta abaixo
+Cuarta justa	Perfect fourth	Quarta justa
+Detectar BPM de la región seleccionada	Detect BPM of the selected region	Detectar BPM da região selecionada
+Doble	Double	Dobro
+Eliminar desplazamiento de CC	Remove DC offset	Remover deslocamento DC
+Estirar la selección a los localizadores (loop)	Stretch the selection to the locators (loop)	Esticar a seleção aos localizadores (loop)
+Fundido de entrada	Fade in	Fade de entrada
+Fundido de salida	Fade out	Fade de saída
+Haz clic (o pulsa T con el ratón encima) al ritmo de la canción	Click (or press T with the mouse over it) to the beat of the song	Clique (ou pressione T com o mouse em cima) no ritmo da música
+Haz doble clic en una región de audio para editarla aquí.	Double-click an audio region to edit it here.	Clique duas vezes em uma região de áudio para editá-la aqui.
+Invertir fase	Invert phase	Inverter fase
+Invertir polaridad (fase) del audio	Invert audio polarity (phase)	Inverter polaridade (fase) do áudio
+Ir a la marca	Go to marker	Ir para o marcador
+La región es demasiado corta para detectar el tempo	The region is too short to detect the tempo	A região é curta demais para detectar o tempo
+La selección dura	The selection lasts	A seleção dura
+Limpiar resultados	Clear results	Limpar resultados
+Marca	Marker	Marcador
+Marcas	Markers	Marcadores
+MARCAS	MARKERS	MARCADORES
+Marcas: doble clic o M para añadir · arrastra para mover · clic derecho: renombrar o quitar	Markers: double-click or M to add · drag to move · right-click: rename or remove	Marcadores: clique duplo ou M para adicionar · arraste para mover · clique direito: renomear ou remover
+Mitad	Half	Metade
+Muestras	Samples	Amostras
+Normalizar audio	Normalize audio	Normalizar áudio
+Octava abajo	Octave down	Oitava abaixo
+Octava arriba	Octave up	Oitava acima
+Previsualizar	Preview	Pré-visualizar
+Procesar	Process	Processar
+Procesar y pegar	Process and paste	Processar e colar
+Proceso aplicado	Process applied	Processo aplicado
+Quinta abajo	Fifth down	Quinta abaixo
+Quinta justa	Perfect fifth	Quinta justa
+Quitar marca	Remove marker	Remover marcador
+Quitar todas las marcas	Remove all markers	Remover todos os marcadores
+Se aplica a la selección o, si no hay, a toda la región.	Applies to the selection or, if none, to the whole region.	Aplica-se à seleção ou, se não houver, à região inteira.
+Se aplica al tramo de tempo donde está el cursor.	Applies to the tempo section at the cursor.	Aplica-se ao trecho de tempo onde está o cursor.
+Selección	Selection	Seleção
+Selección ajustada a los localizadores	Selection fitted to the locators	Seleção ajustada aos localizadores
+Semitono abajo	Semitone down	Semitom abaixo
+Semitono arriba	Semitone up	Semitom acima
+Semitonos / cents	Semitones / cents	Semitons / cents
+Silencio	Silence	Silêncio
+Sin transponer	No transposition	Sem transpor
+Tempo del proyecto:	Project tempo:	Tempo do projeto:
+Tempo destino	Target tempo	Tempo destino
+Tempo original	Original tempo	Tempo original
+Tempo resultante:	Resulting tempo:	Tempo resultante:
+Tercera mayor	Major third	Terça maior
+Tercera menor	Minor third	Terça menor
+Tiempo y tono	Time and pitch	Tempo e tom
+Tono abajo	Whole tone down	Tom abaixo
+Tono arriba	Whole tone up	Tom acima
+Transposición	Transposition	Transposição
+compases	bars	compassos
+doble clic o M: añadir marca	double-click or M: add marker	clique duplo ou M: adicionar marcador
+fade-in	fade in	fade de entrada
+fade-out	fade out	fade de saída
+fase	phase	fase
+ganancia	gain	ganho
+invertido	reversed	invertido
+muestras	samples	amostras
+normalizado	normalized	normalizado
+picos	peaks	picos
+recortado	trimmed	recortado
+silencio	silence	silêncio
+silencios	silences	silêncios
+sin-dc	DC removed	sem DC
+Editor de audio	Audio editor	Editor de áudio
+Añadir marca en el cursor	Add marker at cursor	Adicionar marcador no cursor
+Desactivar loop	Disable loop	Desativar loop
+Activar loop	Enable loop	Ativar loop
+Cerrar editor	Close editor	Fechar editor

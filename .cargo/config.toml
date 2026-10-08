@@ -1,0 +1,3 @@
+# Cabeceras de ALSA extraídas localmente (ver env.sh); no requiere sudo.
+[env]
+PKG_CONFIG_PATH = { value = ".toolchain/sysroot/usr/lib64/pkgconfig", relative = true }

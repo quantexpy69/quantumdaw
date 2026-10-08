@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="quantumGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="100%" stop-color="#4FACFE" />
+    </linearGradient>
+  </defs>
+  <!-- Fondo oscuro minimalista DAW style -->
+  <rect width="512" height="512" rx="120" fill="#0D1117" />
+  
+  <!-- Isologo Quantum: Anillo de la Q + Corte de onda / Playhead -->
+  <circle cx="256" cy="226" r="110" fill="none" stroke="url(#quantumGrad)" stroke-width="24" stroke-linecap="round" />
+  
+  <!-- Cola de la Q / Onda geométrica -->
+  <path d="M316 296 L380 360" fill="none" stroke="url(#quantumGrad)" stroke-width="24" stroke-linecap="round" />
+  
+  <!-- Playhead / Cincel central (Representando precisión y Razor Edits) -->
+  <line x1="256" y1="96" x2="256" y2="356" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" opacity="0.9" />
+</svg>
