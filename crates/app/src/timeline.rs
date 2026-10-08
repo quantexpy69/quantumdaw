@@ -4,7 +4,10 @@ use crate::{keys::Wheel, library::LibItem, widgets::rr, *};
 use egui::{Align2, CornerRadius, CursorIcon, FontId, Id, Mesh, Painter, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, UiBuilder, pos2, vec2};
 use engine::{PEAK_BLOCK, fader_pos};
 
-pub const HEADER_W: f32 = 300.0;
+/// Ancho por defecto, mínimo y máximo de la columna de cabeceras.
+pub const HEADER_W: f32 = 340.0;
+pub const HEADER_MIN: f32 = 280.0;
+pub const HEADER_MAX: f32 = 720.0;
 const RULER_H: f32 = 30.0;
 const TITLE_H: f32 = 16.0;
 const TEMPO_H: f32 = 22.0;
@@ -65,7 +68,8 @@ impl App {
     pub fn timeline(&mut self, ui: &mut egui::Ui) {
         let full = ui.max_rect();
         let (sr, n) = (self.sr(), self.s.tracks.len());
-        let x0 = full.left() + HEADER_W;
+        let header_w = self.header_w();
+        let x0 = full.left() + header_w;
         let (arr_h, chord_h) = (if self.show_arrange { SPAN_H } else { 0.0 }, if self.show_chords { SPAN_H } else { 0.0 });
         let lanes_top = full.top() + MARK_H + RULER_H + arr_h + chord_h + TEMPO_H;
         // Carril de marcas arriba de todo, con los números de compás.
@@ -831,13 +835,15 @@ impl App {
             self.delete_selected_item(ui);
         });
         for (i, &takes) in takes_n.iter().enumerate() {
-            let r = Rect::from_min_size(pos2(full.left() + GROUP_W, lane_y(i)), vec2(HEADER_W - GROUP_W, main(i))).shrink2(vec2(4.0, 3.0));
+            // Pegadas al borde izquierdo; solo las pistas de un grupo dejan sitio a la barra del grupo.
+            let left = if self.s.tracks[i].group.is_some() { GROUP_W } else { 0.0 };
+            let r = Rect::from_min_size(pos2(full.left() + left, lane_y(i)), vec2(header_w - left, main(i))).shrink2(vec2(4.0, 3.0));
             if r.bottom() > heads.top() && r.top() < heads.bottom() {
                 self.track_header(ui, i, r, heads);
             }
             // Botones A/B de las tomas, uno por carril.
             for k in 0..takes {
-                let take_r = Rect::from_min_size(pos2(full.left() + 24.0, lane_y(i) + main(i) + k as f32 * TAKE_H + 6.0), vec2(HEADER_W - 34.0, TAKE_H - 12.0));
+                let take_r = Rect::from_min_size(pos2(full.left() + 24.0, lane_y(i) + main(i) + k as f32 * TAKE_H + 6.0), vec2(header_w - 34.0, TAKE_H - 12.0));
                 if take_r.bottom() > heads.top() && take_r.top() < heads.bottom() {
                     let active = self.s.tracks[i].comp.iter().any(|s| s.2 == k);
                     let b =
@@ -882,7 +888,7 @@ impl App {
         if let Some((_, to)) = self.track_drag {
             painter.hline(full.x_range(), lane_y(to), Stroke::new(2.0, ACCENT));
         }
-        let add = Rect::from_min_size(pos2(full.left() + 5.0, lane_y(n) + 8.0), vec2(HEADER_W - 10.0, 30.0));
+        let add = Rect::from_min_size(pos2(full.left() + 5.0, lane_y(n) + 8.0), vec2(header_w - 10.0, 30.0));
         if add.top() < full.bottom() && ui.put(add, egui::Button::new(RichText::new(tr("+  Nueva pista")).color(TEXT_DIM))).clicked() {
             self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
         }
@@ -897,6 +903,22 @@ impl App {
         }
         painter.text(pos2(x0 - 8.0, mark_lane.center().y), Align2::RIGHT_CENTER, tr("doble clic o M: añadir marca"), FontId::proportional(10.0), TEXT_DIM);
         painter.text(pos2(x0 - 8.0, tempo_lane.center().y), Align2::RIGHT_CENTER, tr("arrastra para cambiar el tempo de un tramo"), FontId::proportional(10.0), TEXT_DIM);
+        // Divisor entre cabeceras y regiones: se arrastra para ensanchar o estrechar las cabeceras.
+        let div = ui.interact(Rect::from_x_y_ranges(x0 - 4.0..=x0 + 3.0, full.y_range()), Id::new("header-divider"), Sense::click_and_drag()).on_hover_text(tr("Arrastra para cambiar el ancho de las pistas"));
+        if div.hovered() || div.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        }
+        if div.dragged() {
+            self.config.header_w = (header_w + div.drag_delta().x).clamp(HEADER_MIN, HEADER_MAX);
+        }
+        if div.drag_stopped() {
+            self.config.save();
+        }
+        if div.double_clicked() {
+            self.config.header_w = 0.0;
+        }
+        let hot = div.hovered() || div.dragged();
+        painter.vline(x0 - 0.5, full.y_range(), Stroke::new(if hot { 3.0 } else { 1.0 }, if hot { ACCENT } else { BORDER }));
     }
 
     /// Carril de acordes o de arreglo: doble clic añade (o renombra), arrastrar mueve o estira por los
@@ -1279,7 +1301,7 @@ impl App {
             ui.horizontal(|ui| {
                 icons::picker(ui, t, 22.0);
                 widgets::color_dot(ui, &mut t.color);
-                ui.add(egui::TextEdit::singleline(&mut t.name).desired_width(124.0).font(FontId::proportional(14.0)));
+                ui.add(egui::TextEdit::singleline(&mut t.name).desired_width((r.width() - 200.0).max(110.0)).font(FontId::proportional(14.0)));
                 if t.takes.len() > 1 {
                     let label = RichText::new(format!("Tomas {}", t.takes.len())).size(10.0).color(if t.show_takes { ACCENT } else { TEXT_DIM });
                     if ui.add(egui::Button::new(label).small()).on_hover_text(tr("Mostrar u ocultar los carriles de tomas (comping)")).clicked() {
@@ -1317,6 +1339,15 @@ impl App {
                 return;
             }
             ui.horizontal(|ui| {
+                // Volumen de la pista como perilla (arrastre vertical, doble clic: 0 dB).
+                let p = self.s.tracks[i].params.clone();
+                let mut vol = widgets::db(p.gain.get()).max(-60.0);
+                let vk = widgets::mini_knob(ui, &mut vol, -60.0, 6.0, 0.0, self.s.tracks[i].color);
+                if vk.changed() {
+                    p.gain.set(if vol <= -59.9 { 0.0 } else { 10f32.powf(vol / 20.0) });
+                }
+                vk.on_hover_text(format!("{} {} · {}", tr("Volumen"), widgets::db_text(p.gain.get()), tr("arrastra arriba/abajo · doble clic: 0 dB")));
+                ui.label(RichText::new(widgets::db_text(p.gain.get())).monospace().size(11.0).color(TEXT));
                 let t = &self.s.tracks[i];
                 match t.kind {
                     TrackKind::Midi => {
@@ -1330,13 +1361,15 @@ impl App {
                     }
                     _ => {
                         let listening = t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed);
-                        widgets::meter_h(ui, if listening { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, 104.0);
+                        widgets::meter_h(ui, if listening { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, (r.width() - 250.0).clamp(60.0, 240.0));
+                        // Ganancia de entrada como perilla.
                         let p = t.params.clone();
                         let mut d = widgets::db(p.in_gain.get());
-                        let drag = egui::DragValue::new(&mut d).range(-60.0..=24.0).speed(0.2).fixed_decimals(1).suffix(" dB");
-                        if ui.add(drag).on_hover_text(tr("Ganancia de entrada (doble clic para escribir)")).changed() {
+                        let k = widgets::mini_knob(ui, &mut d, -24.0, 24.0, 0.0, METER[0]);
+                        if k.changed() {
                             p.in_gain.set(10f32.powf(d / 20.0));
                         }
+                        k.on_hover_text(format!("{} {d:+.1} dB · {}", tr("Ganancia de entrada"), tr("arrastra arriba/abajo · doble clic: 0 dB")));
                         self.input_combo(ui, i);
                     }
                 }

@@ -87,6 +87,8 @@ struct Config {
     hide_welcome: bool,
     /// Idioma de la interfaz (0 español, 1 inglés, 2 portugués).
     lang: u8,
+    /// Ancho de la columna de cabeceras de pista (0 = por defecto).
+    header_w: f32,
     /// Nombre de quien crea los proyectos (se recuerda).
     author: String,
     /// Plugins del sistema ocultados de la biblioteca.
@@ -464,6 +466,8 @@ struct App {
     /// Alto de un canal del mixer sin contar el fader (se mide para que el mixer llene el panel).
     strip_extra: f32,
     strip_measured: f32,
+    /// Alto del master sin su fader (cuadro anterior), para igualar su altura con la de las pistas.
+    master_extra: f32,
     /// Fundido entre tramos de tomas (ms).
     xfade_ms: f32,
     /// Instrumentos reales: cargas en curso (pista, receptor), descargas y asignaciones pendientes.
@@ -568,6 +572,7 @@ impl App {
             route_window: None,
             strip_extra: 330.0,
             strip_measured: 0.0,
+            master_extra: 0.0,
             xfade_ms: 10.0,
             loading: vec![],
             downloads: HashMap::new(),
@@ -1248,6 +1253,11 @@ impl App {
         list.sort_by_key(|s| s.0);
         let k = list.iter().position(|s| s.0 == a).unwrap_or(0);
         self.dialog = Some(Dialog::Name(kind, k, name));
+    }
+
+    /// Ancho de la columna de cabeceras (ajustable arrastrando el divisor).
+    fn header_w(&self) -> f32 {
+        if self.config.header_w > 0.0 { self.config.header_w.clamp(timeline::HEADER_MIN, timeline::HEADER_MAX) } else { timeline::HEADER_W }
     }
 
     /// Las pistas de video van siempre arriba de todo (en su orden).

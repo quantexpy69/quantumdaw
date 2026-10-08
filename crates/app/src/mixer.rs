@@ -83,6 +83,8 @@ impl App {
         let params = i.map(|i| self.s.tracks[i].params.clone());
         let selected = i.is_some_and(|i| self.s.tracks[i].selected);
         let color = i.map_or(ACCENT, |i| self.s.tracks[i].color);
+        // El master no tiene las filas de botones de las pistas: su fader crece para igualar la altura.
+        let fader_h = if i.is_none() && !self.s.tracks.is_empty() { fader_h + (self.strip_extra - self.master_extra).max(0.0) } else { fader_h };
         // Clic derecho en cualquier parte del canal (con el área del cuadro anterior, debajo de sus controles).
         if let Some(i) = i
             && let Some(prev) = self.strip_rects.get(i).copied().filter(|r| r.is_positive())
@@ -196,9 +198,15 @@ impl App {
                 });
             });
         });
-        // Se mide el canal más alto (los de pista tienen más controles que el master).
-        self.strip_measured = self.strip_measured.max(resp.response.rect.height() - fader_h);
-        let Some(i) = i else { return };
+        // Se mide el canal de pista más alto (sin fader) y el master por separado.
+        let extra = resp.response.rect.height() - fader_h;
+        if i.is_some() || self.s.tracks.is_empty() {
+            self.strip_measured = self.strip_measured.max(extra);
+        }
+        let Some(i) = i else {
+            self.master_extra = extra;
+            return;
+        };
         let r = resp.response;
         self.strip_rects[i] = r.rect;
         if r.dnd_hover_payload::<LibItem>().is_some() {

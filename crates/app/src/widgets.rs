@@ -254,6 +254,33 @@ pub fn pan_knob(ui: &mut egui::Ui, v: &mut f32) -> Response {
     resp
 }
 
+/// Perilla pequeña (cabeceras de pista): arrastre vertical (Shift: fino), doble clic = valor por defecto.
+pub fn mini_knob(ui: &mut egui::Ui, v: &mut f32, min: f32, max: f32, default: f32, color: Color32) -> Response {
+    let (rect, mut resp) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click_and_drag());
+    let old = *v;
+    if resp.dragged() {
+        let fine = if ui.input(|i| i.modifiers.shift) { 0.2 } else { 1.0 };
+        *v = (*v - resp.drag_delta().y * (max - min) / 150.0 * fine).clamp(min, max);
+    }
+    if resp.double_clicked() {
+        *v = default;
+    }
+    if *v != old {
+        resp.mark_changed();
+    }
+    let (c, r) = (rect.center(), 10.5);
+    let angle = |x: f32| (-135.0 + 270.0 * (x - min) / (max - min)).to_radians();
+    let at = |a: f32, rad: f32| c + vec2(a.sin(), -a.cos()) * rad;
+    let arc = |a0: f32, a1: f32| -> Vec<egui::Pos2> { (0..=24).map(|i| at(a0 + (a1 - a0) * i as f32 / 24.0, r + 3.0)).collect() };
+    let p = ui.painter();
+    p.add(egui::Shape::line(arc(angle(min), angle(max)), Stroke::new(3.0, BG)));
+    p.add(egui::Shape::line(arc(angle(default.clamp(min, max)), angle(*v)), Stroke::new(3.0, color)));
+    p.circle_filled(c, r, if resp.hovered() || resp.dragged() { BORDER } else { ELEVATED });
+    p.circle_stroke(c, r, Stroke::new(1.0, Color32::from_gray(90)));
+    p.line_segment([at(angle(*v), 2.5), at(angle(*v), r - 2.0)], Stroke::new(2.0, TEXT));
+    resp
+}
+
 /// Perilla de consola: marcas alrededor, pista oscura, arco de color, botón con brillo y puntero.
 pub fn console_knob(ui: &mut egui::Ui, t: &mut f32, default: f32, color: Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(58.0, 58.0), Sense::click_and_drag());
@@ -299,8 +326,9 @@ pub fn edit_menu(resp: &Response, add: impl FnOnce(&mut egui::Ui)) {
 pub fn menu_style(ui: &mut egui::Ui) {
     let st = ui.style_mut();
     for ts in [egui::TextStyle::Body, egui::TextStyle::Button] {
-        st.text_styles.insert(ts, egui::FontId::proportional(15.0));
+        st.text_styles.insert(ts, egui::FontId::proportional(15.5));
     }
-    st.spacing.button_padding = vec2(8.0, 4.0);
-    st.spacing.item_spacing.y = 5.0;
+    st.spacing.button_padding = vec2(12.0, 6.0);
+    st.spacing.item_spacing.y = 6.0;
+    st.spacing.interact_size.y = 30.0;
 }

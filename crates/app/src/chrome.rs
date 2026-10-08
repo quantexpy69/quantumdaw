@@ -39,12 +39,15 @@ fn lcd_cell(ui: &mut egui::Ui, caption: &str, add: impl FnOnce(&mut egui::Ui)) {
 impl App {
     pub fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button(RichText::new(tr("Archivo")).size(15.5), |ui| {
+            ui.spacing_mut().item_spacing.x = 14.0;
+            ui.menu_button(RichText::new(tr("Archivo")).size(16.0), |ui| {
+                widgets::menu_style(ui);
                 if item(ui, tr("Nuevo proyecto…"), "") {
                     let r = self.open_dialog(true);
                     self.report("Proyecto creado", r);
                 }
                 ui.menu_button(tr("Proyectos recientes"), |ui| {
+                    widgets::menu_style(ui);
                     for dir in self.config.recent.clone() {
                         let name = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
                         if ui.button(name).on_hover_text(dir.display().to_string()).clicked() {
@@ -90,7 +93,8 @@ impl App {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
-            ui.menu_button(RichText::new(tr("Editar")).size(15.5), |ui| {
+            ui.menu_button(RichText::new(tr("Editar")).size(16.0), |ui| {
+                widgets::menu_style(ui);
                 if ui.add_enabled(!self.undo.is_empty(), egui::Button::new(tr("Deshacer")).shortcut_text("Ctrl+Z")).clicked() {
                     self.undo();
                 }
@@ -125,7 +129,8 @@ impl App {
                     self.loop_all();
                 }
             });
-            ui.menu_button(RichText::new(tr("Ver")).size(15.5), |ui| {
+            ui.menu_button(RichText::new(tr("Ver")).size(16.0), |ui| {
+                widgets::menu_style(ui);
                 ui.checkbox(&mut self.show_lib, tr("Biblioteca (Y)"));
                 ui.checkbox(&mut self.show_mixer, tr("Panel inferior (X)"));
                 for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador")] {
@@ -148,6 +153,7 @@ impl App {
                     theme(ui.ctx());
                 }
                 ui.menu_button(tr("Tamaño de la interfaz"), |ui| {
+                    widgets::menu_style(ui);
                     let current = ui.ctx().zoom_factor();
                     for (label, z) in [("90 %", 0.9), ("100 %", 1.0), ("115 %", 1.15), ("130 %", 1.3), ("150 %", 1.5), ("175 %", 1.75)] {
                         if ui.radio((current - z).abs() < 0.01, tr(label)).clicked() {
@@ -165,6 +171,7 @@ impl App {
                     self.zoom(0.8);
                 }
                 ui.menu_button(tr("Altura de pistas"), |ui| {
+                    widgets::menu_style(ui);
                     ui.label(RichText::new(tr("Afecta a las pistas seleccionadas (o a todas). También puedes arrastrar el borde inferior de cada cabecera.")).size(11.0).color(TEXT_DIM));
                     for (label, h) in [("Compacta", 60.0), ("Normal", TRACK_H), ("Grande", 160.0), ("Muy grande", 240.0)] {
                         if ui.button(tr(label)).clicked() {
@@ -175,7 +182,7 @@ impl App {
                 });
                 if item(ui, tr("Ajustar proyecto a la ventana"), "") {
                     let secs = (self.project_end() as f32 / self.sr() as f32).max(1.0);
-                    (self.pps, self.sx) = ((ui.ctx().content_rect().width() - timeline::HEADER_W - 40.0) / secs, 0.0);
+                    (self.pps, self.sx) = ((ui.ctx().content_rect().width() - self.header_w() - 40.0) / secs, 0.0);
                 }
                 ui.separator();
                 if item(ui, tr("Ir al inicio"), tr("Inicio")) {
@@ -185,7 +192,8 @@ impl App {
                     self.go(self.project_end());
                 }
             });
-            ui.menu_button(RichText::new(tr("Pista")).size(15.5), |ui| {
+            ui.menu_button(RichText::new(tr("Pista")).size(16.0), |ui| {
+                widgets::menu_style(ui);
                 if item(ui, tr("Nueva pista…"), tr("Ctrl+T")) {
                     self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
                 }
@@ -200,7 +208,8 @@ impl App {
                     self.delete_tracks(|_, t| t.selected);
                 }
             });
-            ui.menu_button(RichText::new(tr("Herramientas")).size(15.5), |ui| {
+            ui.menu_button(RichText::new(tr("Herramientas")).size(16.0), |ui| {
+                widgets::menu_style(ui);
                 for (tool, label) in [(Tool::Select, "Selección (V)"), (Tool::Pencil, "Lápiz de automatización (P)"), (Tool::Blade, "Cuchilla (B)")] {
                     if ui.radio(self.tool == tool, tr(label)).clicked() {
                         self.set_tool(tool);
@@ -216,6 +225,7 @@ impl App {
                     self.dialog = Some(Dialog::Keys(None));
                 }
                 ui.menu_button(tr("Idioma"), |ui| {
+                    widgets::menu_style(ui);
                     for (k, name) in i18n::LANGS.iter().enumerate() {
                         if ui.radio(self.config.lang == k as u8, *name).clicked() {
                             self.config.lang = k as u8;

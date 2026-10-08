@@ -548,3 +548,6 @@ Hz del sistema	system Hz	Hz do sistema
 pistas	tracks	faixas
 canciones	songs	músicas
 Canciones sin proyecto	Songs without a project	Músicas sem projeto
+Arrastra para cambiar el ancho de las pistas	Drag to change the track width	Arraste para mudar a largura das faixas
+arrastra arriba/abajo · doble clic: 0 dB	drag up/down · double-click: 0 dB	arraste para cima/baixo · clique duplo: 0 dB
+Ganancia de entrada	Input gain	Ganho de entrada
