@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.5.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.5.1** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -35,7 +35,7 @@ Versión actual: **0.5.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
   **inversión de polaridad (Ø)**, envíos post-fader, buses y ruteo (ROUTE).
 - Grupos con barra de color al estilo Ardour y edición vinculada.
 - Automatización de volumen y panorama dibujada con lápiz o grabada desde el mixer con los modos
-  **Read, Off, Touch, Latch y Write**.
+  **Lectura, Apagado, Toque, Retención y Escritura** (Read, Off, Touch, Latch y Write).
 - Canales con botones **M** (rojo) y **S** (amarillo) y ranuras de **Envíos**, **Grupo** y modo de automatización.
 
 ### Plugins QUANTUM

@@ -165,7 +165,7 @@ pub struct TrackState {
     pub show_takes: bool,
     /// Polaridad invertida.
     pub invert: bool,
-    /// Modo de automatización: 0 Read, 1 Off, 2 Touch, 3 Latch, 4 Write.
+    /// Modo de automatización: 0 Lectura, 1 Apagado, 2 Toque, 3 Retención, 4 Escritura.
     pub auto_mode: u8,
     /// Formato v1 (un archivo por pista); se migra a `clips` al cargar.
     #[serde(skip_serializing)]

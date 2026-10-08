@@ -280,19 +280,19 @@ impl App {
                 self.s.tracks[i].group = None;
             }
         });
-        // Modo de automatización.
+        // Modo de automatización (Lectura, Apagado, Toque, Retención, Escritura).
         const MODES: [(&str, &str, Color32); 5] = [
-            ("Read", "Lee la automatización", METER[0]),
-            ("Off", "Ignora la automatización", TEXT_DIM),
-            ("Touch", "Escribe mientras mueves el fader o el panorama", Color32::from_rgb(0xFF, 0xD2, 0x3F)),
-            ("Latch", "Escribe desde que tocas un control hasta parar", METER[1]),
-            ("Write", "Escribe siempre mientras se reproduce", METER[2]),
+            ("Lectura", "Lee la automatización", METER[0]),
+            ("Apagado", "Ignora la automatización", TEXT_DIM),
+            ("Toque", "Escribe mientras mueves el fader o el panorama", Color32::from_rgb(0xFF, 0xD2, 0x3F)),
+            ("Retención", "Escribe desde que tocas un control hasta parar", METER[1]),
+            ("Escritura", "Escribe siempre mientras se reproduce", METER[2]),
         ];
         let mode = self.s.tracks[i].auto_mode.min(4) as usize;
-        egui::containers::menu::MenuButton::from_button(slot(MODES[mode].0.to_string(), MODES[mode].2)).ui(ui, |ui| {
+        egui::containers::menu::MenuButton::from_button(slot(tr(MODES[mode].0).to_string(), MODES[mode].2)).ui(ui, |ui| {
             widgets::menu_style(ui);
             for (k, (name, tip, color)) in MODES.iter().enumerate() {
-                if ui.selectable_label(mode == k, RichText::new(*name).color(*color)).on_hover_text(tr(tip)).clicked() {
+                if ui.selectable_label(mode == k, RichText::new(tr(name)).color(*color)).on_hover_text(tr(tip)).clicked() {
                     self.s.tracks[i].auto_mode = k as u8;
                     ui.close();
                 }
