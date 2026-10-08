@@ -1,4 +1,33 @@
+# Compilación y toolchain local
 /target
 /.toolchain
-/projects
 /..release
+
+# Proyectos de prueba y audio del usuario
+/projects
+*.frames.rgb
+
+# Seguridad: credenciales, tokens y claves privadas
+.env
+.env.*
+*.env
+.git-credentials
+.netrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa*
+id_ed25519*
+*token*
+*secret*
+credentials*
+config.local.*
+
+# Editores y sistema
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
