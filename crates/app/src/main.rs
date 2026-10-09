@@ -109,6 +109,17 @@ impl Config {
 }
 
 fn main() -> eframe::Result {
+    match std::env::args().nth(1).as_deref() {
+        Some("--version" | "-V") => {
+            println!("Quantum DAW {}", welcome::VERSION);
+            return Ok(());
+        }
+        Some("--help" | "-h") => {
+            println!("Uso: quantum-daw [CARPETA_DEL_PROYECTO]\n  --version  muestra la versión\n  --help     muestra esta ayuda");
+            return Ok(());
+        }
+        _ => {}
+    }
     let config = Config::load();
     let welcome = std::env::args().nth(1).is_none() && !config.hide_welcome;
     let dir = std::env::args().nth(1).map(PathBuf::from).or_else(|| config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));

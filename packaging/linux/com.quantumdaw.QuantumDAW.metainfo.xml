@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.quantumdaw.QuantumDAW</id>
+  <name>Quantum DAW</name>
+  <summary>Estación de audio digital moderna escrita en Rust</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <developer id="com.quantumdaw"><name>Ivan Cheaib</name></developer>
+  <description>
+    <p>Graba, edita y mezcla música con pistas de audio y MIDI, mixer con automatización, plugins propios,
+      editor de audio con Time &amp; Pitch Machine, piano roll con instrumentos reales gratuitos y video.</p>
+  </description>
+  <launchable type="desktop-id">quantum-daw.desktop</launchable>
+  <url type="homepage">https://www.quantumdaw.com</url>
+  <url type="vcs-browser">https://github.com/quantexpy69/quantumdaw</url>
+  <categories><category>AudioVideo</category><category>Audio</category></categories>
+  <content_rating type="oars-1.1"/>
+</component>

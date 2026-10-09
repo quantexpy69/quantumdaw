@@ -31,3 +31,4 @@ config.local.*
 *.swp
 *~
 .DS_Store
+/dist

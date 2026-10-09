@@ -1,0 +1,49 @@
+# Al subir una etiqueta vX.Y.Z: compila contra glibc 2.28 (AlmaLinux 8), crea los paquetes de Linux
+# (.deb, .rpm, AppImage, .tar.gz y PKGBUILD) y publica el release con sus notas.
+name: Publicar versión
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Etiqueta a publicar (por ejemplo v0.6.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: almalinux:8
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Herramientas básicas
+        run: dnf -y -q install git tar
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: Compilar y empaquetar
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          CACHE="$HOME/cache" packaging/build.sh --dentro
+      - name: Notas de la versión
+        run: packaging/notas.sh "$TAG" > notas.md
+      - name: Publicar el release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Quantum DAW ${{ env.TAG }}
+          body_path: notas.md
+          make_latest: true
+          files: |
+            dist/quantum-daw-linux-x86_64.tar.gz
+            dist/quantum-daw-amd64.deb
+            dist/quantum-daw-x86_64.rpm
+            dist/quantum-daw-x86_64.AppImage
+            dist/PKGBUILD
+            dist/SHA256SUMS

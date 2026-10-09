@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.5.3** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.6.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -63,17 +63,35 @@ Versión actual: **0.5.3** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
 
 ---
 
-## Instalación (Fedora)
+## Instalación en Linux
+
+Descarga la última versión desde [Releases](https://github.com/quantexpy69/quantumdaw/releases/latest).
+Funciona en cualquier distribución x86_64 con glibc 2.28 o posterior.
+
+| Distribución | Archivo | Instalación |
+|---|---|---|
+| Debian, Ubuntu, Linux Mint, Pop!_OS… | `quantum-daw-amd64.deb` | `sudo apt install ./quantum-daw-amd64.deb` |
+| Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux | `quantum-daw-x86_64.rpm` | `sudo dnf install ./quantum-daw-x86_64.rpm` |
+| openSUSE | `quantum-daw-x86_64.rpm` | `sudo zypper install ./quantum-daw-x86_64.rpm` |
+| Arch Linux, Manjaro, EndeavourOS | `PKGBUILD` | `makepkg -si` |
+| Cualquiera (portable) | `quantum-daw-x86_64.AppImage` | `chmod +x` y ejecutar |
+| Cualquiera (sin sudo) | `quantum-daw-linux-x86_64.tar.gz` | descomprimir y `./instalar.sh` |
+
+Opcional: `ffmpeg` (importar video), `7z` y `curl` (instrumentos descargables).
+
+### Compilar desde el código
 
 ```bash
 git clone https://github.com/quantexpy69/quantumdaw.git
 cd quantumdaw
-./install.sh   # compila en release e instala «Quantum DAW» en Actividades (sin sudo)
+./install.sh   # instala Rust en .toolchain/ si hace falta y te indica las cabeceras de ALSA de tu distribución
 ```
 
-Requisitos: Rust (o el toolchain local en `.toolchain/`, ver `env.sh`), cabeceras de ALSA y, para
-video, `ffmpeg`/`ffprobe`. Los proyectos se guardan en `~/Documentos/Quantum DAW/` y las preferencias
-en `~/.config/quantum-daw/config.json`.
+Para crear todos los paquetes (.deb, .rpm, AppImage, .tar.gz y PKGBUILD) con podman o docker:
+`packaging/build.sh` (compila dentro de AlmaLinux 8 para que funcionen en todas las distribuciones).
+Al subir una etiqueta `vX.Y.Z`, GitHub Actions publica el release con sus notas y todos los paquetes.
+
+Los proyectos se guardan en `~/Documentos/Quantum DAW/` y las preferencias en `~/.config/quantum-daw/config.json`.
 
 ## Desarrollo
 
@@ -113,4 +131,4 @@ pista de acordes · Mastering Assistant · separación de stems · Spatial Audio
 
 ---
 
-© 2026 Ivan Cheaib — QUANTUM DAW. Los instrumentos de terceros conservan sus propias licencias.
+© 2026 Ivan Cheaib — QUANTUM DAW. Código bajo licencia [MPL-2.0](LICENSE). Los instrumentos de terceros conservan sus propias licencias.

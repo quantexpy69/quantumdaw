@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Quantum DAW
+GenericName=Estación de audio digital
+GenericName[en]=Digital Audio Workstation
+Comment=Graba, edita y mezcla música
+Comment[en]=Record, edit and mix music
+Exec=quantum-daw %f
+Icon=quantum-daw
+Terminal=false
+Categories=AudioVideo;Audio;Midi;Recorder;
+Keywords=daw;audio;música;midi;grabación;mezcla;music;recording;mixing;
+StartupWMClass=quantum-daw

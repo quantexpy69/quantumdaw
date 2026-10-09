@@ -7,3 +7,7 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# Binario de distribución más pequeño (sin símbolos de depuración).
+[profile.release]
+strip = true

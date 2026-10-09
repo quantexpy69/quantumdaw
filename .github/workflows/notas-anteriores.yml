@@ -1,0 +1,30 @@
+# Crea, de la más antigua a la más reciente, los releases de las versiones que ya tienen etiqueta pero
+# todavía no tienen release (solo con sus notas). Se ejecuta a mano desde la pestaña Actions.
+name: Notas de versiones anteriores
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  notas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Crear los releases que faltan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in $(git tag -l 'v*' --sort=version:refname); do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "$tag ya tiene release"
+              continue
+            fi
+            packaging/notas.sh "$tag" --solo-notas > notas.md
+            gh release create "$tag" --title "Quantum DAW $tag" --notes-file notas.md --verify-tag --latest=false
+            echo "$tag publicado"
+          done
