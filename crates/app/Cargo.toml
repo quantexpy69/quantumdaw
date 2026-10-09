@@ -1,6 +1,6 @@
 [package]
 name = "quantum-daw"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 
 [dependencies]
@@ -8,8 +8,8 @@ anyhow = "1.0.104"
 cpal = "0.18.2"
 eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 egui_extras = { version = "0.36.2", features = ["svg"] }
-engine = { version = "0.5.2", path = "../engine" }
-project = { version = "0.5.2", path = "../project" }
+engine = { version = "0.5.3", path = "../engine" }
+project = { version = "0.5.3", path = "../project" }
 resvg = { version = "0.45.1", default-features = false }
 rfd = "0.17.2"
 rustfft = "6.4.1"

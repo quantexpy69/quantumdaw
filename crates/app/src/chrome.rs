@@ -238,19 +238,22 @@ impl App {
                     self.dialog = Some(Dialog::Settings(self.audio.clone(), self.rec_bits, engine::audio_devices(), engine::midi_ports(), self.config.midi_port.clone()));
                 }
             });
-            // Botón «Inicio» junto a Herramientas: vuelve a la pantalla inicial.
-            let (r, resp) = ui.allocate_exact_size(vec2(96.0, 28.0), egui::Sense::click());
-            let p = ui.painter();
-            p.rect_filled(r, rr(8.0), if resp.hovered() { METER[1].lerp_to_gamma(Color32::WHITE, 0.18) } else { METER[1] });
-            // Casita dibujada: tejado y cuerpo con puerta.
-            let c = r.left_center() + vec2(18.0, 0.5);
-            p.add(egui::Shape::convex_polygon(vec![c + vec2(-7.5, -1.0), c + vec2(0.0, -8.0), c + vec2(7.5, -1.0)], BG, Stroke::NONE));
-            p.rect_filled(egui::Rect::from_min_max(c + vec2(-5.0, -1.5), c + vec2(5.0, 7.0)), 1.0, BG);
-            p.rect_filled(egui::Rect::from_min_max(c + vec2(-1.5, 2.0), c + vec2(1.5, 7.0)), 0.0, METER[1]);
-            p.text(r.left_center() + vec2(32.0, 0.0), egui::Align2::LEFT_CENTER, tr("Inicio"), egui::FontId::proportional(15.0), BG);
-            if resp.on_hover_text(tr("Volver a Pantalla Inicial")).clicked() {
-                self.open_main_menu(0);
-            }
+            // Botón «Inicio», pegado al borde derecho de la ventana: vuelve a la pantalla inicial.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(6.0);
+                let (r, resp) = ui.allocate_exact_size(vec2(96.0, 28.0), egui::Sense::click());
+                let p = ui.painter();
+                p.rect_filled(r, rr(8.0), if resp.hovered() { ACCENT.lerp_to_gamma(Color32::WHITE, 0.18) } else { ACCENT });
+                // Casita dibujada: tejado y cuerpo con puerta.
+                let c = r.left_center() + vec2(18.0, 0.5);
+                p.add(egui::Shape::convex_polygon(vec![c + vec2(-7.5, -1.0), c + vec2(0.0, -8.0), c + vec2(7.5, -1.0)], BG, Stroke::NONE));
+                p.rect_filled(egui::Rect::from_min_max(c + vec2(-5.0, -1.5), c + vec2(5.0, 7.0)), 1.0, BG);
+                p.rect_filled(egui::Rect::from_min_max(c + vec2(-1.5, 2.0), c + vec2(1.5, 7.0)), 0.0, ACCENT);
+                p.text(r.left_center() + vec2(32.0, 0.0), egui::Align2::LEFT_CENTER, tr("Inicio"), egui::FontId::proportional(15.0), BG);
+                if resp.on_hover_text(tr("Volver a Pantalla Inicial")).clicked() {
+                    self.open_main_menu(0);
+                }
+            });
         });
     }
 
