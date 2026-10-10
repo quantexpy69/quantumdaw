@@ -578,3 +578,33 @@ Crea una pista de audio con el sonido del instrumento y sus efectos; la pista MI
 MIDI convertido en audio	MIDI converted to audio	MIDI convertido em áudio
 Suena desde su proxy: el procesador no calcula su instrumento ni sus efectos	Plays from its proxy: the CPU does not compute its instrument or effects	Toca a partir do seu proxy: o processador não calcula seu instrumento nem seus efeitos
 audio	audio	áudio
+Arrastra: frecuencia y ganancia · rueda: ancho (Q) · doble clic: 0 dB	Drag: frequency and gain · wheel: width (Q) · double-click: 0 dB	Arraste: frequência e ganho · roda: largura (Q) · clique duplo: 0 dB
+rojo: resonancias atenuadas	red: attenuated resonances	vermelho: ressonâncias atenuadas
+No se encontraron frecuencias molestas destacadas	No prominent harsh frequencies were found	Não foram encontradas frequências incômodas destacadas
+Frecuencias molestas atenuadas:	Harsh frequencies attenuated:	Frequências incômodas atenuadas:
+Reproduce la canción unos segundos para que Curves escuche la pista	Play the song for a few seconds so Curves can listen to the track	Reproduza a música alguns segundos para o Curves ouvir a faixa
+Preset	Preset	Preset
+Elegir…	Choose…	Escolher…
+Detectar frecuencias	Detect frequencies	Detectar frequências
+Analiza la pista y atenúa las frecuencias que sobresalen (resonancias molestas)	Analyzes the track and attenuates the frequencies that stick out (harsh resonances)	Analisa a faixa e atenua as frequências que se destacam (ressonâncias incômodas)
+espectro, nodos y resonancias en el plugin	spectrum, nodes and resonances in the plugin	espectro, nós e ressonâncias no plugin
+Plano	Flat	Plano
+Batería	Drums	Bateria
+Guitarra acústica	Acoustic guitar	Violão
+Guitarra eléctrica	Electric guitar	Guitarra elétrica
+Guitarra eléctrica ambiente	Ambient electric guitar	Guitarra elétrica ambiente
+Voz principal	Lead vocals	Voz principal
+Synth	Synth	Synth
+Banda 1	Band 1	Banda 1
+Banda 2	Band 2	Banda 2
+Banda 3	Band 3	Banda 3
+Banda 1 Hz	Band 1 Hz	Banda 1 Hz
+Banda 2 Hz	Band 2 Hz	Banda 2 Hz
+Banda 3 Hz	Band 3 Hz	Banda 3 Hz
+Banda 1 Q	Band 1 Q	Banda 1 Q
+Banda 2 Q	Band 2 Q	Banda 2 Q
+Banda 3 Q	Band 3 Q	Banda 3 Q
+Resonancias	Resonances	Ressonâncias
+Sensibilidad	Sensitivity	Sensibilidade
+EQ con analizador y resonancias	EQ with analyzer and resonances	EQ com analisador e ressonâncias
+EQ de 7 bandas con analizador en vivo, detección automática y supresor de resonancias molestas, con presets por instrumento.	7-band EQ with live analyzer, automatic detection and harsh-resonance suppressor, with presets per instrument.	EQ de 7 bandas com analisador ao vivo, detecção automática e supressor de ressonâncias incômodas, com presets por instrumento.

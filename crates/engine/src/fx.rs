@@ -1,10 +1,11 @@
 //! Efectos nativos QUANTUM. El estado DSP vive tras un `Mutex` que solo usa el hilo de
 //! audio (`try_lock`, nunca espera) o la exportación offline.
 use crate::AtomicF32;
+use rustfft::{Fft, FftPlanner, num_complex::Complex};
 use std::{
     f32::consts::{PI, TAU},
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering::Relaxed},
     },
 };
@@ -17,15 +18,21 @@ pub enum FxKind {
     Reverb,
     Drive,
     Tune,
+    /// EQ de 7 bandas con analizador y supresor de resonancias (al estilo de Curves AQ).
+    Curves,
 }
 
 const SCALES: [&[u8]; 3] = [&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], &[0, 2, 4, 5, 7, 9, 11], &[0, 2, 3, 5, 7, 8, 10]];
 /// Ventana de análisis de tono y salto entre detecciones.
 const YIN_W: usize = 1024;
 const YIN_HOP: usize = 512;
+/// Curves: tamaño de la FFT, salto entre análisis y bandas del visor (20 Hz–20 kHz, logarítmicas).
+const FFT_N: usize = 1024;
+const FFT_HOP: usize = 256;
+pub const BANDAS: usize = 96;
 
 impl FxKind {
-    pub const ALL: [Self; 6] = [Self::Eq, Self::Compressor, Self::Delay, Self::Reverb, Self::Drive, Self::Tune];
+    pub const ALL: [Self; 7] = [Self::Eq, Self::Curves, Self::Compressor, Self::Delay, Self::Reverb, Self::Drive, Self::Tune];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -35,6 +42,7 @@ impl FxKind {
             Self::Reverb => "Reverb",
             Self::Drive => "Saturación",
             Self::Tune => "QUANTUM Tune",
+            Self::Curves => "QUANTUM Curves",
         }
     }
 
@@ -83,6 +91,27 @@ impl FxKind {
                 ("Anchura", 0.0, 1.0, 1.0),
             ],
             Self::Drive => &[("Drive dB", 0.0, 36.0, 12.0), ("Mezcla", 0.0, 1.0, 1.0), ("Tono", 500.0, 20000.0, 12000.0), ("Salida dB", -24.0, 6.0, 0.0), ("Modo", 0.0, 2.0, 0.0)],
+            Self::Curves => &[
+                ("Corte graves", 20.0, 600.0, 20.0),
+                ("Graves dB", -18.0, 18.0, 0.0),
+                ("Frec. graves", 30.0, 500.0, 120.0),
+                ("Banda 1 dB", -18.0, 18.0, 0.0),
+                ("Banda 1 Hz", 60.0, 2000.0, 300.0),
+                ("Banda 1 Q", 0.3, 12.0, 1.0),
+                ("Banda 2 dB", -18.0, 18.0, 0.0),
+                ("Banda 2 Hz", 200.0, 8000.0, 1200.0),
+                ("Banda 2 Q", 0.3, 12.0, 1.0),
+                ("Banda 3 dB", -18.0, 18.0, 0.0),
+                ("Banda 3 Hz", 1000.0, 16000.0, 4000.0),
+                ("Banda 3 Q", 0.3, 12.0, 1.0),
+                ("Agudos dB", -18.0, 18.0, 0.0),
+                ("Frec. agudos", 2000.0, 18000.0, 10000.0),
+                ("Corte agudos", 2000.0, 20000.0, 20000.0),
+                ("Resonancias", 0.0, 1.0, 0.0),
+                ("Sensibilidad", 0.0, 1.0, 0.5),
+                ("Salida dB", -12.0, 12.0, 0.0),
+                ("Mezcla", 0.0, 1.0, 1.0),
+            ],
             Self::Tune => {
                 &[("Tonalidad", 0.0, 11.0, 0.0), ("Escala", 0.0, 2.0, 0.0), ("Velocidad ms", 0.0, 200.0, 20.0), ("Mezcla", 0.0, 1.0, 1.0), ("Modo", 0.0, 1.0, 0.0), ("Nota manual", 0.0, 11.0, 0.0)]
             }
@@ -93,7 +122,9 @@ impl FxKind {
 #[derive(Default)]
 struct State {
     /// Biquads: [banda][canal][z1, z2].
-    z: [[[f32; 2]; 2]; 3],
+    z: [[[f32; 2]; 2]; 7],
+    /// Curves: análisis espectral y supresor de resonancias.
+    espectral: Option<Box<Espectral>>,
     env: f32,
     line: Vec<[f32; 2]>,
     idx: usize,
@@ -120,6 +151,11 @@ pub struct Fx {
     /// Lecturas para la interfaz: compresor = reducción de ganancia (dB);
     /// Tune = nota detectada y nota corregida (MIDI, 0 = sin tono).
     pub readout: [AtomicF32; 2],
+    /// Curves (visor): nivel por banda tras el proceso (dB), reducción por resonancias (dB) y
+    /// promedio de largo plazo de la señal (dB, para la detección automática).
+    pub espectro: Vec<AtomicF32>,
+    pub reduccion: Vec<AtomicF32>,
+    pub promedio: Vec<AtomicF32>,
     state: Mutex<State>,
 }
 
@@ -135,10 +171,13 @@ impl Fx {
                 st.allpasses = [556, 579, 441, 464].map(|n| (vec![0.0; (n as f32 * scale) as usize], 0)).into();
             }
             FxKind::Tune => (st.line, st.ana, st.yin) = (vec![[0.0; 2]; 8192], vec![0.0; YIN_W], vec![0.0; YIN_W]),
+            FxKind::Curves => st.espectral = Some(Box::new(Espectral::new(sample_rate as f32))),
             _ => {}
         }
         let params = kind.params().iter().map(|p| AtomicF32::new(p.3)).collect();
-        Self { kind, params, bypass: false.into(), readout: Default::default(), state: Mutex::new(st) }
+        let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
+        let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
+        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, state: Mutex::new(st) }
     }
 
     /// `bpm`: tempo actual (para el delay sincronizado).
@@ -150,7 +189,7 @@ impl Fx {
             return;
         };
         let st = &mut *st;
-        let p: [f32; 8] = std::array::from_fn(|i| self.params.get(i).map_or(0.0, |a| a.get()));
+        let p: [f32; 20] = std::array::from_fn(|i| self.params.get(i).map_or(0.0, |a| a.get()));
         match self.kind {
             FxKind::Eq => {
                 let co = [biquad(0, p[3], p[0], 0.707, sr), biquad(1, p[4], p[1], p[5], sr), biquad(2, p[6], p[2], 0.707, sr)];
@@ -266,12 +305,31 @@ impl Fx {
                 }
             }
             FxKind::Tune => self.tune(st, buf, sr, &p),
+            FxKind::Curves => {
+                let co = curves_coefs(&p, sr);
+                let (salida, mezcla, cantidad, sens) = (db(p[17]), p[18], p[15], p[16]);
+                for s in buf.iter_mut() {
+                    let seco = *s;
+                    for (ch, x) in s.iter_mut().enumerate() {
+                        for (b, c) in co.iter().enumerate() {
+                            let z = &mut st.z[b][ch];
+                            let y = c[0] * *x + z[0];
+                            (z[0], z[1]) = (c[1] * *x - c[3] * y + z[1], c[2] * *x - c[4] * y);
+                            *x = y;
+                        }
+                    }
+                    if let Some(e) = st.espectral.as_deref_mut() {
+                        *s = e.muestra(*s, cantidad, sens, self);
+                    }
+                    *s = [(seco[0] + (s[0] - seco[0]) * mezcla) * salida, (seco[1] + (s[1] - seco[1]) * mezcla) * salida];
+                }
+            }
         }
     }
 
     /// Autotune: detecta el tono (YIN) cada `YIN_HOP` muestras, elige la nota destino (escala o nota
     /// manual) y corrige con un pitch shifter de dos cabezales cruzados sobre una línea de retardo.
-    fn tune(&self, st: &mut State, buf: &mut [[f32; 2]], sr: f32, p: &[f32; 8]) {
+    fn tune(&self, st: &mut State, buf: &mut [[f32; 2]], sr: f32, p: &[f32; 20]) {
         let speed = 1.0 - (-1.0 / (p[2].max(0.5) * 0.001 * sr)).exp();
         let (win, n) = (0.03 * sr, st.line.len());
         for s in buf.iter_mut() {
@@ -380,21 +438,248 @@ pub fn biquad(kind: u8, freq: f32, gain_db: f32, q: f32, sr: f32) -> [f32; 5] {
             2.0 * ((a - 1.0) - (a + 1.0) * c),
             (a + 1.0) - (a - 1.0) * c - k,
         ],
+        // Paso alto y paso bajo (cortes de graves y agudos).
+        3 => [(1.0 + c) / 2.0, -(1.0 + c), (1.0 + c) / 2.0, 1.0 + alpha, -2.0 * c, 1.0 - alpha],
+        4 => [(1.0 - c) / 2.0, 1.0 - c, (1.0 - c) / 2.0, 1.0 + alpha, -2.0 * c, 1.0 - alpha],
         _ => [1.0 + alpha * a, -2.0 * c, 1.0 - alpha * a, 1.0 + alpha / a, -2.0 * c, 1.0 - alpha / a],
     };
     [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0]
 }
 
+/// Magnitud (dB) de un biquad a la pulsación `w`.
+fn magnitud(c: [f32; 5], w: f32) -> f32 {
+    let (cw, c2) = (w.cos(), (2.0 * w).cos());
+    let (sw, s2) = (w.sin(), (2.0 * w).sin());
+    let num = (c[0] + c[1] * cw + c[2] * c2).powi(2) + (c[1] * sw + c[2] * s2).powi(2);
+    let den = (1.0 + c[3] * cw + c[4] * c2).powi(2) + (c[3] * sw + c[4] * s2).powi(2);
+    10.0 * (num / den).max(1e-12).log10()
+}
+
+/// Coeficientes de las 7 bandas de Curves: corte de graves, estante de graves, 3 campanas,
+/// estante de agudos y corte de agudos.
+pub fn curves_coefs(p: &[f32], sr: f32) -> [[f32; 5]; 7] {
+    [
+        biquad(3, p[0], 0.0, 0.707, sr),
+        biquad(0, p[2], p[1], 0.707, sr),
+        biquad(1, p[4], p[3], p[5], sr),
+        biquad(1, p[7], p[6], p[8], sr),
+        biquad(1, p[10], p[9], p[11], sr),
+        biquad(2, p[13], p[12], 0.707, sr),
+        biquad(4, p[14], 0.0, 0.707, sr),
+    ]
+}
+
+/// Respuesta del EQ de Curves (dB) a una frecuencia, para dibujar la curva.
+pub fn curves_response(p: &[f32], freq: f32, sr: f32) -> f32 {
+    let w = TAU * freq / sr;
+    curves_coefs(p, sr).iter().map(|c| magnitud(*c, w)).sum::<f32>() + p[17]
+}
+
+/// Frecuencia central de una banda del visor de Curves.
+pub fn frecuencia_banda(b: usize) -> f32 {
+    20.0 * 1000f32.powf((b as f32 + 0.5) / BANDAS as f32)
+}
+
+/// Análisis y supresión de resonancias por FFT (ventanas de 1024 con salto de 256, solapamiento y
+/// suma con ventana raíz de Hann). Cada frecuencia se compara con la envolvente suave del espectro:
+/// lo que sobresale más que el umbral se atenúa de forma dinámica (ataque rápido, liberación suave).
+struct Espectral {
+    fft: Arc<dyn Fft<f32>>,
+    ifft: Arc<dyn Fft<f32>>,
+    ventana: Vec<f32>,
+    norma: f32,
+    entrada: [Vec<f32>; 2],
+    salida: [Vec<f32>; 2],
+    pos: usize,
+    cuenta: usize,
+    bins: [Vec<Complex<f32>>; 2],
+    scratch: Vec<Complex<f32>>,
+    nivel: Vec<f32>,
+    suma: Vec<f32>,
+    /// Reducción actual por frecuencia (dB).
+    reduccion: Vec<f32>,
+    /// Banda del visor de cada frecuencia (o BANDAS si queda fuera de 20 Hz–20 kHz) y frecuencia (Hz).
+    banda: Vec<usize>,
+    hz: Vec<f32>,
+}
+
+impl Espectral {
+    fn new(sr: f32) -> Self {
+        let mut plan = FftPlanner::new();
+        let (fft, ifft) = (plan.plan_fft_forward(FFT_N), plan.plan_fft_inverse(FFT_N));
+        let ventana: Vec<f32> = (0..FFT_N).map(|i| (0.5 - 0.5 * (TAU * i as f32 / FFT_N as f32).cos()).sqrt()).collect();
+        let norma = ventana.iter().sum::<f32>() / 2.0;
+        let scratch = vec![Complex::default(); fft.get_inplace_scratch_len().max(ifft.get_inplace_scratch_len())];
+        let mitad = FFT_N / 2 + 1;
+        let hz: Vec<f32> = (0..mitad).map(|k| k as f32 * sr / FFT_N as f32).collect();
+        let banda = hz.iter().map(|&f| if (20.0..20000.0).contains(&f) { (((f / 20.0).log10() / 3.0) * BANDAS as f32) as usize } else { BANDAS }).collect();
+        Self {
+            fft,
+            ifft,
+            ventana,
+            norma,
+            entrada: [vec![0.0; FFT_N], vec![0.0; FFT_N]],
+            salida: [vec![0.0; FFT_N], vec![0.0; FFT_N]],
+            pos: 0,
+            cuenta: 0,
+            bins: [vec![Complex::default(); FFT_N], vec![Complex::default(); FFT_N]],
+            scratch,
+            nivel: vec![-120.0; mitad],
+            suma: vec![0.0; mitad + 1],
+            reduccion: vec![0.0; mitad],
+            banda,
+            hz,
+        }
+    }
+
+    /// Procesa una muestra; con `cantidad` = 0 solo analiza (sin latencia ni cambios en el sonido).
+    fn muestra(&mut self, x: [f32; 2], cantidad: f32, sens: f32, fx: &Fx) -> [f32; 2] {
+        let activo = cantidad > 0.001;
+        let mut y = x;
+        for ch in 0..2 {
+            self.entrada[ch][self.pos] = x[ch];
+            if activo {
+                y[ch] = self.salida[ch][self.pos];
+            }
+            self.salida[ch][self.pos] = 0.0;
+        }
+        self.pos = (self.pos + 1) % FFT_N;
+        self.cuenta += 1;
+        if self.cuenta == FFT_HOP {
+            self.cuenta = 0;
+            self.salto(activo, cantidad, sens, fx);
+        }
+        y
+    }
+
+    fn salto(&mut self, activo: bool, cantidad: f32, sens: f32, fx: &Fx) {
+        let mitad = FFT_N / 2 + 1;
+        for ch in 0..2 {
+            for i in 0..FFT_N {
+                self.bins[ch][i] = Complex::new(self.entrada[ch][(self.pos + i) % FFT_N] * self.ventana[i], 0.0);
+            }
+            self.fft.process_with_scratch(&mut self.bins[ch], &mut self.scratch);
+        }
+        for k in 0..mitad {
+            let m = (self.bins[0][k].norm() + self.bins[1][k].norm()) * 0.5 / self.norma;
+            self.nivel[k] = 20.0 * (m + 1e-9).log10();
+        }
+        // Envolvente: media del nivel en una ventana proporcional a la frecuencia (≈ 1/3 de octava).
+        for k in 0..mitad {
+            self.suma[k + 1] = self.suma[k] + self.nivel[k];
+        }
+        let umbral = 3.0 + (1.0 - sens.clamp(0.0, 1.0)) * 9.0;
+        for k in 1..mitad {
+            let w = (k / 6).max(3);
+            let (a, b) = (k.saturating_sub(w), (k + w + 1).min(mitad));
+            let envolvente = (self.suma[b] - self.suma[a]) / (b - a) as f32;
+            let exceso = self.nivel[k] - envolvente;
+            let objetivo = if (80.0..18000.0).contains(&self.hz[k]) && self.nivel[k] > -70.0 && exceso > umbral { ((exceso - umbral) * 1.5 * cantidad).min(18.0) } else { 0.0 };
+            let r = &mut self.reduccion[k];
+            *r += (objetivo - *r) * if objetivo > *r { 0.6 } else { 0.12 };
+        }
+        // Visor: máximo por banda (con caída suave), reducción y promedio de largo plazo.
+        let mut nivel_b = [-120f32; BANDAS];
+        let mut red_b = [0f32; BANDAS];
+        for k in 1..mitad {
+            if let Some(b) = self.banda.get(k).copied().filter(|&b| b < BANDAS) {
+                let red = if activo { self.reduccion[k] } else { 0.0 };
+                nivel_b[b] = nivel_b[b].max(self.nivel[k] - red);
+                red_b[b] = red_b[b].max(red);
+            }
+        }
+        for b in 0..BANDAS {
+            // Las bandas graves sin frecuencias de la FFT quedan en -120 (el visor las interpola).
+            let v = nivel_b[b];
+            fx.espectro[b].set(if v <= -119.0 { -120.0 } else { v.max(fx.espectro[b].get() - 1.5) });
+            fx.reduccion[b].set(red_b[b]);
+            if v > -90.0 {
+                let p = fx.promedio[b].get();
+                fx.promedio[b].set(if p < -100.0 { v } else { p + (v - p) * 0.01 });
+            }
+        }
+        if !activo {
+            return;
+        }
+        let escala = 1.0 / (FFT_N as f32 * 2.0);
+        for ch in 0..2 {
+            for k in 1..mitad {
+                let g = 10f32.powf(-self.reduccion[k] / 20.0);
+                self.bins[ch][k] *= g;
+                if k < FFT_N - k {
+                    self.bins[ch][FFT_N - k] *= g;
+                }
+            }
+            self.ifft.process_with_scratch(&mut self.bins[ch], &mut self.scratch);
+            for i in 0..FFT_N {
+                self.salida[ch][(self.pos + i) % FFT_N] += self.bins[ch][i].re * self.ventana[i] * escala;
+            }
+        }
+    }
+}
+
 /// Respuesta en magnitud (dB) del EQ a una frecuencia, para dibujar la curva en la interfaz.
 pub fn eq_response(p: &[f32], freq: f32, sr: f32) -> f32 {
     let w = TAU * freq / sr;
-    let mag = |c: [f32; 5]| {
-        let (cw, c2) = (w.cos(), (2.0 * w).cos());
-        let (sw, s2) = (w.sin(), (2.0 * w).sin());
-        let num = (c[0] + c[1] * cw + c[2] * c2).powi(2) + (c[1] * sw + c[2] * s2).powi(2);
-        let den = (1.0 + c[3] * cw + c[4] * c2).powi(2) + (c[3] * sw + c[4] * s2).powi(2);
-        10.0 * (num / den).log10()
-    };
+    let mag = |c: [f32; 5]| magnitud(c, w);
     let g = |i: usize, d: f32| p.get(i).copied().unwrap_or(d);
     mag(biquad(0, g(3, 200.0), g(0, 0.0), 0.707, sr)) + mag(biquad(1, g(4, 1000.0), g(1, 0.0), g(5, 0.7), sr)) + mag(biquad(2, g(6, 5000.0), g(2, 0.0), 0.707, sr)) + g(7, 0.0)
+}
+
+#[cfg(test)]
+mod pruebas_curves {
+    use super::*;
+
+    /// Energía de `x` en la frecuencia `f` (correlación con seno y coseno).
+    fn energia(x: &[[f32; 2]], f: f32, sr: f32) -> f32 {
+        let (mut s, mut c) = (0f32, 0f32);
+        for (i, v) in x.iter().enumerate() {
+            let w = TAU * f * i as f32 / sr;
+            (s, c) = (s + v[0] * w.sin(), c + v[0] * w.cos());
+        }
+        (s * s + c * c).sqrt() / x.len() as f32
+    }
+
+    fn procesar(fx: &Fx, señal: &[[f32; 2]]) -> Vec<[f32; 2]> {
+        let mut out = señal.to_vec();
+        for bloque in out.chunks_mut(512) {
+            fx.process(bloque, 48_000.0, 120.0, true);
+        }
+        out
+    }
+
+    #[test]
+    fn plano_es_transparente() {
+        let sr = 48_000.0;
+        let fx = Fx::new(FxKind::Curves, 48_000);
+        let señal: Vec<[f32; 2]> = (0..48_000).map(|i| { let v = (TAU * 1000.0 * i as f32 / sr).sin() * 0.5; [v, v] }).collect();
+        let out = procesar(&fx, &señal);
+        let (a, b) = (energia(&señal[24_000..], 1000.0, sr), energia(&out[24_000..], 1000.0, sr));
+        assert!((b / a - 1.0).abs() < 0.03, "1 kHz: {a} → {b}");
+    }
+
+    #[test]
+    fn baja_la_resonancia() {
+        let sr = 48_000.0;
+        let fx = Fx::new(FxKind::Curves, 48_000);
+        fx.params[15].set(1.0);
+        // Ruido de banda ancha más un tono resonante fuerte a 2,5 kHz.
+        let mut semilla = 1u32;
+        let señal: Vec<[f32; 2]> = (0..96_000)
+            .map(|i| {
+                semilla = semilla.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let ruido = (semilla >> 8) as f32 / (1u32 << 24) as f32 - 0.5;
+                let v = ruido * 0.2 + (TAU * 2500.0 * i as f32 / sr).sin() * 0.3;
+                [v, v]
+            })
+            .collect();
+        let out = procesar(&fx, &señal);
+        let (antes, despues) = (energia(&señal[48_000..], 2500.0, sr), energia(&out[49_024..], 2500.0, sr));
+        let reduccion = 20.0 * (despues / antes).log10();
+        assert!(reduccion < -4.0, "la resonancia solo bajó {reduccion:.1} dB");
+        // El resto del espectro (500 Hz) casi no cambia.
+        let (a, b) = (energia(&señal[48_000..], 500.0, sr), energia(&out[49_024..], 500.0, sr));
+        assert!((20.0 * (b / a).log10()).abs() < 3.0, "500 Hz cambió {:.1} dB", 20.0 * (b / a).log10());
+        assert!(fx.reduccion.iter().any(|r| r.get() > 3.0), "el visor no muestra la reducción");
+    }
 }

@@ -4,6 +4,7 @@
 mod analyzer;
 mod audioedit;
 mod chrome;
+mod curves;
 mod i18n;
 mod icons;
 mod instruments;

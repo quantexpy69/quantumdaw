@@ -688,7 +688,15 @@ impl App {
                 }
                 let inner = Rect::from_min_max(pos2(r.left(), title.bottom() + 3.0), pos2(r.right(), r.bottom() - 3.0));
                 let wave = color.gamma_multiply(dim);
+                // Estirando con el asa inferior derecha: el contenido se dibuja ya escalado al nuevo largo
+                // (k = largo original / largo actual), así se ve en tiempo real cómo se estira o comprime.
+                let estirando = match &self.drag {
+                    Some(Drag::Edge(di, dj, false, true, orig)) if (*di, *dj) == (i, j) => Some((orig.len as f64 / c.len.max(1) as f64, orig.len)),
+                    _ => None,
+                };
+                let k = estirando.map_or(1.0, |e| e.0);
                 match &c.src {
+                    Source::Audio(b) if estirando.is_some() => _ = lp.add(peak_mesh(c, b, inner, xr, fpp * k, wave)),
                     Source::Audio(b) if fpp >= 48.0 => _ = lp.add(peak_mesh(c, b, inner, xr, fpp, wave)),
                     // Zoom cercano: forma de onda real con signo, desde las muestras.
                     Source::Audio(b) => {
@@ -719,11 +727,25 @@ impl App {
                         let origin = c.origin();
                         let p = lp.with_clip_rect(r.intersect(body));
                         for nt in notes.iter() {
-                            let s = (origin + nt.start as i64).max(0) as u64;
+                            let rel = (origin + nt.start as i64 - c.start as i64) as f64 / k;
+                            let s = (c.start as f64 + rel).max(0.0) as u64;
                             let y = inner.bottom() - (nt.key.saturating_sub(lo) as f32 + 0.5) / span * inner.height();
-                            p.hline(x_of(s)..=x_of(s + nt.len).max(x_of(s) + 2.0), y, Stroke::new(3.0, wave));
+                            p.hline(x_of(s)..=x_of(s + (nt.len as f64 / k) as u64).max(x_of(s) + 2.0), y, Stroke::new(3.0, wave));
                         }
                     }
+                }
+                // Guía del estiramiento: largo original (línea discontinua) y porcentaje junto al asa.
+                if let Some((_, largo)) = estirando {
+                    let xo = x_of(c.start + largo);
+                    let guia = lp.with_clip_rect(body);
+                    for y in (r.top() as i32..r.bottom() as i32).step_by(8) {
+                        guia.vline(xo, y as f32..=(y as f32 + 4.0).min(r.bottom()), Stroke::new(1.5, TEXT.gamma_multiply(0.7)));
+                    }
+                    let pct = format!("{:.1} %", 100.0 / k);
+                    let pos = pos2(r.right() - 6.0, r.bottom() - 18.0);
+                    let galeria = guia.layout_no_wrap(pct.clone(), FontId::proportional(13.0), BG);
+                    guia.rect_filled(Rect::from_min_size(pos2(pos.x - galeria.size().x - 8.0, pos.y - 10.0), vec2(galeria.size().x + 10.0, 20.0)), rr(5.0), METER[1]);
+                    guia.text(pos, Align2::RIGHT_CENTER, pct, FontId::proportional(13.0), BG);
                 }
                 // Fades: curva; tiradores visibles al pasar el ratón o con la región seleccionada.
                 for (len, out) in [(c.fade_in, false), (c.fade_out, true)] {

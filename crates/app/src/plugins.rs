@@ -19,6 +19,7 @@ pub fn kind_color(kind: Option<FxKind>) -> Color32 {
         Some(FxKind::Reverb) => Color32::from_rgb(0xB0, 0x8C, 0xF2),
         Some(FxKind::Drive) => Color32::from_rgb(0xFF, 0x7A, 0x45),
         Some(FxKind::Tune) => Color32::from_rgb(0x3D, 0xDC, 0x84),
+        Some(FxKind::Curves) => Color32::from_rgb(0xFF, 0x6B, 0x9A),
         None => Color32::from_rgb(0xF2, 0x8C, 0xD0),
     }
 }
@@ -32,6 +33,7 @@ pub fn summary(k: FxKind) -> &'static str {
         FxKind::Reverb => "Simula un espacio: tamaño, amortiguación, pre-delay, corte de graves y anchura estéreo.",
         FxKind::Drive => "Saturación analógica suave, dura o de válvula, con control de tono y salida.",
         FxKind::Tune => "Afinación de voz automática a la tonalidad y escala, o manual a una nota fija.",
+        FxKind::Curves => "EQ de 7 bandas con analizador en vivo, detección automática y supresor de resonancias molestas, con presets por instrumento.",
     }
 }
 
@@ -68,6 +70,8 @@ fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         "Desafinar" => format!("{v:.0} ct"),
         "Ratio" => format!("{v:.1}:1"),
         "Ataque" | "Caída" | "Liberación" => format!("{v:.0} ms"),
+        n if n.ends_with(" Hz") => hz(v),
+        n if n.ends_with(" Q") => format!("Q {v:.2}"),
         n if n.ends_with("dB") => format!("{v:+.1} dB"),
         n if n.ends_with("ms") => format!("{v:.1} ms"),
         _ => format!("{:.0} %", v * 100.0),
@@ -117,6 +121,11 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
                 painter.vline(x, r.y_range(), Stroke::new(1.0, PANEL));
                 label(pos2(x + 3.0, r.bottom()), Align2::LEFT_BOTTOM, text.into(), 9.0, TEXT_DIM);
             }
+        }
+        // Vista previa de Curves (en la biblioteca): curva del EQ; el visor completo está en la ventana del plugin.
+        Some(FxKind::Curves) => {
+            curve(&|t| 0.5 + engine::curves_response(p, 20.0 * 1000f32.powf(t), sr) / 48.0);
+            label(pos2(r.right(), r.top()), Align2::RIGHT_TOP, tr("espectro, nodos y resonancias en el plugin").into(), 10.0, TEXT_DIM);
         }
         Some(FxKind::Compressor) => {
             curve(&|t| {
@@ -176,6 +185,7 @@ impl App {
         };
         enum Act {
             Add(FxKind),
+            Detectar(usize),
             Remove(usize),
             Up(usize),
             MyPlugins,
@@ -183,7 +193,7 @@ impl App {
         let (mut open, mut act, sr) = (true, None, self.engine.sample_rate as f32);
         let t = &self.s.tracks[i];
         let title = RichText::new(format!("QUANTUM · {}", t.name)).strong();
-        egui::Window::new(title).id(Id::new("fx")).open(&mut open).default_width(580.0).default_height(680.0).vscroll(true).show(ctx, |ui| {
+        egui::Window::new(title).id(Id::new("fx")).open(&mut open).default_width(620.0).default_height(860.0).vscroll(true).show(ctx, |ui| {
             let plugin = |ui: &mut egui::Ui,
                           name: &str,
                           kind: Option<FxKind>,
@@ -192,6 +202,7 @@ impl App {
                           bypass: Option<&AtomicBool>,
                           readout: [f32; 2],
                           j: Option<usize>,
+                          fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
                 let accent = kind_color(kind);
                 egui::Frame::new().fill(PLUGIN_BG).corner_radius(rr(12.0)).stroke(Stroke::new(1.5, accent.gamma_multiply(0.6))).inner_margin(10.0).show(ui, |ui| {
@@ -223,7 +234,18 @@ impl App {
                         }
                     });
                     let values: Vec<f32> = params.iter().map(|a| a.get()).collect();
-                    display(ui, kind, &values, readout, accent, sr);
+                    match (kind, fx, j) {
+                        // Curves: presets, detección y visor interactivo.
+                        (Some(FxKind::Curves), Some(fx), Some(j)) => {
+                            let mut detectar = false;
+                            curves::barra(ui, fx, &mut detectar);
+                            if detectar {
+                                *act = Some(Act::Detectar(j));
+                            }
+                            curves::visor(ui, fx, sr, accent);
+                        }
+                        _ => display(ui, kind, &values, readout, accent, sr),
+                    }
                     ui.horizontal_wrapped(|ui| {
                         for (k, def) in defs.iter().enumerate() {
                             param_knob(ui, kind, *def, &params[k]);
@@ -255,7 +277,7 @@ impl App {
                 ui.add_space(6.0);
             } else if let Some(s) = &t.synth {
                 ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM));
-                plugin(ui, "Synth", None, &s.params, &SYNTH_PARAMS, None, [0.0; 2], None, &mut act);
+                plugin(ui, "Synth", None, &s.params, &SYNTH_PARAMS, None, [0.0; 2], None, None, &mut act);
             }
             ui.label(RichText::new(tr("EFECTOS DE AUDIO")).size(10.0).color(TEXT_DIM));
             if t.fx.is_empty() {
@@ -263,7 +285,7 @@ impl App {
             }
             for (j, fx) in t.fx.iter().enumerate() {
                 let readout = [fx.readout[0].get(), fx.readout[1].get()];
-                plugin(ui, fx.kind.name(), Some(fx.kind), &fx.params, fx.kind.params(), Some(&fx.bypass), readout, Some(j), &mut act);
+                plugin(ui, fx.kind.name(), Some(fx.kind), &fx.params, fx.kind.params(), Some(&fx.bypass), readout, Some(j), Some(fx), &mut act);
             }
             ui.menu_button(tr("+ Añadir efecto"), |ui| {
                 for k in FxKind::ALL {
@@ -279,6 +301,7 @@ impl App {
         });
         match act {
             Some(Act::Add(k)) => self.add_fx(i, k),
+            Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),
             Some(Act::Remove(j)) => {
                 self.edit();

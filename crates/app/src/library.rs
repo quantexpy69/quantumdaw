@@ -20,7 +20,7 @@ const SECTIONS: [(&str, &str); 4] = [("files", "Archivos"), ("fx", "Efectos"), (
 pub const PLUGINS_TAB: usize = 3;
 const FX_CATEGORIES: [(&str, &[FxKind]); 5] = [
     ("Dinámica", &[FxKind::Compressor]),
-    ("EQ y filtros", &[FxKind::Eq]),
+    ("EQ y filtros", &[FxKind::Curves, FxKind::Eq]),
     ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb]),
     ("Color y saturación", &[FxKind::Drive]),
     ("Afinación", &[FxKind::Tune]),
@@ -35,6 +35,7 @@ fn describe(k: FxKind) -> &'static str {
         FxKind::Reverb => "Espacio y ambiente",
         FxKind::Drive => "Calidez y distorsión",
         FxKind::Tune => "Afinación automática o manual de voces",
+        FxKind::Curves => "EQ con analizador y resonancias",
     }
 }
 
