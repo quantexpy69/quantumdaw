@@ -204,6 +204,18 @@ impl App {
                     self.dialog = Some(Dialog::Groups);
                 }
                 ui.separator();
+                let mut proxies = self.config.proxies;
+                if ui.checkbox(&mut proxies, tr("Trabajar con proxys (ahorra procesador)")).on_hover_text(tr("Las pistas con instrumento o efectos suenan desde un render previo guardado en Proxies/; al editarlas vuelven a sonar en vivo hasta actualizar")).changed() {
+                    self.cambiar_proxies(proxies);
+                }
+                if ui.add_enabled(self.config.proxies, egui::Button::new(tr("Actualizar proxys"))).clicked() {
+                    let r = self.actualizar_proxies();
+                    self.status = match r {
+                        Ok(n) => format!("{n} {}", tr("proxys generados")),
+                        Err(e) => format!("{}: {e}", tr("No se pudieron generar los proxys")),
+                    };
+                }
+                ui.separator();
                 if item(ui, tr("Eliminar pistas seleccionadas"), "") {
                     self.delete_tracks(|_, t| t.selected);
                 }

@@ -62,6 +62,25 @@ pub fn export(path: &Path, format: Format, rate: u32, samples: &[f32]) -> anyhow
             bytes.copy_within(10..12, 8);
             Ok(fs::write(path, bytes)?)
         }
+        // En Windows no se compila LAME (necesita herramientas de Unix): se codifica con ffmpeg.
+        #[cfg(windows)]
+        Format::Mp3 => {
+            use std::os::windows::process::CommandExt;
+            let wav = path.with_extension("tmp.wav");
+            write_wav(&wav, rate, 2, 32, samples)?;
+            let ok = std::process::Command::new("ffmpeg")
+                .args(["-v", "error", "-y", "-i"])
+                .arg(&wav)
+                .args(["-codec:a", "libmp3lame", "-b:a", "320k"])
+                .arg(path)
+                .creation_flags(0x0800_0000)
+                .status()
+                .is_ok_and(|s| s.success());
+            let _ = fs::remove_file(&wav);
+            anyhow::ensure!(ok, "Para exportar MP3 en Windows instala ffmpeg (winget install ffmpeg)");
+            Ok(())
+        }
+        #[cfg(not(windows))]
         Format::Mp3 => {
             use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, InterleavedPcm, Quality};
             let err = |e: &dyn std::fmt::Debug| anyhow!("MP3: {e:?}");

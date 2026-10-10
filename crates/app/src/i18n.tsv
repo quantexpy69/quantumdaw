@@ -107,7 +107,7 @@ Datos de la canción	Song details	Dados da música
 Datos de la canción y copyright…	Song details and copyright…	Dados da música e copyright…
 Demo y recursos	Demo and resources	Demo e recursos
 Desafinar	Detune	Desafinar
-Desarrollo: Ivan Cheaib — QUANTUM DAW	Developed by: Ivan Cheaib — QUANTUM DAW	Desenvolvimento: Ivan Cheaib — QUANTUM DAW
+Desarrollado por QUANTEX	Developed by QUANTEX	Desenvolvido por QUANTEX
 Deshacer	Undo	Desfazer
 Desinstalado:	Uninstalled:	Desinstalado:
 Desinstalar	Uninstall	Desinstalar
@@ -566,3 +566,15 @@ Apagado	Off	Desligado
 Toque	Touch	Toque
 Retención	Latch	Retenção
 Escritura	Write	Gravação
+Trabajar con proxys (ahorra procesador)	Work with proxies (saves CPU)	Trabalhar com proxies (economiza processador)
+Las pistas con instrumento o efectos suenan desde un render previo guardado en Proxies/; al editarlas vuelven a sonar en vivo hasta actualizar	Tracks with an instrument or effects play from a pre-render saved in Proxies/; when edited they play live again until updated	As faixas com instrumento ou efeitos tocam a partir de uma pré-renderização salva em Proxies/; ao editá-las voltam a tocar ao vivo até atualizar
+Actualizar proxys	Update proxies	Atualizar proxies
+proxys generados	proxies generated	proxies gerados
+No se pudieron generar los proxys	Could not generate the proxies	Não foi possível gerar os proxies
+Trabajando con proxys	Working with proxies	Trabalhando com proxies
+Proxys desactivados: todo se procesa en vivo	Proxies off: everything is processed live	Proxies desativados: tudo é processado ao vivo
+Convertir MIDI en audio	Convert MIDI to audio	Converter MIDI em áudio
+Crea una pista de audio con el sonido del instrumento y sus efectos; la pista MIDI queda silenciada	Creates an audio track with the sound of the instrument and its effects; the MIDI track is muted	Cria uma faixa de áudio com o som do instrumento e seus efeitos; a faixa MIDI fica silenciada
+MIDI convertido en audio	MIDI converted to audio	MIDI convertido em áudio
+Suena desde su proxy: el procesador no calcula su instrumento ni sus efectos	Plays from its proxy: the CPU does not compute its instrument or effects	Toca a partir do seu proxy: o processador não calcula seu instrumento nem seus efeitos
+audio	audio	áudio

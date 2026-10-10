@@ -9,6 +9,12 @@ use std::{f32::consts::TAU, fs, path::Path};
 pub const FILE: &str = "project.qproj";
 pub const AUDIO_DIR: &str = "Audio Files";
 pub const RENDER_DIR: &str = "Rendered";
+pub const BACKUP_DIR: &str = "Backups";
+/// Proxys: pistas pre-renderizadas (instrumento + efectos) para aliviar el procesador.
+pub const PROXY_DIR: &str = "Proxies";
+pub const VIDEO_DIR: &str = "Video";
+/// Copias de seguridad que se conservan en Backups/.
+const BACKUPS: usize = 20;
 pub const VERSION: u32 = 2;
 pub const PALETTE: [[u8; 3]; 8] = [[0xF2, 0x6D, 0x6D], [0xF2, 0xB8, 0x5C], [0x6D, 0xD3, 0x9C], [0x6D, 0xB4, 0xF2], [0xB0, 0x8C, 0xF2], [0xF2, 0x8C, 0xD0], [0x5C, 0xD6, 0xD6], [0xC8, 0xD4, 0x5C]];
 
@@ -167,6 +173,9 @@ pub struct TrackState {
     pub invert: bool,
     /// Modo de automatización: 0 Lectura, 1 Apagado, 2 Toque, 3 Retención, 4 Escritura.
     pub auto_mode: u8,
+    /// Proxy (render previo al fader en Proxies/) y la firma del contenido con que se generó.
+    pub proxy_file: String,
+    pub proxy_firma: u64,
     /// Formato v1 (un archivo por pista); se migra a `clips` al cargar.
     #[serde(skip_serializing)]
     file: Option<String>,
@@ -225,11 +234,26 @@ impl Project {
         Ok(p)
     }
 
+    /// Guarda el proyecto en su carpeta (con todas sus subcarpetas). Antes copia la versión anterior a
+    /// Backups/ con fecha y hora (se conservan las 20 últimas) y escribe primero en un archivo temporal,
+    /// así un corte a mitad de guardado no deja el proyecto dañado.
     pub fn save(&self, dir: &Path) -> anyhow::Result<()> {
-        for d in [AUDIO_DIR, RENDER_DIR, "Backups"] {
+        for d in [AUDIO_DIR, RENDER_DIR, BACKUP_DIR, PROXY_DIR, VIDEO_DIR] {
             fs::create_dir_all(dir.join(d))?;
         }
-        Ok(fs::write(dir.join(FILE), serde_json::to_string_pretty(self)?)?)
+        let actual = dir.join(FILE);
+        if actual.exists() {
+            let copia = dir.join(BACKUP_DIR).join(format!("project-{}.qproj", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")));
+            fs::copy(&actual, copia)?;
+            let mut copias: Vec<_> = fs::read_dir(dir.join(BACKUP_DIR))?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "qproj")).collect();
+            copias.sort();
+            for vieja in copias.iter().take(copias.len().saturating_sub(BACKUPS)) {
+                let _ = fs::remove_file(vieja);
+            }
+        }
+        let temporal = dir.join(format!("{FILE}.tmp"));
+        fs::write(&temporal, serde_json::to_string_pretty(self)?)?;
+        Ok(fs::rename(temporal, actual)?)
     }
 
     /// Carga el proyecto o, si no existe, genera uno de demostración.

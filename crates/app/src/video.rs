@@ -3,7 +3,6 @@
 use crate::*;
 use std::{
     io::{Read, Seek, SeekFrom},
-    process::Command,
     sync::mpsc,
 };
 
@@ -65,7 +64,7 @@ pub struct Imported {
 }
 
 fn ffprobe(src: &Path, entries: &str) -> anyhow::Result<serde_json::Value> {
-    let out = Command::new("ffprobe").args(["-v", "error", "-select_streams", "v:0", "-show_entries", entries, "-of", "json"]).arg(src).output()?;
+    let out = comando("ffprobe").args(["-v", "error", "-select_streams", "v:0", "-show_entries", entries, "-of", "json"]).arg(src).output()?;
     anyhow::ensure!(out.status.success(), "ffprobe no pudo leer el video");
     Ok(serde_json::from_slice(&out.stdout)?)
 }
@@ -79,7 +78,7 @@ pub fn open(dir: &Path, file: &str) -> anyhow::Result<VideoData> {
     let h = ((WIDTH as u64 * h0 / w0.max(1)) / 2 * 2).max(2) as u32;
     if !raw.exists() {
         let filter = format!("fps={FPS},scale={WIDTH}:{h}");
-        let status = Command::new("ffmpeg").args(["-v", "error", "-y", "-i"]).arg(&src).args(["-vf", &filter, "-f", "rawvideo", "-pix_fmt", "rgb24"]).arg(&raw).status()?;
+        let status = comando("ffmpeg").args(["-v", "error", "-y", "-i"]).arg(&src).args(["-vf", &filter, "-f", "rawvideo", "-pix_fmt", "rgb24"]).arg(&raw).status()?;
         anyhow::ensure!(status.success(), "ffmpeg no pudo extraer los fotogramas");
     }
     let frames = fs::metadata(&raw)?.len() / (WIDTH * h * 3) as u64;
@@ -100,7 +99,7 @@ pub fn import(dir: PathBuf, src: PathBuf, at: u64, rate: u32) -> mpsc::Receiver<
             let data = open(&dir, &file)?;
             let wav = format!("{AUDIO_DIR}/{}-video.wav", safe(&src.file_stem().unwrap_or_default().to_string_lossy()));
             fs::create_dir_all(dir.join(AUDIO_DIR))?;
-            let ok = Command::new("ffmpeg").args(["-v", "error", "-y", "-i"]).arg(&src).args(["-vn", "-ac", "2", "-ar", &rate.to_string()]).arg(dir.join(&wav)).status()?.success();
+            let ok = comando("ffmpeg").args(["-v", "error", "-y", "-i"]).arg(&src).args(["-vn", "-ac", "2", "-ar", &rate.to_string()]).arg(dir.join(&wav)).status()?.success();
             let audio = ok.then(|| engine::decode(&dir.join(&wav), rate).ok().map(|f| (wav, f))).flatten();
             Ok(Imported { data: Arc::new(data), audio, at })
         })();

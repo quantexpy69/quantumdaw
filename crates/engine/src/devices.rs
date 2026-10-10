@@ -1,4 +1,5 @@
-//! Dispositivos: nodos de audio de PipeWire (vía `pw-dump`) y puertos MIDI (ALSA seq vía midir).
+//! Dispositivos: en Linux, nodos de audio de PipeWire (vía `pw-dump`); en Windows (WASAPI) y macOS
+//! (CoreAudio), los dispositivos del sistema vía cpal. Puertos MIDI con midir en todos los sistemas.
 use crate::MidiEvent;
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +13,36 @@ pub struct DeviceInfo {
     pub input: bool,
 }
 
+/// Salidas y entradas de audio del sistema (Windows y macOS): el id es el de cpal.
+#[cfg(not(target_os = "linux"))]
+pub fn audio_devices() -> Vec<DeviceInfo> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    let host = cpal::default_host();
+    let lista = |input: bool| -> Vec<DeviceInfo> {
+        let devs = if input { host.input_devices().map(|d| d.collect::<Vec<_>>()) } else { host.output_devices().map(|d| d.collect::<Vec<_>>()) };
+        devs.unwrap_or_default()
+            .into_iter()
+            .filter_map(|d| {
+                let id = d.id().ok()?.to_string();
+                let name = d.description().ok().map_or_else(|| id.clone(), |n| n.name().to_string());
+                let low = name.to_lowercase();
+                let kind = match () {
+                    _ if low.contains("bluetooth") || low.contains("airpods") => "Bluetooth",
+                    _ if low.contains("hdmi") || low.contains("displayport") => "HDMI",
+                    _ if low.contains("usb") => "USB",
+                    _ => "Integrado",
+                };
+                Some(DeviceInfo { id, name, kind, input })
+            })
+            .collect()
+    };
+    let mut devices = lista(false);
+    devices.extend(lista(true));
+    devices
+}
+
 /// Salidas y entradas de audio reales del sistema, USB primero y HDMI al final.
+#[cfg(target_os = "linux")]
 pub fn audio_devices() -> Vec<DeviceInfo> {
     let Ok(out) = std::process::Command::new("pw-dump").output() else {
         return vec![];

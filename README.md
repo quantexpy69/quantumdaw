@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.6.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.7.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -62,6 +62,31 @@ Versión actual: **0.6.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
 - Atajos de teclado y de rueda del ratón configurables, analizador de espectro e interfaz escalable.
 
 ---
+
+## Instalación en Windows y macOS
+
+- **Windows 10 y 11 (64 bits):** `quantum-daw-windows-x64-setup.exe` (instalador) o `quantum-daw-windows-x64.zip` (portable).
+  Para exportar MP3 en Windows instala ffmpeg (`winget install ffmpeg`).
+- **macOS 11 Big Sur o posterior (Intel y Apple Silicon):** `quantum-daw-macos-universal.dmg`; arrastra Quantum DAW a
+  Aplicaciones. La primera vez ábrelo con clic derecho → Abrir (la app no está notarizada por Apple).
+
+## Cómo se guarda cada canción
+
+Cada canción es una carpeta autocontenida (por defecto en `~/Documentos/Quantum DAW/`, opcionalmente dentro de
+un proyecto que agrupa varias canciones):
+
+```
+Mi canción/
+├── project.qproj   pistas, regiones, mezcla, efectos y sus ajustes, automatización, tempo, marcas, acordes…
+├── Audio Files/    grabaciones e importaciones, siempre en WAV a la frecuencia del proyecto
+├── Proxies/        render previo de las pistas pesadas (modo «Trabajar con proxys»)
+├── Video/          videos importados y sus fotogramas en caché
+├── Rendered/       exportaciones (mezcla, pistas y stems)
+└── Backups/        copias automáticas de project.qproj en cada guardado (las 20 últimas)
+```
+
+Los instrumentos descargables se guardan una sola vez para todas las canciones (en `~/.local/share/quantum-daw`,
+`~/Library/Application Support/Quantum DAW` o `%LOCALAPPDATA%\Quantum DAW`).
 
 ## Instalación en Linux
 

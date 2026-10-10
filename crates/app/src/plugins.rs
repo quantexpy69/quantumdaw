@@ -7,7 +7,7 @@ use egui::{Align2, FontId, Id, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 
 const PLUGIN_BG: Color32 = Color32::from_rgb(0x15, 0x15, 0x19);
-const SIGNATURE: &str = "Ivan Cheaib · QUANTUM DAW";
+const SIGNATURE: &str = "QUANTUM";
 const DISCRETE: [&str; 8] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División"];
 
 /// Color de acento de cada plugin (None = instrumento).

@@ -431,7 +431,7 @@ impl App {
                         _ => {
                             ui.label(RichText::new(format!("Quantum DAW {VERSION}")).size(20.0).strong());
                             ui.label(RichText::new(tr("Estación de audio digital escrita en Rust.")).size(14.0));
-                            ui.label(RichText::new(tr("Desarrollo: Ivan Cheaib — QUANTUM DAW")).size(14.0).strong().color(ACCENT));
+                            ui.label(RichText::new(tr("Desarrollado por QUANTEX")).size(14.0).strong().color(ACCENT));
                             ui.add_space(8.0);
                             for site in ["www.quantumdaw.com", "www.quantex.com.py"] {
                                 ui.hyperlink_to(RichText::new(site).size(15.0).color(ACCENT), format!("https://{site}"));

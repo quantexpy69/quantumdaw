@@ -552,7 +552,7 @@ impl App {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if ui.button(RichText::new(tr("Desinstalar")).color(METER[2]).strong()).clicked() {
-                    let trashed = std::process::Command::new("gio").arg("trash").arg(&path).status().is_ok_and(|s| s.success());
+                    let trashed = comando("gio").arg("trash").arg(&path).status().is_ok_and(|s| s.success());
                     let ok = trashed || if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) }.is_ok();
                     if let Some(id) = inst {
                         self.downloads.remove(id);

@@ -1297,6 +1297,7 @@ impl App {
         ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(34.0, 7.0), r.max - vec2(12.0, 7.0))), |ui| {
             ui.set_clip_rect(clip.intersect(r));
             ui.spacing_mut().item_spacing = vec2(4.0, 6.0);
+            let proxy = self.usa_proxy(i);
             let t = &mut self.s.tracks[i];
             ui.horizontal(|ui| {
                 icons::picker(ui, t, 22.0);
@@ -1315,7 +1316,11 @@ impl App {
                         TrackKind::Click => "CLIC",
                         TrackKind::Video => "VIDEO",
                     };
-                    ui.label(RichText::new(kind).size(9.0).color(TEXT_DIM));
+                    if proxy {
+                        ui.label(RichText::new("PROXY").size(9.0).strong().color(METER[0])).on_hover_text(tr("Suena desde su proxy: el procesador no calcula su instrumento ni sus efectos"));
+                    } else {
+                        ui.label(RichText::new(kind).size(9.0).color(TEXT_DIM));
+                    }
                 }
             });
             // Con poca altura solo se muestran las filas que caben.
@@ -1435,6 +1440,11 @@ impl App {
         }
         if ui.button(tr("Ruteo (ROUTE)…")).clicked() {
             self.route_window = Some(i);
+        }
+        if self.s.tracks[i].midi() && ui.button(tr("Convertir MIDI en audio")).on_hover_text(tr("Crea una pista de audio con el sonido del instrumento y sus efectos; la pista MIDI queda silenciada")).clicked() {
+            let r = self.midi_a_audio(i);
+            self.report(tr("MIDI convertido en audio"), r);
+            ui.close();
         }
         if ui.button(tr("Duplicar pista")).clicked() {
             self.duplicate_track(i);

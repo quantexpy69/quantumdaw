@@ -3,7 +3,6 @@
 //! para las bibliotecas que solo traen muestras sueltas.
 use crate::*;
 use std::{
-    process::Command,
     sync::{Mutex, mpsc},
 };
 
@@ -134,7 +133,7 @@ pub fn find(id: &str) -> Option<&'static Entry> {
 }
 
 pub fn dir(id: &str) -> PathBuf {
-    home().join(".local/share/quantum-daw/instruments").join(id)
+    data_dir().join("instruments").join(id)
 }
 
 pub fn installed(id: &str) -> bool {
@@ -167,7 +166,7 @@ pub fn spanish(name: &str) -> String {
     .fold(name.to_string(), |s, (a, b)| s.replace(a, b))
 }
 
-fn run(cmd: &mut Command) -> anyhow::Result<()> {
+fn run(cmd: &mut std::process::Command) -> anyhow::Result<()> {
     let out = cmd.output()?;
     anyhow::ensure!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("falló la descarga"));
     Ok(())
@@ -188,18 +187,18 @@ pub fn install(e: &'static Entry, status: Arc<Mutex<String>>) {
                 Src::Archive(url) => {
                     set(format!("Descargando {} MB…", e.mb));
                     let pkg = target.join(if url.ends_with(".7z") { "paquete.7z" } else { "paquete.tar.xz" });
-                    run(Command::new("curl").args(["-sfL", "--retry", "2", "-o"]).arg(&pkg).arg(url))?;
+                    run(comando("curl").args(["-sfL", "--retry", "2", "-o"]).arg(&pkg).arg(url))?;
                     set("Descomprimiendo…".into());
                     if url.ends_with(".7z") {
-                        run(Command::new("7z").args(["x", "-y"]).arg(format!("-o{}", target.display())).arg(&pkg))?;
+                        run(comando("7z").args(["x", "-y"]).arg(format!("-o{}", target.display())).arg(&pkg))?;
                     } else {
-                        run(Command::new("tar").arg("-xJf").arg(&pkg).arg("-C").arg(&target))?;
+                        run(comando("tar").arg("-xJf").arg(&pkg).arg("-C").arg(&target))?;
                     }
                     fs::remove_file(pkg)?;
                 }
                 Src::Samples(repo, folders) => {
                     set("Buscando muestras…".into());
-                    let tree = Command::new("curl").args(["-sfL", &format!("https://api.github.com/repos/{repo}/git/trees/master?recursive=1")]).output()?;
+                    let tree = comando("curl").args(["-sfL", &format!("https://api.github.com/repos/{repo}/git/trees/master?recursive=1")]).output()?;
                     let tree: serde_json::Value = serde_json::from_slice(&tree.stdout)?;
                     let paths: Vec<String> =
                         tree["tree"].as_array().into_iter().flatten().filter_map(|t| t["path"].as_str()).filter(|p| p.to_lowercase().ends_with(".wav")).map(String::from).collect();
@@ -214,7 +213,7 @@ pub fn install(e: &'static Entry, status: Arc<Mutex<String>>) {
                         set(format!("Descargando muestras {}/{}…", k + 1, files.len()));
                         let dst = target.join("samples").join(file_name(path));
                         if !dst.exists() {
-                            run(Command::new("curl").args(["-sfL", "--retry", "2", "-o"]).arg(&dst).arg(format!("https://raw.githubusercontent.com/{repo}/master/{}", url_path(path))))?;
+                            run(comando("curl").args(["-sfL", "--retry", "2", "-o"]).arg(&dst).arg(format!("https://raw.githubusercontent.com/{repo}/master/{}", url_path(path))))?;
                         }
                     }
                     fs::write(target.join(format!("{}.sfz", e.id)), generate_sfz(&files))?;

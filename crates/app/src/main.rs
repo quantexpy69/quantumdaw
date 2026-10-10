@@ -1,3 +1,6 @@
+// En Windows la app abre sin ventana de consola.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod analyzer;
 mod audioedit;
 mod chrome;
@@ -9,6 +12,7 @@ mod library;
 mod mixer;
 mod pianoroll;
 mod plugins;
+mod proxies;
 mod routing;
 mod timeline;
 mod video;
@@ -43,20 +47,65 @@ const AUDIO_EXT: [&str; 7] = ["wav", "flac", "ogg", "mp3", "m4a", "aac", "caf"];
 const NOTE_NAMES: [&str; 12] = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
 
 fn home() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default())
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    PathBuf::from(std::env::var(var).unwrap_or_default())
+}
+
+/// Carpeta de una variable de entorno (si existe y no está vacía).
+fn env_dir(var: &str) -> Option<PathBuf> {
+    std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// Configuración: ~/.config/quantum-daw (Linux), ~/Library/Application Support/Quantum DAW (macOS),
+/// %APPDATA%\Quantum DAW (Windows).
+fn config_dir() -> PathBuf {
+    if cfg!(windows) {
+        env_dir("APPDATA").unwrap_or_else(home).join("Quantum DAW")
+    } else if cfg!(target_os = "macos") {
+        home().join("Library/Application Support/Quantum DAW")
+    } else {
+        env_dir("XDG_CONFIG_HOME").unwrap_or_else(|| home().join(".config")).join("quantum-daw")
+    }
+}
+
+/// Datos (instrumentos descargados): ~/.local/share/quantum-daw (Linux), Application Support (macOS),
+/// %LOCALAPPDATA%\Quantum DAW (Windows).
+fn data_dir() -> PathBuf {
+    if cfg!(windows) {
+        env_dir("LOCALAPPDATA").unwrap_or_else(home).join("Quantum DAW")
+    } else if cfg!(target_os = "macos") {
+        home().join("Library/Application Support/Quantum DAW")
+    } else {
+        env_dir("XDG_DATA_HOME").unwrap_or_else(|| home().join(".local/share")).join("quantum-daw")
+    }
+}
+
+/// Programa externo (curl, tar, ffmpeg…); en Windows sin abrir una ventana de consola.
+fn comando(programa: &str) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut c = std::process::Command::new(programa);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    c
 }
 
 /// Carpeta por defecto de los proyectos: ~/Documentos/Quantum DAW (fuera del código fuente).
 /// Fecha y hora local legibles («08/10/2026 19:45»).
 fn now_text() -> String {
-    std::process::Command::new("date").arg("+%d/%m/%Y %H:%M").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+    chrono::Local::now().format("%d/%m/%Y %H:%M").to_string()
 }
 
-/// Nombre del usuario del sistema (nombre completo si está configurado).
+/// Nombre del usuario del sistema (en Linux, el nombre completo si está configurado).
 fn user_name() -> String {
-    let user = std::env::var("USER").unwrap_or_default();
-    let full = std::process::Command::new("getent").args(["passwd", &user]).output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).split(':').nth(4).map(|s| s.split(',').next().unwrap_or("").trim().to_string()));
-    full.filter(|s| !s.is_empty()).unwrap_or(user)
+    let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
+    #[cfg(target_os = "linux")]
+    if let Some(full) = comando("getent").args(["passwd", &user]).output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).split(':').nth(4).map(|s| s.split(',').next().unwrap_or("").trim().to_string())).filter(|s| !s.is_empty()) {
+        return full;
+    }
+    user
 }
 
 fn projects_dir() -> PathBuf {
@@ -93,11 +142,13 @@ struct Config {
     author: String,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
+    /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
+    proxies: bool,
 }
 
 impl Config {
     fn path() -> PathBuf {
-        home().join(".config/quantum-daw/config.json")
+        config_dir().join("config.json")
     }
     fn load() -> Self {
         fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
@@ -286,6 +337,8 @@ struct Track {
     touching: bool,
     latched: bool,
     write_last: Option<u64>,
+    /// Proxy: audio pre-renderizado (instrumento + efectos) y la firma del contenido que representa.
+    proxy: Option<(Arc<AudioBuf>, u64)>,
 }
 
 pub const TRACK_H: f32 = 100.0;
@@ -323,6 +376,7 @@ impl Track {
             touching: false,
             latched: false,
             write_last: None,
+            proxy: None,
         }
     }
     fn auto_mut(&mut self) -> &mut Vec<(u64, f32)> {
@@ -458,6 +512,8 @@ struct App {
     bar_two_rows: bool,
     /// Editor de audio del panel inferior.
     aedit: Option<audioedit::AudioEdit>,
+    /// Mientras se renderizan proxys o MIDI a audio, el motor procesa todo en vivo.
+    render_vivo: bool,
     /// Pista de video que muestra el visor.
     video_track: Option<u64>,
     /// Arrastre en los carriles de acordes/arreglo: tipo, índice, modo (0 mover, 1 borde izq., 2 borde der.), agarre y original.
@@ -575,6 +631,7 @@ impl App {
             bar_widths: vec![],
             bar_two_rows: false,
             aedit: None,
+            render_vivo: false,
             video_track: None,
             span_drag: None,
             span_ctx: None,
@@ -680,6 +737,11 @@ impl App {
             pr.mute.store(ts.mute, Relaxed);
             pr.invert.store(ts.invert, Relaxed);
             t.auto_mode = ts.auto_mode.min(4);
+            if !ts.proxy_file.is_empty()
+                && let Ok(frames) = engine::decode(&self.dir.join(&ts.proxy_file), e.sample_rate)
+            {
+                t.proxy = Some((AudioBuf::new(ts.proxy_file.clone(), frames), ts.proxy_firma));
+            }
             pr.solo.store(ts.solo, Relaxed);
             pr.monitor.store(ts.monitor, Relaxed);
             pr.in_gain.set(10f32.powf(ts.in_gain_db / 20.0));
@@ -771,6 +833,9 @@ impl App {
             ts.sends = t.sends.iter().filter_map(|&(id, g)| Some((index(id)?, g))).collect();
             (ts.no_master, ts.show_takes, ts.invert) = (!t.to_master, t.show_takes, t.params.invert.load(Relaxed));
             ts.auto_mode = t.auto_mode;
+            if let Some((b, firma)) = &t.proxy {
+                (ts.proxy_file, ts.proxy_firma) = (b.file.clone(), *firma);
+            }
             ts.takes = t.takes.iter().map(|take| take.iter().map(|c| clip_state(c, sr)).collect()).collect();
             ts.comp = t.comp.iter().map(|&(a, b, k)| (a as f64 / sr, if b == u64::MAX { f64::MAX } else { b as f64 / sr }, k)).collect();
             let p = &t.params;
@@ -872,24 +937,31 @@ impl App {
     /// Copia el archivo a "Audio Files/" (sin sobrescribir) y lo coloca en `into` o en una pista nueva.
     fn import_one(&mut self, src: &Path, at: u64, into: Option<usize>) -> anyhow::Result<()> {
         let frames = engine::decode(src, self.engine.sample_rate)?;
-        let (stem, ext) = (src.file_stem().unwrap_or_default().to_string_lossy(), src.extension().unwrap_or_default().to_string_lossy());
+        let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let audio_dir = self.dir.join(AUDIO_DIR);
         fs::create_dir_all(&audio_dir)?;
-        let mut name = format!("{stem}.{ext}");
-        if src.parent() != Some(audio_dir.as_path()) {
+        // El proyecto trabaja siempre en WAV: cualquier formato importado (MP3, FLAC, M4A…) se guarda
+        // en «Audio Files» como WAV a la frecuencia del proyecto y con la resolución de grabación.
+        let ya_dentro = src.parent() == Some(audio_dir.as_path()) && src.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav"));
+        let name = if ya_dentro {
+            src.file_name().unwrap_or_default().to_string_lossy().to_string()
+        } else {
+            let mut name = format!("{}.wav", safe(&stem));
             let mut n = 1;
             while audio_dir.join(&name).exists() {
-                (name, n) = (format!("{stem}-{n}.{ext}"), n + 1);
+                (name, n) = (format!("{}-{n}.wav", safe(&stem)), n + 1);
             }
-            fs::copy(src, audio_dir.join(&name))?;
-        }
+            let samples: Vec<f32> = frames.iter().flatten().copied().collect();
+            project::write_wav(&audio_dir.join(&name), self.engine.sample_rate, 2, self.rec_bits, &samples)?;
+            name
+        };
         let i = match into.filter(|&i| self.s.tracks.get(i).is_some_and(|t| !t.midi())) {
             Some(i) => {
                 self.edit();
                 i
             }
             None => {
-                self.add_track(stem.into(), TrackKind::AudioStereo);
+                self.add_track(stem, TrackKind::AudioStereo);
                 self.s.tracks.len() - 1
             }
         };
@@ -988,12 +1060,16 @@ impl App {
             let l = t.input as usize;
             let r = if t.kind == TrackKind::AudioStereo { (l + 1).min(ich.saturating_sub(1)) } else { l };
             let audio_in = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo);
+            // Con proxys, la pista suena desde su render (sin procesar instrumento ni efectos en vivo),
+            // salvo que haya cambiado desde que se generó o se esté tocando en vivo (armada o monitoreando).
+            let en_vivo = t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed);
+            let proxy = t.proxy.as_ref().filter(|p| self.config.proxies && !self.render_vivo && !en_vivo && p.1 == proxies::firma(t, self.engine.sample_rate));
             Node {
                 params: t.params.clone(),
-                clips: t.clips.clone(),
-                fx: t.fx.clone(),
-                synth: t.synth.clone(),
-                sampler: t.sampler.clone(),
+                clips: proxy.map_or_else(|| t.clips.clone(), |p| vec![Clip::audio(p.0.clone(), 0)]),
+                fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
+                synth: if proxy.is_some() { None } else { t.synth.clone() },
+                sampler: if proxy.is_some() { None } else { t.sampler.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),
                 vol_auto: t.vol_auto.clone(),
                 pan_auto: t.pan_auto.clone(),

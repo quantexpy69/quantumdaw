@@ -375,9 +375,20 @@ pub struct Engine {
     pub preview_pos: AtomicU64,
     pub preview_loop: AtomicBool,
     pub preview_gain: AtomicF32,
+    /// Render offline previo al fader (proxys y MIDI a audio): instrumento + efectos de la pista.
+    prefader: AtomicBool,
 }
 
-/// Abre el dispositivo "pipewire" de ALSA apuntando al nodo pedido (o el dispositivo por defecto sin PipeWire).
+/// Windows y macOS: el dispositivo con ese id de cpal, o el predeterminado del sistema.
+#[cfg(not(target_os = "linux"))]
+fn device(input: bool, node: &str) -> Option<cpal::Device> {
+    use cpal::traits::HostTrait;
+    let host = cpal::default_host();
+    node.parse().ok().and_then(|id| host.device_by_id(&id)).or_else(|| if input { host.default_input_device() } else { host.default_output_device() })
+}
+
+/// Linux: abre el dispositivo "pipewire" de ALSA apuntando al nodo pedido (o el dispositivo por defecto sin PipeWire).
+#[cfg(target_os = "linux")]
 fn device(input: bool, node: &str) -> Option<cpal::Device> {
     use cpal::traits::HostTrait;
     let host = cpal::default_host();
@@ -454,6 +465,7 @@ impl Engine {
             preview_pos: 0.into(),
             preview_loop: true.into(),
             preview_gain: AtomicF32::new(0.8),
+            prefader: AtomicBool::new(false),
         });
         let out_dev = device(false, &cfg.output).unwrap_or(out_dev);
         let cb = callback(engine.clone(), config.channels as usize, Rings { in_rx, rec_tx, midi_rx, midi_rec_tx, scope_tx });
@@ -538,6 +550,11 @@ impl Engine {
             for fx in &node.fx {
                 fx.process(tmp, sr, bpm_now, offline);
             }
+            // Render previo al fader de una pista: sin fader, panorama, automatización ni envíos.
+            if offline && self.prefader.load(Relaxed) && only.is_some_and(|o| Arc::ptr_eq(o, &node.params)) {
+                out.iter_mut().zip(tmp.iter()).for_each(|(o, s)| *o = [o[0] + s[0], o[1] + s[1]]);
+                continue;
+            }
             // La automatización (modo lectura) mueve el fader y el panorama.
             let read = playing && p.auto_read.load(Relaxed);
             if let Some(v) = automation_at(&node.vol_auto, end).filter(|_| read) {
@@ -560,7 +577,9 @@ impl Engine {
                 }
             }
         }
-        self.master.apply(out, self.master.gain.get(), true);
+        if !(offline && self.prefader.load(Relaxed)) {
+            self.master.apply(out, self.master.gain.get(), true);
+        }
         if playing && !offline && self.metronome.load(Relaxed) {
             self.click(out, pos);
         }
@@ -594,6 +613,14 @@ impl Engine {
                 *o = [o[0] + v, o[1] + v];
             }
         }
+    }
+
+    /// Render offline de una pista antes del fader (instrumento + efectos), estéreo intercalado.
+    pub fn bounce_prefader(&self, from: u64, to: u64, track: &Arc<Params>) -> Vec<f32> {
+        self.prefader.store(true, Relaxed);
+        let out = self.bounce(from, to, Some(track));
+        self.prefader.store(false, Relaxed);
+        out
     }
 
     /// Mezcla offline de `[from, to)` como estéreo intercalado (de una pista o de todo el proyecto).
