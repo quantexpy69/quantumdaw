@@ -435,7 +435,9 @@ impl App {
         // Recuadro de selección en curso.
         if let (Some(RollDrag::Select(from, _)), Some(p)) = (&self.roll.drag, ptr) {
             let r = Rect::from_two_pos(*from, p);
-            ui.painter().with_clip_rect(grid).rect(r, 0.0, ACCENT.gamma_multiply(0.12), Stroke::new(1.0, ACCENT), egui::StrokeKind::Inside);
+            // En una capa por encima de la rejilla y las notas (que se pintan después).
+            let capa = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::new("roll-recuadro"))).with_clip_rect(grid);
+            capa.rect(r, rr(2.0), ACCENT.gamma_multiply(0.15), Stroke::new(1.5, ACCENT), egui::StrokeKind::Inside);
         }
         if !ui.input(|i| i.pointer.primary_down()) && self.roll.drag.take().is_some() {
             self.preview(None);
