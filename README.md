@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.12.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.12.1** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -51,6 +51,8 @@ Versión actual: **0.12.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
 - Piano roll con teclado musical en el PC, entrada desde controladores MIDI y **QUANTUM Synth**.
 - Carril de control bajo el piano roll con barras verticales por nota: **velocidad**, **ganancia** (dB) y
   **ataque** (ms); se pinta arrastrando sobre varias notas y su alto se ajusta con el separador.
+- En el piano roll: doble clic crea una nota, arrastrar en vacío selecciona con un recuadro (Shift suma,
+  Ctrl+A todas) y cada nota se estira o acorta desde cualquiera de sus dos bordes.
 - Instrumentos reales gratuitos y libres descargables (guitarras, bajos, batería, cuerdas, piano),
   con su licencia indicada en cada uno, y opción de desinstalarlos.
 

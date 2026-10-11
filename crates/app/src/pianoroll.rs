@@ -15,10 +15,16 @@ pub const PRESETS: [(&str, [f32; 10]); 7] = [
 ];
 const BLACK: [bool; 12] = [false, true, false, true, false, false, true, false, true, false, true, false];
 
-#[derive(Clone, Copy)]
+/// Arrastre en la rejilla: las notas guardan su estado al empezar (índice, nota original).
+#[derive(Clone)]
 enum RollDrag {
-    Move(usize, Note, egui::Vec2),
-    Resize(usize, Note, f32),
+    Move(Vec<(usize, Note)>, egui::Vec2),
+    /// Borde derecho: cambia la duración.
+    ResizeEnd(Vec<(usize, Note)>, f32),
+    /// Borde izquierdo: mueve el inicio y mantiene el final.
+    ResizeStart(Vec<(usize, Note)>, f32),
+    /// Recuadro de selección desde un punto; `sumar` conserva la selección previa (Shift).
+    Select(egui::Pos2, Vec<usize>),
 }
 
 pub struct Roll {
@@ -28,7 +34,8 @@ pub struct Roll {
     key_h: f32,
     grid: u32,
     scroll: egui::Vec2,
-    sel: Option<usize>,
+    /// Notas seleccionadas (índices).
+    sel: Vec<usize>,
     drag: Option<RollDrag>,
     /// Duración de la última nota (en tiempos), usada al crear notas nuevas.
     last_len: f64,
@@ -85,19 +92,19 @@ impl Carril {
 
 impl Default for Roll {
     fn default() -> Self {
-        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: None, drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None }
+        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None }
     }
 }
 
 impl Roll {
     pub fn open(&mut self, i: usize, j: usize) {
-        (self.target, self.sel, self.drag) = (Some((i, j)), None, None)
+        (self.target, self.sel, self.drag) = (Some((i, j)), Vec::new(), None)
     }
     pub fn close(&mut self) {
-        (self.target, self.sel, self.drag) = (None, None, None)
+        (self.target, self.sel, self.drag) = (None, Vec::new(), None)
     }
     pub fn has_selection(&self) -> bool {
-        self.target.is_some() && self.sel.is_some()
+        self.target.is_some() && !self.sel.is_empty()
     }
 }
 
@@ -190,16 +197,13 @@ impl App {
     }
 
     pub fn roll_delete_selected(&mut self) {
-        let (Some((i, j)), Some(k)) = (self.roll_clip(), self.roll.sel) else {
+        let Some((i, j)) = self.roll_clip().filter(|_| !self.roll.sel.is_empty()) else {
             return;
         };
-        let mut notes = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
-        if k < notes.len() {
-            self.edit();
-            notes.remove(k);
-            self.roll.sel = None;
-            self.set_notes(notes);
-        }
+        let notes = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
+        self.edit();
+        let sel = std::mem::take(&mut self.roll.sel);
+        self.set_notes(notes.into_iter().enumerate().filter(|(k, _)| !sel.contains(k)).map(|(_, n)| n).collect());
     }
 
     fn preview(&mut self, key: Option<u8>) {
@@ -302,35 +306,70 @@ impl App {
         let rel_of = |n: &Note| (origin + n.start as i64 - clip.start as i64) as f64;
         let note_rect = |n: &Note| Rect::from_x_y_ranges(x_of(rel_of(n))..=x_of(rel_of(n) + n.len as f64).max(x_of(rel_of(n)) + 3.0), y_of(n.key) + 1.0..=y_of(n.key) + kh - 1.0);
 
-        // Interacción con la rejilla.
+        // Interacción con la rejilla: clic en una nota la selecciona (Shift suma), sus bordes la estiran
+        // o acortan por cualquiera de los dos lados, arrastrar en vacío dibuja un recuadro de selección
+        // y el doble clic en vacío crea una nota.
         let gr = ui.interact(grid, Id::new("roll-grid-area"), Sense::click_and_drag());
-        let (ptr, pressed) = ui.input(|i| (i.pointer.interact_pos(), i.pointer.primary_pressed()));
-        if gr.hovered()
+        let (ptr, pressed, shift) = ui.input(|i| (i.pointer.interact_pos(), i.pointer.primary_pressed(), i.modifiers.shift));
+        const BORDE: f32 = 6.0;
+        let hit_at = |p: egui::Pos2| notes.iter().rposition(|n| note_rect(n).expand2(vec2(2.0, 0.0)).contains(p));
+        let borde = |r: Rect, p: egui::Pos2| {
+            let b = BORDE.min(r.width() / 3.0);
+            if p.x <= r.left() + b {
+                -1
+            } else if p.x >= r.right() - b {
+                1
+            } else {
+                0
+            }
+        };
+        if let Some(p) = ptr.filter(|p| grid.contains(*p) && self.roll.drag.is_none())
+            && let Some(k) = hit_at(p)
+            && borde(note_rect(&notes[k]), p) != 0
+        {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        if gr.double_clicked()
+            && let Some(p) = ptr.filter(|p| hit_at(*p).is_none())
+        {
+            self.edit();
+            let rel = (rel_at(p.x) / step).floor() * step;
+            let n = Note::new((rel + clip.start as f64 - origin as f64).max(0.0) as u64, (self.roll.last_len * beat) as u64, key_at(p.y), 100);
+            let mut v = notes.clone();
+            v.push(n);
+            self.roll.sel = vec![v.len() - 1];
+            self.set_notes(v);
+            self.roll.drag = None;
+            self.preview(Some(n.key));
+        } else if gr.hovered()
             && pressed
             && let Some(p) = ptr
         {
-            self.edit();
-            let hit = notes.iter().rposition(|n| note_rect(n).contains(p));
-            self.roll.drag = Some(match hit {
-                Some(k) if p.x > note_rect(&notes[k]).right() - 6.0 => RollDrag::Resize(k, notes[k], 0.0),
-                Some(k) => RollDrag::Move(k, notes[k], egui::Vec2::ZERO),
-                None => {
-                    let rel = (rel_at(p.x) / step).floor() * step;
-                    let n = Note::new((rel + clip.start as f64 - origin as f64).max(0.0) as u64, (self.roll.last_len * beat) as u64, key_at(p.y), 100);
-                    let mut v = notes.clone();
-                    v.push(n);
-                    self.set_notes(v);
-                    RollDrag::Resize(notes.len(), n, 0.0)
+            match hit_at(p) {
+                Some(k) => {
+                    if !self.roll.sel.contains(&k) {
+                        if !shift {
+                            self.roll.sel.clear();
+                        }
+                        self.roll.sel.push(k);
+                    } else if shift {
+                        self.roll.sel.retain(|&x| x != k);
+                    }
+                    self.edit();
+                    let orig: Vec<(usize, Note)> = self.roll.sel.iter().filter_map(|&x| notes.get(x).map(|n| (x, *n))).collect();
+                    self.roll.drag = Some(match borde(note_rect(&notes[k]), p) {
+                        -1 => RollDrag::ResizeStart(orig, 0.0),
+                        1 => RollDrag::ResizeEnd(orig, 0.0),
+                        _ => RollDrag::Move(orig, egui::Vec2::ZERO),
+                    });
+                    self.preview(Some(notes[k].key));
                 }
-            });
-            self.roll.sel = Some(match self.roll.drag {
-                Some(RollDrag::Move(k, ..) | RollDrag::Resize(k, ..)) => k,
-                None => 0,
-            });
-            let key = self.roll.drag.map(|d| match d {
-                RollDrag::Move(_, n, _) | RollDrag::Resize(_, n, _) => n.key,
-            });
-            self.preview(key);
+                None => {
+                    let previa = if shift { self.roll.sel.clone() } else { Vec::new() };
+                    self.roll.sel = previa.clone();
+                    self.roll.drag = Some(RollDrag::Select(p, previa));
+                }
+            }
         }
         if gr.dragged()
             && let Some(d) = &mut self.roll.drag
@@ -338,39 +377,77 @@ impl App {
             let delta = gr.drag_delta();
             let mut v = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
             let mut key = None;
+            let snap = |f: f64| (f / step).round() * step;
             match d {
-                RollDrag::Move(k, orig, acc) => {
+                RollDrag::Move(orig, acc) => {
                     *acc += delta;
-                    let start = ((orig.start as f64 + (acc.x / ppb) as f64 * beat) / step).round() * step;
-                    let new_key = (orig.key as f32 - (acc.y / kh).round()).clamp(0.0, 127.0) as u8;
-                    if let Some(n) = v.get_mut(*k) {
-                        if n.key != new_key {
-                            key = Some(new_key);
+                    let dk = -(acc.y / kh).round() as i32;
+                    let dt = snap((acc.x / ppb) as f64 * beat);
+                    for (k, o) in orig.iter() {
+                        if let Some(n) = v.get_mut(*k) {
+                            let new_key = (o.key as i32 + dk).clamp(0, 127) as u8;
+                            if n.key != new_key && orig.len() == 1 {
+                                key = Some(new_key);
+                            }
+                            (n.start, n.key) = ((o.start as f64 + dt).max(0.0) as u64, new_key);
                         }
-                        (n.start, n.key) = (start.max(0.0) as u64, new_key);
                     }
                 }
-                RollDrag::Resize(k, orig, acc) => {
+                RollDrag::ResizeEnd(orig, acc) => {
                     *acc += delta.x;
-                    let len = (((orig.len as f64 + (*acc / ppb) as f64 * beat) / step).round() * step).max(step);
-                    if let Some(n) = v.get_mut(*k) {
-                        n.len = len as u64;
+                    let dt = snap((*acc / ppb) as f64 * beat);
+                    for (k, o) in orig.iter() {
+                        if let Some(n) = v.get_mut(*k) {
+                            n.len = (o.len as f64 + dt).max(step) as u64;
+                            self.roll.last_len = n.len as f64 / beat;
+                        }
                     }
-                    self.roll.last_len = len / beat;
+                }
+                RollDrag::ResizeStart(orig, acc) => {
+                    *acc += delta.x;
+                    let dt = snap((*acc / ppb) as f64 * beat);
+                    for (k, o) in orig.iter() {
+                        if let Some(n) = v.get_mut(*k) {
+                            let end = (o.start + o.len) as f64;
+                            let start = (o.start as f64 + dt).clamp(0.0, end - step.min(o.len as f64));
+                            (n.start, n.len) = (start as u64, (end - start) as u64);
+                            self.roll.last_len = n.len as f64 / beat;
+                        }
+                    }
+                }
+                RollDrag::Select(from, previa) => {
+                    if let Some(p) = ptr {
+                        let r = Rect::from_two_pos(*from, p);
+                        let mut sel = previa.clone();
+                        sel.extend((0..notes.len()).filter(|k| note_rect(&notes[*k]).intersects(r) && !previa.contains(k)));
+                        self.roll.sel = sel;
+                    }
+                    v.clear();
                 }
             }
-            self.set_notes(v);
+            if !v.is_empty() {
+                self.set_notes(v);
+            }
             if key.is_some() {
                 self.preview(key);
             }
         }
+        // Recuadro de selección en curso.
+        if let (Some(RollDrag::Select(from, _)), Some(p)) = (&self.roll.drag, ptr) {
+            let r = Rect::from_two_pos(*from, p);
+            ui.painter().with_clip_rect(grid).rect(r, 0.0, ACCENT.gamma_multiply(0.12), Stroke::new(1.0, ACCENT), egui::StrokeKind::Inside);
+        }
         if !ui.input(|i| i.pointer.primary_down()) && self.roll.drag.take().is_some() {
             self.preview(None);
+        }
+        // Ctrl+A: seleccionar todas las notas de la región.
+        if gr.hovered() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::A)) {
+            self.roll.sel = (0..notes.len()).collect();
         }
         if gr.secondary_clicked()
             && let Some(k) = ptr.and_then(|p| notes.iter().rposition(|n| note_rect(n).contains(p)))
         {
-            self.roll.sel = Some(k);
+            self.roll.sel = vec![k];
             self.roll_delete_selected();
         }
 
@@ -481,7 +558,7 @@ impl App {
             let r = note_rect(n);
             let c = color.gamma_multiply(0.45 + 0.55 * n.vel as f32 / 127.0);
             gp.rect_filled(r, rr(3.0), c);
-            if self.roll.sel == Some(k) {
+            if self.roll.sel.contains(&k) {
                 gp.rect_stroke(r, rr(3.0), Stroke::new(1.5, TEXT), StrokeKind::Inside);
             }
             if r.width() > 26.0 && kh >= 10.0 {
@@ -562,7 +639,7 @@ impl App {
             let ancho = (x_of(rel_of(n) + n.len as f64) - a - 2.0).clamp(3.0, 9.0);
             let v = carril.valor(n);
             let top = y_val(v);
-            let sel = self.roll.sel == Some(k);
+            let sel = self.roll.sel.contains(&k);
             let c = if sel { Color32::WHITE } else { color.gamma_multiply(0.55 + 0.45 * v as f32 / 127.0) };
             bp.rect_filled(Rect::from_min_max(pos2(a, top), pos2(a + ancho, vel.bottom() - 4.0)), rr(1.5), c.gamma_multiply(0.75));
             bp.rect_filled(Rect::from_min_max(pos2(a, top - 1.5), pos2(a + ancho, top + 1.5)), 0.0, c);
