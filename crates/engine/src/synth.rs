@@ -32,6 +32,9 @@ struct Voice {
     /// Estado del filtro por oscilador (ic1, ic2) y coeficiente g actual.
     svf: [[f32; 2]; 2],
     g: f32,
+    /// Ganancia y ataque propios de la nota (ataque 0 = el del sintetizador).
+    gain: f32,
+    attack_ms: f32,
 }
 
 #[derive(Default)]
@@ -40,6 +43,9 @@ struct State {
     next: u64,
     playing: bool,
     clock: u32,
+    /// Ganancia y ataque pedidos para la próxima nota (controladores 16 y 73).
+    cc_gain: Option<u8>,
+    cc_attack: Option<u8>,
 }
 
 pub struct Synth {
@@ -73,7 +79,11 @@ impl State {
                 let i = (0..VOICES).find(|&i| self.voices[i].stage == 0 || self.voices[i].key == e[1]).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| self.voices[i].age).unwrap_or(0));
                 let v = &mut self.voices[i];
                 (v.key, v.vel, v.stage, v.age) = (e[1], vel as f32 / 127.0, 1, self.clock);
+                v.gain = self.cc_gain.take().map_or(1.0, crate::ganancia_nota);
+                v.attack_ms = self.cc_attack.take().map_or(0.0, crate::ataque_ms);
             }
+            (0xB0, _) if e[1] == crate::CC_GANANCIA => self.cc_gain = Some(e[2]),
+            (0xB0, _) if e[1] == crate::CC_ATAQUE => self.cc_attack = Some(e[2]),
             (0x80 | 0x90, _) => self.voices.iter_mut().filter(|v| v.key == e[1] && matches!(v.stage, 1 | 2)).for_each(|v| v.stage = 3),
             // Controladores 120/123: silenciar todo.
             (0xB0, _) if e[1] >= 120 => self.release_all(),
@@ -110,7 +120,7 @@ impl Synth {
             for v in st.voices.iter_mut().filter(|v| v.stage > 0) {
                 match v.stage {
                     1 => {
-                        v.env += (1.2 - v.env) * att;
+                        v.env += (1.2 - v.env) * if v.attack_ms > 0.0 { coef(v.attack_ms) } else { att };
                         if v.env >= 1.0 {
                             (v.env, v.stage) = (1.0, 2);
                         }
@@ -129,7 +139,7 @@ impl Synth {
                     let cutoff = (p[2] * 2f32.powf(p[4] * v.env * 5.0)).min(sr * 0.45);
                     v.g = (PI * cutoff / sr).tan();
                 }
-                let (a1, gain) = (1.0 / (1.0 + v.g * (v.g + res_k)), v.env * v.vel * vol);
+                let (a1, gain) = (1.0 / (1.0 + v.g * (v.g + res_k)), v.env * v.vel * v.gain * vol);
                 for (osc, out) in o.iter_mut().enumerate() {
                     let dt = f * if osc == 0 { 1.0 / det } else { det } / sr;
                     let t = v.phase[osc];
@@ -152,5 +162,29 @@ impl Synth {
         }
         // Eventos que llegaran con offset fuera del bloque.
         ev.for_each(|&(_, e)| st.handle(e));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_nota {
+    use super::*;
+
+    /// Energía de una nota de 0,3 s con la ganancia y el ataque indicados (primeros `n` cuadros).
+    fn energia(gain: u8, attack: u8, n: usize) -> f32 {
+        let synth = Synth::default();
+        let mut out = vec![[0f32; 2]; n];
+        let ev = [(0, [0xB0, crate::CC_GANANCIA, gain]), (0, [0xB0, crate::CC_ATAQUE, attack]), (0, [0x90, 60, 100])];
+        synth.render(&mut out, &ev, 48_000.0, true, 0, true);
+        out.iter().map(|s| s[0] * s[0]).sum()
+    }
+
+    #[test]
+    fn ganancia_y_ataque_por_nota() {
+        let (normal, mitad) = (energia(100, 0, 14_400), energia(71, 0, 14_400));
+        // 71 ≈ -6 dB de amplitud → un cuarto de energía.
+        assert!((mitad / normal - 0.254).abs() < 0.03, "{}", mitad / normal);
+        assert_eq!(energia(0, 0, 4800), 0.0);
+        // Con ataque lento los primeros 20 ms suenan mucho menos.
+        assert!(energia(100, 100, 960) < energia(100, 0, 960) * 0.2);
     }
 }

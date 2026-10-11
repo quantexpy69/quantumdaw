@@ -248,6 +248,7 @@ fn clip_state(c: &Clip, sr: f64) -> ClipState {
         fade_out: c.fade_out as f64 / sr,
         gain_db: widgets::db(c.gain),
         notes: c.notes().map(|n| n.iter().map(|n| (n.start as f64 / sr, n.len as f64 / sr, n.key, n.vel)).collect()).unwrap_or_default(),
+        notes_extra: c.notes().filter(|n| n.iter().any(|n| (n.gain, n.attack) != (100, 0))).map(|n| n.iter().map(|n| (n.gain, n.attack)).collect()).unwrap_or_default(),
     }
 }
 
@@ -255,7 +256,10 @@ fn clip_state(c: &Clip, sr: f64) -> ClipState {
 fn load_clip(dir: &Path, rate: u32, c: &ClipState, midi: bool, cache: &mut HashMap<String, Arc<AudioBuf>>, missing: &mut Vec<String>) -> Option<Clip> {
     let f = |s: f64| (s * rate as f64) as u64;
     let src = if midi {
-        Source::Midi(Arc::new(c.notes.iter().map(|&(s, l, key, vel)| Note { start: f(s), len: f(l), key, vel }).collect()))
+        Source::Midi(Arc::new(c.notes.iter().enumerate().map(|(k, &(s, l, key, vel))| {
+            let (gain, attack) = c.notes_extra.get(k).copied().unwrap_or((100, 0));
+            Note { gain, attack, ..Note::new(f(s), f(l), key, vel) }
+        }).collect()))
     } else {
         let buf = match cache.get(&c.file) {
             Some(b) => b.clone(),
@@ -1786,13 +1790,13 @@ impl App {
                 (0x90, v) if v > 0 => _ = held.insert(e[1], (rel, v)),
                 (0x80 | 0x90, _) => {
                     if let Some((s, v)) = held.remove(&e[1]) {
-                        notes.push(Note { start: s, len: (rel - s).max(1), key: e[1], vel: v });
+                        notes.push(Note::new(s, (rel - s).max(1), e[1], v));
                     }
                 }
                 _ => {}
             }
         }
-        notes.extend(held.into_iter().map(|(key, (s, vel))| Note { start: s, len: end.saturating_sub(start + s).max(1), key, vel }));
+        notes.extend(held.into_iter().map(|(key, (s, vel))| Note::new(s, end.saturating_sub(start + s).max(1), key, vel)));
         let (mut errors, xf) = (vec![], self.xfade());
         let ts = stamp();
         let mut open_roll = None;

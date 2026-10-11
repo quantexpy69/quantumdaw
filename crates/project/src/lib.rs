@@ -196,6 +196,9 @@ pub struct ClipState {
     pub gain_db: f32,
     /// Notas MIDI: (inicio, duración, nota, velocidad), relativas al origen de la región.
     pub notes: Vec<(f64, f64, u8, u8)>,
+    /// Ganancia y ataque de cada nota (mismo orden que `notes`); vacío = valores por defecto.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes_extra: Vec<(u8, u8)>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

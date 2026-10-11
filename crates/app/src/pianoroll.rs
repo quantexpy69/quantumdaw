@@ -3,7 +3,6 @@ use crate::{widgets::rr, *};
 use egui::{Align2, FontId, Id, Rect, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
 
 const KEYS_W: f32 = 64.0;
-const VEL_H: f32 = 60.0;
 /// Instrumentos preestablecidos del QUANTUM Synth: (nombre, parámetros en el orden de `SYNTH_PARAMS`).
 pub const PRESETS: [(&str, [f32; 10]); 7] = [
     ("Piano eléctrico", [3.0, 4.0, 3500.0, 0.1, 0.3, 2.0, 900.0, 0.25, 400.0, -6.0]),
@@ -39,11 +38,54 @@ pub struct Roll {
     pub octave: i32,
     /// Escritura por pasos: cada nota tocada se escribe en el cursor y este avanza.
     pub step: bool,
+    /// Carril de control bajo la rejilla: qué muestra (velocidad, ganancia o ataque) y su alto.
+    lane: Carril,
+    lane_h: f32,
+    /// Último punto del arrastre en el carril, para pintar varias barras de un trazo.
+    lane_prev: Option<egui::Pos2>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Carril {
+    Velocidad,
+    Ganancia,
+    Ataque,
+}
+
+impl Carril {
+    const TODOS: [(Carril, &'static str); 3] = [(Carril::Velocidad, "Velocidad"), (Carril::Ganancia, "Ganancia"), (Carril::Ataque, "Ataque")];
+
+    fn valor(self, n: &Note) -> u8 {
+        match self {
+            Carril::Velocidad => n.vel,
+            Carril::Ganancia => n.gain,
+            Carril::Ataque => n.attack,
+        }
+    }
+
+    fn poner(self, n: &mut Note, v: u8) {
+        match self {
+            Carril::Velocidad => n.vel = v.max(1),
+            Carril::Ganancia => n.gain = v,
+            Carril::Ataque => n.attack = v,
+        }
+    }
+
+    /// Valor legible: velocidad 1–127, ganancia en dB, ataque en milisegundos.
+    fn texto(self, v: u8) -> String {
+        match self {
+            Carril::Velocidad => v.to_string(),
+            Carril::Ganancia if v == 0 => "-∞ dB".into(),
+            Carril::Ganancia => format!("{:+.1} dB", 20.0 * engine::ganancia_nota(v).log10()),
+            Carril::Ataque if v == 0 => tr("instrumento").into(),
+            Carril::Ataque => format!("{:.0} ms", engine::ataque_ms(v)),
+        }
+    }
 }
 
 impl Default for Roll {
     fn default() -> Self {
-        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: None, drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false }
+        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: None, drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None }
     }
 }
 
@@ -86,7 +128,7 @@ impl App {
         let (at, origin) = (self.pos().max(c.start), c.origin());
         let mut notes = c.notes().map(|n| (**n).clone()).unwrap_or_default();
         self.edit();
-        notes.push(Note { start: (at as i64 - origin).max(0) as u64, len: step, key, vel: 100 });
+        notes.push(Note::new((at as i64 - origin).max(0) as u64, step, key, 100));
         self.set_notes(notes);
         self.go(at + step);
     }
@@ -234,9 +276,12 @@ impl App {
         };
         let area = ui.available_rect_before_wrap();
         ui.allocate_rect(area, Sense::hover());
-        let keys = Rect::from_min_max(area.min, pos2(area.left() + KEYS_W, area.bottom() - VEL_H));
-        let grid = Rect::from_min_max(pos2(keys.right(), area.top()), pos2(area.right(), area.bottom() - VEL_H));
-        let vel = Rect::from_min_max(pos2(keys.right(), grid.bottom()), area.max);
+        let lane_h = self.roll.lane_h.clamp(50.0, (area.height() * 0.6).max(50.0));
+        let keys = Rect::from_min_max(area.min, pos2(area.left() + KEYS_W, area.bottom() - lane_h));
+        let grid = Rect::from_min_max(pos2(keys.right(), area.top()), pos2(area.right(), area.bottom() - lane_h));
+        // Carril de control: separador arrastrable arriba, pestañas a la izquierda y barras a la derecha.
+        let vel = Rect::from_min_max(pos2(keys.right(), grid.bottom() + 6.0), area.max);
+        let lane_tabs = Rect::from_min_max(pos2(area.left(), grid.bottom() + 6.0), pos2(keys.right(), area.bottom()));
         if let Some(p) = ui.input(|i| i.pointer.hover_pos()).filter(|p| area.contains(*p)) {
             let (zoom, d) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
             let t = (p.x - grid.left() + self.roll.scroll.x) / self.roll.ppb;
@@ -271,7 +316,7 @@ impl App {
                 Some(k) => RollDrag::Move(k, notes[k], egui::Vec2::ZERO),
                 None => {
                     let rel = (rel_at(p.x) / step).floor() * step;
-                    let n = Note { start: (rel + clip.start as f64 - origin as f64).max(0.0) as u64, len: (self.roll.last_len * beat) as u64, key: key_at(p.y), vel: 100 };
+                    let n = Note::new((rel + clip.start as f64 - origin as f64).max(0.0) as u64, (self.roll.last_len * beat) as u64, key_at(p.y), 100);
                     let mut v = notes.clone();
                     v.push(n);
                     self.set_notes(v);
@@ -343,21 +388,55 @@ impl App {
             self.preview(None);
         }
 
-        // Velocidades: arrastrar sobre una barra cambia la velocidad de esa nota.
+        // Separador: arrastrarlo cambia el alto del carril de control.
+        let sep = Rect::from_min_max(pos2(area.left(), grid.bottom()), pos2(area.right(), grid.bottom() + 6.0));
+        let sr = ui.interact(sep, Id::new("roll-lane-sep"), Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeVertical);
+        if sr.dragged() {
+            self.roll.lane_h = (lane_h - sr.drag_delta().y).clamp(50.0, (area.height() * 0.6).max(50.0));
+        }
+        // Pestañas del carril.
+        let mut tab_y = lane_tabs.top() + 4.0;
+        for (c, nombre) in Carril::TODOS {
+            let r = Rect::from_min_size(pos2(lane_tabs.left() + 4.0, tab_y), vec2(lane_tabs.width() - 8.0, 20.0));
+            if ui.interact(r, Id::new(("roll-lane-tab", nombre)), Sense::click()).clicked() {
+                self.roll.lane = c;
+            }
+            tab_y += 23.0;
+        }
+        // Barras: arrastrar pinta el valor de todas las notas por las que pasa el ratón; en una nota
+        // sola basta con hacer clic a la altura deseada.
+        let carril = self.roll.lane;
+        let valor_en = |y: f32| ((1.0 - (y - vel.top() - 4.0) / (vel.height() - 8.0)) * 127.0).clamp(0.0, 127.0).round() as u8;
         let vr = ui.interact(vel, Id::new("roll-vel"), Sense::click_and_drag());
-        if (vr.dragged() || vr.clicked())
+        if (vr.dragged() || vr.clicked() || vr.drag_started())
             && let Some(p) = ptr
         {
-            let near = notes.iter().enumerate().min_by(|a, b| (x_of(rel_of(a.1)) - p.x).abs().total_cmp(&(x_of(rel_of(b.1)) - p.x).abs()));
-            if let Some((k, n)) = near.filter(|(_, n)| (x_of(rel_of(n)) - p.x).abs() < 12.0) {
-                if vr.drag_started() || vr.clicked() {
-                    self.edit();
+            let prev = self.roll.lane_prev.unwrap_or(p);
+            let (x0, x1) = (prev.x.min(p.x) - 4.0, prev.x.max(p.x) + 4.0);
+            let mut v = notes.clone();
+            let mut cambio = false;
+            for n in v.iter_mut() {
+                let (a, b) = (x_of(rel_of(n)), x_of(rel_of(n) + n.len as f64).max(x_of(rel_of(n)) + 6.0));
+                // La nota está bajo el trazo si su barra se cruza con el tramo recorrido.
+                if b >= x0 && a <= x1 {
+                    let t = if (p.x - prev.x).abs() > 1.0 { ((a - prev.x) / (p.x - prev.x)).clamp(0.0, 1.0) } else { 1.0 };
+                    let nuevo = valor_en(prev.y + (p.y - prev.y) * t);
+                    if carril.valor(n) != nuevo {
+                        carril.poner(n, nuevo);
+                        cambio = true;
+                    }
                 }
-                let mut v = notes.clone();
-                v[k].vel = ((1.0 - (p.y - vel.top()) / vel.height()) * 127.0).clamp(1.0, 127.0) as u8;
-                let _ = n;
+            }
+            if vr.drag_started() || vr.clicked() {
+                self.edit();
+            }
+            if cambio {
                 self.set_notes(v);
             }
+            self.roll.lane_prev = Some(p);
+        }
+        if !vr.dragged() && !vr.is_pointer_button_down_on() {
+            self.roll.lane_prev = None;
         }
 
         // ---------- Dibujo ----------
@@ -457,15 +536,45 @@ impl App {
                 kp.text(pos2(keys.right() - 4.0, y + kh / 2.0), Align2::RIGHT_CENTER, format!("Do{}", key as i32 / 12 - 1), FontId::proportional(9.0), BG);
             }
         }
-        // Carril de velocidades.
-        let vp = p.with_clip_rect(vel);
-        vp.rect_filled(vel, 0.0, PANEL);
-        vp.text(pos2(area.left() + 6.0, vel.center().y), Align2::LEFT_CENTER, tr("Velocidad"), FontId::proportional(10.0), TEXT_DIM);
-        for n in &notes {
-            let x = x_of(rel_of(n));
-            let h = n.vel as f32 / 127.0 * (vel.height() - 6.0);
-            vp.vline(x + 1.0, vel.bottom() - h..=vel.bottom(), Stroke::new(3.0, color));
-            vp.circle_filled(pos2(x + 1.0, vel.bottom() - h), 3.0, color);
+        // Carril de control.
+        let full = Rect::from_min_max(pos2(area.left(), grid.bottom()), area.max);
+        let vp = p.with_clip_rect(full);
+        vp.rect_filled(full, 0.0, PANEL);
+        vp.hline(full.x_range(), grid.bottom() + 3.0, Stroke::new(2.0, if sr.hovered() || sr.dragged() { ACCENT } else { BG }));
+        let y_val = |v: u8| vel.bottom() - 4.0 - v as f32 / 127.0 * (vel.height() - 8.0);
+        // Líneas guía: 25 %, 50 %, 75 % y máximo, con su valor a la izquierda.
+        for v in [32u8, 64, 96, 127] {
+            vp.hline(vel.x_range(), y_val(v), Stroke::new(1.0, Color32::from_white_alpha(14)));
+        }
+        let mut tab_y = lane_tabs.top() + 4.0;
+        for (c, nombre) in Carril::TODOS {
+            let r = Rect::from_min_size(pos2(lane_tabs.left() + 4.0, tab_y), vec2(lane_tabs.width() - 8.0, 20.0));
+            let activo = c == carril;
+            vp.rect_filled(r, rr(4.0), if activo { ACCENT } else { Color32::from_white_alpha(8) });
+            vp.text(r.center(), Align2::CENTER_CENTER, tr(nombre), FontId::proportional(11.0), if activo { BG } else { TEXT_DIM });
+            tab_y += 23.0;
+        }
+        let bp = p.with_clip_rect(vel);
+        let hover = ptr.filter(|p| vel.contains(*p));
+        let mut etiqueta = None;
+        for (k, n) in notes.iter().enumerate() {
+            let a = x_of(rel_of(n));
+            let ancho = (x_of(rel_of(n) + n.len as f64) - a - 2.0).clamp(3.0, 9.0);
+            let v = carril.valor(n);
+            let top = y_val(v);
+            let sel = self.roll.sel == Some(k);
+            let c = if sel { Color32::WHITE } else { color.gamma_multiply(0.55 + 0.45 * v as f32 / 127.0) };
+            bp.rect_filled(Rect::from_min_max(pos2(a, top), pos2(a + ancho, vel.bottom() - 4.0)), rr(1.5), c.gamma_multiply(0.75));
+            bp.rect_filled(Rect::from_min_max(pos2(a, top - 1.5), pos2(a + ancho, top + 1.5)), 0.0, c);
+            if hover.is_some_and(|h| (a - 3.0..=a + ancho + 3.0).contains(&h.x)) || (sel && vr.dragged()) {
+                etiqueta = Some((pos2(a + ancho + 4.0, top), v));
+            }
+        }
+        if let Some((pos, v)) = etiqueta {
+            let g = bp.layout_no_wrap(carril.texto(v), FontId::proportional(11.0), Color32::WHITE);
+            let r = Rect::from_min_size(pos2(pos.x, (pos.y - g.size().y / 2.0).clamp(vel.top(), vel.bottom() - g.size().y)), g.size()).expand(3.0);
+            bp.rect_filled(r, rr(3.0), Color32::from_black_alpha(200));
+            bp.galley(r.min + vec2(3.0, 3.0), g, Color32::WHITE);
         }
     }
 }

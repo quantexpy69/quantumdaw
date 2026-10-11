@@ -40,6 +40,9 @@ struct Voice {
     env: f32,
     rel: f32,
     age: u32,
+    /// Ataque propio de la nota: coeficiente por muestra (1 = inmediato).
+    att: f32,
+    attacking: bool,
 }
 
 #[derive(Default)]
@@ -49,6 +52,9 @@ struct State {
     rng: u32,
     next: u64,
     playing: bool,
+    /// Ganancia y ataque pedidos para la próxima nota (controladores 16 y 73).
+    cc_gain: Option<u8>,
+    cc_attack: Option<u8>,
 }
 
 pub struct Sampler {
@@ -208,6 +214,12 @@ impl Sampler {
                 };
                 let f = (v.pos - k as f64) as f32;
                 let s = |c: usize| (a[c] as f32 + (b[c] as f32 - a[c] as f32) * f) / 32768.0;
+                if v.attacking && !v.releasing {
+                    v.env += (1.0 - v.env) * v.att;
+                    if v.env >= 0.999 {
+                        (v.env, v.attacking) = (1.0, false);
+                    }
+                }
                 if v.releasing {
                     v.env *= v.rel;
                     if v.env < 1e-4 {
@@ -243,6 +255,8 @@ impl Sampler {
                 let z = &self.zones[zone];
                 let slot = (0..VOICES).find(|&i| !st.voices[i].active).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| st.voices[i].age).unwrap_or(0));
                 let vel_gain = (1.0 - z.veltrack) + z.veltrack * (vel as f32 / 127.0).powi(2);
+                let nota_gain = st.cc_gain.take().map_or(1.0, crate::ganancia_nota);
+                let ataque = st.cc_attack.take().map_or(0.0, crate::ataque_ms);
                 st.voices[slot] = Voice {
                     zone,
                     key: e[1],
@@ -250,13 +264,17 @@ impl Sampler {
                     releasing: false,
                     pos: 0.0,
                     step: 2f64.powf((e[1] as f64 - z.root as f64) / 12.0),
-                    gain: z.gain * vel_gain,
-                    env: 1.0,
+                    gain: z.gain * vel_gain * nota_gain,
+                    env: if ataque > 0.0 { 0.0 } else { 1.0 },
+                    att: if ataque > 0.0 { 1.0 - (-1.0 / (ataque * 0.001 * sr)).exp() } else { 1.0 },
+                    attacking: ataque > 0.0,
                     rel: (-1.0 / (z.release * sr)).exp(),
                     age: st.clock,
                 };
             }
             (0x80 | 0x90, _) => st.voices.iter_mut().filter(|v| v.active && v.key == e[1]).for_each(|v| v.releasing = true),
+            (0xB0, _) if e[1] == crate::CC_GANANCIA => st.cc_gain = Some(e[2]),
+            (0xB0, _) if e[1] == crate::CC_ATAQUE => st.cc_attack = Some(e[2]),
             (0xB0, _) if e[1] >= 120 => st.voices.iter_mut().for_each(|v| v.releasing = true),
             _ => {}
         }

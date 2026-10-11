@@ -95,6 +95,31 @@ pub struct Note {
     pub len: u64,
     pub key: u8,
     pub vel: u8,
+    /// Ganancia de la nota: 100 = 0 dB (amplitud (gain/100)²), 127 ≈ +4 dB, 0 = silencio.
+    pub gain: u8,
+    /// Ataque propio de la nota: 0 = el del instrumento, 1..127 = hasta 2 s.
+    pub attack: u8,
+}
+
+/// Controladores MIDI que preceden a cada nota de una región: ganancia (General Purpose 1) y
+/// ataque (Sound Controller 4, «Attack Time»). Solo afectan a la nota que sigue.
+pub const CC_GANANCIA: u8 = 16;
+pub const CC_ATAQUE: u8 = 73;
+
+impl Note {
+    pub fn new(start: u64, len: u64, key: u8, vel: u8) -> Self {
+        Self { start, len, key, vel, gain: 100, attack: 0 }
+    }
+}
+
+/// Amplitud de la ganancia de una nota.
+pub fn ganancia_nota(g: u8) -> f32 {
+    (g as f32 / 100.0).powi(2)
+}
+
+/// Milisegundos del ataque de una nota (0 = el del instrumento).
+pub fn ataque_ms(a: u8) -> f32 {
+    (a as f32 / 127.0).powi(2) * 2000.0
 }
 
 /// Material de un clip: audio decodificado o notas MIDI (inmutables, compartidos).
@@ -193,7 +218,10 @@ impl Clip {
                 continue;
             }
             if (pos as i64..end as i64).contains(&on) {
-                ev.push((on - pos as i64) as usize, [0x90, n.key, n.vel.max(1)]);
+                let at = (on - pos as i64) as usize;
+                ev.push(at, [0xB0, CC_GANANCIA, n.gain.min(127)]);
+                ev.push(at, [0xB0, CC_ATAQUE, n.attack.min(127)]);
+                ev.push(at, [0x90, n.key, n.vel.max(1)]);
             }
             if (pos as i64..end as i64).contains(&off) {
                 ev.push((off - pos as i64) as usize, [0x80, n.key, 0]);
