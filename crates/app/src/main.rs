@@ -6,6 +6,7 @@ mod audioedit;
 mod chrome;
 mod curves;
 mod i18n;
+mod informes;
 mod icons;
 mod instruments;
 mod keys;
@@ -175,6 +176,7 @@ fn main() -> eframe::Result {
         }
         _ => {}
     }
+    informes::iniciar();
     let config = Config::load();
     let welcome = std::env::args().nth(1).is_none() && !config.hide_welcome;
     let dir = std::env::args().nth(1).map(PathBuf::from).or_else(|| config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));
@@ -184,13 +186,22 @@ fn main() -> eframe::Result {
     if let Some(icon) = logo_icon() {
         viewport = viewport.with_icon(icon);
     }
-    let options = eframe::NativeOptions { viewport, ..Default::default() };
+    // Sin vsync: con NVIDIA en Wayland, eglSwapBuffers espera el «frame callback» de cada ventana y con
+    // ventanas separadas (o tapadas) esa espera no termina nunca y el programa se congela. El ritmo de
+    // refresco lo limita la propia app (ver `limitar_fps`).
+    let options = eframe::NativeOptions { viewport, glow_options: eframe::egui_glow::GlowConfiguration { vsync: false, ..Default::default() }, ..Default::default() };
     // glow (OpenGL): con wgpu el redibujado se detenía en Wayland durante la reproducción.
     eframe::run_native(
         "Quantum DAW",
         options,
         Box::new(move |cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            if let Some(gl) = &cc.gl {
+                use eframe::glow::HasContext;
+                let gpu = unsafe { format!("{} · OpenGL {}", gl.get_parameter_string(eframe::glow::RENDERER), gl.get_parameter_string(eframe::glow::VERSION)) };
+                informes::registrar("INFO", &format!("GPU: {gpu}"));
+                informes::contexto("GPU", gpu);
+            }
             let mut app = App::new(dir, config, &cc.egui_ctx)?;
             app.welcome = welcome.then(Default::default);
             Ok(Box::new(app))
@@ -582,6 +593,8 @@ struct App {
     rec_midi: Vec<(u64, MidiEvent)>,
     dialog: Option<Dialog>,
     fx_window: Option<usize>,
+    /// Informe de error pendiente de enviar o descartar.
+    informe: Option<informes::Pendiente>,
     audio: AudioConfig,
     /// Dispositivos de audio conocidos (para mostrar nombres legibles).
     devices: Vec<DeviceInfo>,
@@ -594,7 +607,10 @@ impl App {
         theme(ctx);
         ctx.set_zoom_factor(if config.ui_scale > 0.0 { config.ui_scale } else { 1.0 });
         let p = Project::open_or_demo(&dir)?;
-        let (engine, streams) = Engine::start(&audio_config(&p))?;
+        let cfg = audio_config(&p);
+        let (engine, streams) = Engine::start(&cfg).inspect_err(|e| informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg))))?;
+        informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
+        informes::contexto("Audio", describir_audio(&cfg));
         let mut app = Self {
             ctx: ctx.clone(),
             midi_in: engine::connect_midi(&config.midi_port, engine.midi_tx.clone()),
@@ -681,6 +697,7 @@ impl App {
             audio: AudioConfig::default(),
             devices: engine::audio_devices(),
             rec_bits: 24,
+            informe: informes::pendiente(),
             status: String::new(),
         };
         app.apply_project(p);
@@ -714,6 +731,9 @@ impl App {
     }
 
     fn report<T>(&mut self, ok: impl Into<String>, r: anyhow::Result<T>) {
+        if let Err(e) = &r {
+            informes::registrar("ERROR", &format!("{e:#}"));
+        }
         self.status = r.map_or_else(|e| format!("Error: {e}"), |_| ok.into());
     }
 
@@ -891,7 +911,20 @@ impl App {
     fn reload(&mut self, dir: PathBuf, p: Project) -> anyhow::Result<()> {
         self.stop();
         (self.streams, self.old_graph, self.midi_in) = (vec![], None, vec![]);
-        let (engine, streams) = Engine::start(&audio_config(&p))?;
+        let cfg = audio_config(&p);
+        let (engine, streams) = match Engine::start(&cfg) {
+            Ok(v) => v,
+            Err(e) => {
+                // Si el dispositivo o formato nuevo no abre, se vuelve al que funcionaba.
+                informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg)));
+                let (engine, streams) = Engine::start(&self.audio)?;
+                (self.engine, self.streams) = (engine, streams);
+                self.dirty = true;
+                return Err(e);
+            }
+        };
+        informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
+        informes::contexto("Audio", describir_audio(&cfg));
         self.midi_in = engine::connect_midi(&self.config.midi_port, engine.midi_tx.clone());
         (self.engine, self.streams, self.dir) = (engine, streams, dir);
         self.apply_project(p);
@@ -1878,6 +1911,12 @@ fn audio_config(p: &Project) -> AudioConfig {
     AudioConfig { output: p.output_device.clone(), input: p.input_device.clone(), rate: p.sample_rate, buffer: p.buffer }
 }
 
+/// Configuración de audio legible para el registro y los informes.
+fn describir_audio(c: &AudioConfig) -> String {
+    let o = |s: &str| if s.is_empty() { "por defecto".to_string() } else { s.to_string() };
+    format!("salida {} · entrada {} · {} Hz · buffer {}", o(&c.output), o(&c.input), c.rate, c.buffer)
+}
+
 fn theme(ctx: &egui::Context) {
     ctx.set_theme(egui::Theme::Dark);
     let mut v = egui::Visuals::dark();
@@ -1911,6 +1950,10 @@ fn theme(ctx: &egui::Context) {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        informes::latido();
+        for aviso in engine::avisos() {
+            informes::registrar("AUDIO", &aviso);
+        }
         self.shortcuts(&ctx);
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         if !dropped.is_empty() {
@@ -1955,13 +1998,30 @@ impl eframe::App for App {
         self.uninstall_dialog(&ctx);
         self.video_window(&ctx);
         self.welcome_window(&ctx);
+        self.ventana_informe(&ctx);
         self.apply_deletes();
         self.write_automation();
         if self.dirty {
             self.sync();
         }
         if self.playing() || self.engine.scope_on.load(Relaxed) { ctx.request_repaint() } else { ctx.request_repaint_after(Duration::from_millis(40)) }
+        limitar_fps();
     }
+}
+
+/// Sin vsync el redibujado continuo (reproducción, analizadores) iría tan rápido como pueda la GPU:
+/// se limita a unos 60 cuadros por segundo para no gastar procesador.
+fn limitar_fps() {
+    static ULTIMO: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    const CUADRO: Duration = Duration::from_micros(16_667);
+    let Ok(mut ultimo) = ULTIMO.lock() else { return };
+    if let Some(t) = *ultimo {
+        let paso = t.elapsed();
+        if paso < CUADRO {
+            std::thread::sleep(CUADRO - paso);
+        }
+    }
+    *ultimo = Some(std::time::Instant::now());
 }
 
 #[cfg(test)]

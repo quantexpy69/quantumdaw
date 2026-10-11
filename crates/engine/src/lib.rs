@@ -411,6 +411,20 @@ fn device(input: bool, node: &str) -> Option<cpal::Device> {
     }
 }
 
+/// Errores que informa el sistema de audio (dispositivo desconectado, xruns…) para el registro de la app.
+static AVISOS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn avisar(texto: String) {
+    if let Ok(mut a) = AVISOS.lock() {
+        a.push(texto);
+    }
+}
+
+/// Avisos del sistema de audio pendientes de registrar.
+pub fn avisos() -> Vec<String> {
+    AVISOS.try_lock().map(|mut a| std::mem::take(&mut *a)).unwrap_or_default()
+}
+
 impl Engine {
     /// Abre salida y entrada con la misma frecuencia y prioridad de tiempo real.
     pub fn start(cfg: &AudioConfig) -> anyhow::Result<(Arc<Self>, Vec<cpal::Stream>)> {
@@ -435,7 +449,7 @@ impl Engine {
         let mut input_error = None;
         if let (Some(dev), Some(in_cfg)) = (in_dev, in_cfg) {
             let cb = move |d: &[f32], _: &_| d.iter().for_each(|&s| _ = in_tx.push(s));
-            match dev.build_input_stream(in_cfg, cb, |err| eprintln!("error de entrada: {err}"), None).map_err(anyhow::Error::from).and_then(|s| Ok(s.play().map(|_| s)?)) {
+            match dev.build_input_stream(in_cfg, cb, |err| avisar(format!("error de entrada: {err}")), None).map_err(anyhow::Error::from).and_then(|s| Ok(s.play().map(|_| s)?)) {
                 Ok(s) => streams.push(s),
                 Err(e) => (input_error, in_ch) = (Some(e.to_string()), 0),
             }
@@ -471,7 +485,7 @@ impl Engine {
         });
         let out_dev = device(false, &cfg.output).unwrap_or(out_dev);
         let cb = callback(engine.clone(), config.channels as usize, Rings { in_rx, rec_tx, midi_rx, midi_rec_tx, scope_tx });
-        match out_dev.build_output_stream(config, cb, |err| eprintln!("error de audio: {err}"), None) {
+        match out_dev.build_output_stream(config, cb, |err| avisar(format!("error de audio: {err}")), None) {
             Ok(s) => {
                 s.play()?;
                 streams.push(s);

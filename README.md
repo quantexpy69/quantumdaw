@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.10.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.11.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -65,6 +65,11 @@ Versión actual: **0.10.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
 - **Ventanas independientes**: mixer, biblioteca, plugins, ruteo y video pueden flotar dentro del programa o
   separarse como ventanas del sistema (por ejemplo en otro monitor) y volver a acoplarse.
 - Atajos de teclado y de rueda del ratón configurables, analizador de espectro e interfaz escalable.
+- **Informes de error**: registro en la carpeta de registros, informe automático si el programa se cierra
+  por un fallo o deja de responder (con la pila de llamadas de todos los hilos) y envío opcional a
+  quantumdaw.com; también desde **Herramientas → Enviar informe de error…**.
+- La configuración de audio (dispositivos, frecuencia y buffer) se cambia en cualquier momento con el
+  proyecto abierto; si el dispositivo nuevo no abre, vuelve al anterior.
 
 ---
 
@@ -122,6 +127,7 @@ Para crear todos los paquetes (.deb, .rpm, AppImage, .tar.gz y PKGBUILD) con pod
 Al subir una etiqueta `vX.Y.Z`, GitHub Actions publica el release con sus notas y todos los paquetes.
 
 Los proyectos se guardan en `~/Documentos/Quantum DAW/` y las preferencias en `~/.config/quantum-daw/config.json`.
+Los registros y los informes de error quedan en `~/.local/share/quantum-daw/registros/`.
 
 ## Desarrollo
 

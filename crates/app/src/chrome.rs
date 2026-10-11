@@ -249,6 +249,14 @@ impl App {
                 if item(ui, tr("Configuración de audio…"), "") {
                     self.dialog = Some(Dialog::Settings(self.audio.clone(), self.rec_bits, engine::audio_devices(), engine::midi_ports(), self.config.midi_port.clone()));
                 }
+                ui.separator();
+                if item(ui, tr("Enviar informe de error…"), "") {
+                    informes::guardar("error", tr("Informe enviado por el usuario desde el menú"), "");
+                    self.informe = informes::pendiente();
+                }
+                if item(ui, tr("Abrir carpeta de registros"), "") {
+                    informes::abrir_carpeta(&informes::carpeta());
+                }
             });
             // Botón «Inicio», pegado al borde derecho de la ventana: vuelve a la pantalla inicial.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -623,3 +623,17 @@ Cuando la pista elegida suena, Curves atenúa esta pista en esas mismas frecuenc
 INTENSIDAD	INTENSITY	INTENSIDADE
 Avanzado: todas las bandas	Advanced: all bands	Avançado: todas as bandas
 Ventanas separadas desactivadas: el driver de video nouveau se cuelga con varias ventanas OpenGL. Instala el driver de NVIDIA.	Detached windows disabled: the nouveau video driver freezes with several OpenGL windows. Install the NVIDIA driver.	Janelas separadas desativadas: o driver de vídeo nouveau trava com várias janelas OpenGL. Instale o driver da NVIDIA.
+Quantum DAW tuvo un fallo	Quantum DAW crashed	O Quantum DAW teve uma falha
+Quantum DAW dejó de responder	Quantum DAW stopped responding	O Quantum DAW parou de responder
+Informe de error	Error report	Relatório de erro
+Se guardó un informe con lo que estaba pasando. Enviarlo nos ayuda a encontrar y corregir el problema. Solo se envía este texto (sin tus audios ni proyectos).	A report of what was happening was saved. Sending it helps us find and fix the problem. Only this text is sent (none of your audio or projects).	Foi salvo um relatório do que estava acontecendo. Enviá-lo nos ajuda a encontrar e corrigir o problema. Só este texto é enviado (sem seus áudios nem projetos).
+¿Qué estabas haciendo? (opcional)	What were you doing? (optional)	O que você estava fazendo? (opcional)
+Enviar informe	Send report	Enviar relatório
+No enviar	Don't send	Não enviar
+Enviando…	Sending…	Enviando…
+Informe enviado. ¡Gracias!	Report sent. Thank you!	Relatório enviado. Obrigado!
+No se pudo enviar	Could not send	Não foi possível enviar
+Reintentar	Retry	Tentar de novo
+Abrir carpeta de registros	Open logs folder	Abrir pasta de registros
+Enviar informe de error…	Send error report…	Enviar relatório de erro…
+Informe enviado por el usuario desde el menú	Report sent by the user from the menu	Relatório enviado pelo usuário a partir do menu
