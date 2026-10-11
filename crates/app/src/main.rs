@@ -910,7 +910,13 @@ impl App {
     /// Reinicia el motor (dispositivos, frecuencia, buffer o proyecto nuevo) y carga `p`.
     fn reload(&mut self, dir: PathBuf, p: Project) -> anyhow::Result<()> {
         self.stop();
+        let habia_audio = !self.streams.is_empty();
         (self.streams, self.old_graph, self.midi_in) = (vec![], None, vec![]);
+        if habia_audio {
+            // PipeWire tarda en liberar la interfaz cuando entrada y salida son la misma placa (USB):
+            // reabrirla enseguida dejaba snd_pcm_prepare esperando para siempre y la ventana colgada.
+            std::thread::sleep(Duration::from_millis(400));
+        }
         let cfg = audio_config(&p);
         let (engine, streams) = match Engine::start(&cfg) {
             Ok(v) => v,
