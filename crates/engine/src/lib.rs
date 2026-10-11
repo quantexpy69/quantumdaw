@@ -411,6 +411,24 @@ fn device(input: bool, node: &str) -> Option<cpal::Device> {
     }
 }
 
+/// Si el dispositivo guardado (por ejemplo una interfaz USB) no está conectado, se usa el del sistema
+/// (parlantes internos, Bluetooth…). Pedirle a PipeWire un nodo que no existe deja el audio colgado.
+fn conectados(cfg: &AudioConfig) -> AudioConfig {
+    let lista = audio_devices();
+    if lista.is_empty() {
+        return cfg.clone();
+    }
+    let elegir = |id: &str, input: bool| {
+        if id.is_empty() || id == "-" || lista.iter().any(|d| d.id == id && d.input == input) {
+            id.to_string()
+        } else {
+            avisar(format!("{} «{id}» no está conectada: se usa la del sistema", if input { "La entrada" } else { "La salida" }));
+            String::new()
+        }
+    };
+    AudioConfig { output: elegir(&cfg.output, false), input: elegir(&cfg.input, true), ..cfg.clone() }
+}
+
 /// Errores que informa el sistema de audio (dispositivo desconectado, xruns…) para el registro de la app.
 static AVISOS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -428,6 +446,7 @@ pub fn avisos() -> Vec<String> {
 impl Engine {
     /// Abre salida y entrada con la misma frecuencia y prioridad de tiempo real.
     pub fn start(cfg: &AudioConfig) -> anyhow::Result<(Arc<Self>, Vec<cpal::Stream>)> {
+        let cfg = &conectados(cfg);
         let out_dev = device(false, &cfg.output).ok_or_else(|| anyhow::anyhow!("sin dispositivo de salida"))?;
         let mut config = out_dev.default_output_config()?.config();
         if cfg.rate > 0 {

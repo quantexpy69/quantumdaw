@@ -1959,6 +1959,7 @@ impl eframe::App for App {
         informes::latido(ctx.input(|i| i.viewport().focused.unwrap_or(true)));
         for aviso in engine::avisos() {
             informes::registrar("AUDIO", &aviso);
+            self.status = aviso;
         }
         self.shortcuts(&ctx);
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
