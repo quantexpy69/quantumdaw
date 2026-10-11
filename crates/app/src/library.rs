@@ -186,9 +186,11 @@ impl App {
                 }
                 // Flotar dentro del programa, ventana independiente del sistema o acoplar al lateral.
                 if ui.button(tr(if self.lib_float { "Acoplar" } else { "Flotar" })).clicked() {
-                    self.lib_float = !self.lib_float;
-                    self.config.separadas.retain(|s| s != "lib-win");
-                    self.config.save();
+                    if self.lib_float {
+                        self.acoplar("lib-win");
+                    } else {
+                        self.lib_float = true;
+                    }
                 }
                 if !self.lib_float && ui.button(tr("Ventana independiente")).on_hover_text(tr("Abre la biblioteca fuera del programa (por ejemplo en otro monitor)")).clicked() {
                     self.lib_float = true;
@@ -601,13 +603,17 @@ impl App {
     }
 
     pub fn floating_windows(&mut self, ctx: &egui::Context) {
-        if self.show_mixer && self.mixer_float {
-            let open = self.ventana(ctx, "mixer-win", tr("Mixer").into(), [1100.0, 560.0], false, |app, ui| app.mixer(ui));
-            self.show_mixer &= open;
+        // Mixer y biblioteca flotantes no dependen del panel inferior ni del lateral: abrir el piano roll
+        // ya no muestra el mixer. Cerrar la ventana la quita (y deja de estar separada).
+        if self.mixer_float && !self.ventana(ctx, "mixer-win", tr("Mixer").into(), [1100.0, 560.0], false, |app, ui| app.mixer(ui)) {
+            self.mixer_float = false;
+            self.config.separadas.retain(|s| s != "mixer-win");
+            self.config.save();
         }
-        if self.show_lib && self.lib_float {
-            let open = self.ventana(ctx, "lib-win", tr("Biblioteca").into(), [340.0, 640.0], false, |app, ui| app.library(ui));
-            self.show_lib &= open;
+        if self.lib_float && !self.ventana(ctx, "lib-win", tr("Biblioteca").into(), [340.0, 640.0], false, |app, ui| app.library(ui)) {
+            (self.lib_float, self.show_lib) = (false, false);
+            self.config.separadas.retain(|s| s != "lib-win");
+            self.config.save();
         }
     }
 }

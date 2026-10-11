@@ -612,6 +612,8 @@ impl App {
         theme(ctx);
         ctx.set_zoom_factor(if config.ui_scale > 0.0 { config.ui_scale } else { 1.0 });
         let p = Project::open_or_demo(&dir)?;
+        // El mixer y la biblioteca que quedaron en otra ventana (por ejemplo en otro monitor) vuelven a abrirse así.
+        let separadas_inicio = (config.separadas.iter().any(|s| s == "mixer-win"), config.separadas.iter().any(|s| s == "lib-win"));
         let cfg = audio_config(&p);
         let (engine, streams) = Engine::start(&cfg).inspect_err(|e| informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg))))?;
         informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
@@ -635,9 +637,9 @@ impl App {
             show_auto: false,
             show_mixer: true,
             bottom_tab: 0,
-            mixer_float: false,
+            mixer_float: separadas_inicio.0,
             show_lib: false,
-            lib_float: false,
+            lib_float: separadas_inicio.1,
             places: vec![],
             tree_cache: HashMap::new(),
             tree_open: HashSet::new(),
@@ -1898,9 +1900,11 @@ impl App {
                     self.show_mixer = false;
                 }
                 if self.bottom_tab == 0 && ui.button(tr(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" })).clicked() {
-                    self.mixer_float = !self.mixer_float;
-                    self.config.separadas.retain(|s| s != "mixer-win");
-                    self.config.save();
+                    if self.mixer_float {
+                        self.acoplar("mixer-win");
+                    } else {
+                        self.mixer_float = true;
+                    }
                 }
                 if self.bottom_tab == 0 && !self.mixer_float && ui.button(tr("Ventana independiente")).on_hover_text(tr("Abre el mixer fuera del programa (por ejemplo en otro monitor)")).clicked() {
                     self.mixer_float = true;

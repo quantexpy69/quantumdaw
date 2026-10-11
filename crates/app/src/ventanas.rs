@@ -37,12 +37,25 @@ impl App {
         self.config.save();
     }
 
+    /// Devuelve la ventana a su sitio dentro del programa: el mixer al panel inferior y la biblioteca al
+    /// lateral; el resto queda como ventana flotante dentro del programa.
+    pub fn acoplar(&mut self, id: &str) {
+        self.config.separadas.retain(|s| s != id);
+        match id {
+            "mixer-win" => (self.mixer_float, self.show_mixer, self.bottom_tab) = (false, true, 0),
+            "lib-win" => (self.lib_float, self.show_lib) = (false, true),
+            _ => {}
+        }
+        self.config.save();
+    }
+
     /// Muestra la ventana `id`: flotante dentro del programa o separada como ventana del sistema.
     /// Devuelve `false` si se cerró. `scroll` envuelve el contenido en una zona desplazable.
     pub fn ventana(&mut self, ctx: &egui::Context, id: &'static str, titulo: String, tam: [f32; 2], scroll: bool, contenido: impl FnOnce(&mut Self, &mut egui::Ui)) -> bool {
         let mut contenido = Some(contenido);
         let (mut abierta, mut alternar) = (true, false);
-        if self.separada(id) {
+        let separada = self.separada(id);
+        if separada {
             let mut builder = egui::ViewportBuilder::default().with_title(format!("{titulo} — Quantum DAW")).with_inner_size(tam).with_min_inner_size([240.0, 160.0]).with_app_id("quantum-daw");
             if let Some(icono) = icono_ventana() {
                 builder = builder.with_icon(icono);
@@ -85,7 +98,8 @@ impl App {
             ventana.show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button(tr("Separar ventana")).on_hover_text(tr("Abre esta ventana fuera del programa (por ejemplo en otro monitor)")).clicked() {
+                        let b = egui::Button::new(RichText::new(tr("Sacar a otra pantalla")).color(BG).strong()).fill(ACCENT);
+                        if ui.add(b).on_hover_text(tr("Abre esta ventana como ventana propia del sistema: puedes llevarla a otro monitor y volver a acoplarla")).clicked() {
                             alternar = true;
                         }
                     });
@@ -95,7 +109,9 @@ impl App {
                 }
             });
         }
-        if alternar {
+        if alternar && separada {
+            self.acoplar(id);
+        } else if alternar {
             self.alternar_separada(id);
         }
         abierta

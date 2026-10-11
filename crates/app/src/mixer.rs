@@ -45,8 +45,12 @@ impl App {
             if ui.button(tr("Nueva pista…")).clicked() {
                 self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
             }
-            if ui.button(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" }).clicked() {
-                self.mixer_float = !self.mixer_float;
+            if ui.button(tr(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" })).clicked() {
+                if self.mixer_float {
+                    self.acoplar("mixer-win");
+                } else {
+                    self.mixer_float = true;
+                }
             }
             if ui.button(tr("Reiniciar picos de todos los canales")).clicked() {
                 self.peaks.iter_mut().for_each(|p| *p = 0.0);
