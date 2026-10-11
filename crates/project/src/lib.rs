@@ -203,6 +203,9 @@ pub struct FxState {
     pub kind: String,
     pub params: Vec<f32>,
     pub bypass: bool,
+    /// Sidechain (Curves): posición de la pista clave.
+    #[serde(default)]
+    pub sidechain: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]

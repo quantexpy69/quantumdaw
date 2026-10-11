@@ -23,17 +23,25 @@ impl App {
     }
 
     /// Orden de proceso: cada canal antes que los canales a los que envía (orden topológico).
+    /// Pistas que dependen de la pista `i`: los destinos de sus envíos y las que la usan como sidechain.
+    fn dependientes(&self, i: usize) -> Vec<usize> {
+        let id = self.s.tracks[i].id;
+        let mut v: Vec<usize> = self.s.tracks[i].sends.iter().filter_map(|s| self.index_of(s.0)).collect();
+        v.extend((0..self.s.tracks.len()).filter(|&j| j != i && self.s.tracks[j].fx.iter().any(|f| f.sidechain.load(Relaxed) == id)));
+        v
+    }
+
     pub fn process_order(&self) -> Vec<usize> {
         let n = self.s.tracks.len();
         let mut incoming = vec![0; n];
-        for t in &self.s.tracks {
-            t.sends.iter().filter_map(|s| self.index_of(s.0)).for_each(|j| incoming[j] += 1);
+        for i in 0..n {
+            self.dependientes(i).into_iter().for_each(|j| incoming[j] += 1);
         }
         let mut ready: Vec<usize> = (0..n).filter(|&i| incoming[i] == 0).rev().collect();
         let mut order = vec![];
         while let Some(i) = ready.pop() {
             order.push(i);
-            for j in self.s.tracks[i].sends.iter().filter_map(|s| self.index_of(s.0)) {
+            for j in self.dependientes(i) {
                 incoming[j] -= 1;
                 if incoming[j] == 0 {
                     ready.push(j);

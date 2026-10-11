@@ -617,3 +617,9 @@ Abre la biblioteca fuera del programa (por ejemplo en otro monitor)	Opens the li
 Abre el mixer fuera del programa (por ejemplo en otro monitor)	Opens the mixer outside the app (for example on another monitor)	Abre o mixer fora do programa (por exemplo em outro monitor)
 Acoplar	Dock	Acoplar
 Flotar	Float	Flutuar
+Sidechain	Sidechain	Sidechain
+Ninguno	None	Nenhum
+Cuando la pista elegida suena, Curves atenúa esta pista en esas mismas frecuencias para dejarle espacio	When the chosen track plays, Curves attenuates this track at those same frequencies to make room for it	Quando a faixa escolhida toca, o Curves atenua esta faixa nessas mesmas frequências para abrir espaço
+INTENSIDAD	INTENSITY	INTENSIDADE
+Avanzado: todas las bandas	Advanced: all bands	Avançado: todas as bandas
+Ventanas separadas desactivadas: el driver de video nouveau se cuelga con varias ventanas OpenGL. Instala el driver de NVIDIA.	Detached windows disabled: the nouveau video driver freezes with several OpenGL windows. Install the NVIDIA driver.	Janelas separadas desativadas: o driver de vídeo nouveau trava com várias janelas OpenGL. Instale o driver da NVIDIA.

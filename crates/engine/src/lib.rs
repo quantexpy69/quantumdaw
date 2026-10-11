@@ -10,7 +10,7 @@ mod tempo;
 
 pub use devices::{DeviceInfo, MidiConnections, audio_devices, connect_midi, midi_ports};
 pub use dsp::{detect_bpm, find_peaks, find_silences, peak, pitch_shift, stretch};
-pub use fx::{BANDAS, Fx, FxKind, curves_response, eq_response, frecuencia_banda};
+pub use fx::{BANDAS, Fx, FxKind, curves_banda, curves_response, eq_response, frecuencia_banda};
 pub use io::{decode, resample};
 pub use sampler::Sampler;
 pub use synth::{SYNTH_PARAMS, Synth};
@@ -318,6 +318,8 @@ pub struct Node {
     pub click: bool,
     /// Señal recibida de otros canales en el bloque actual (solo la toca el hilo de audio).
     pub recv: Mutex<Vec<[f32; 2]>>,
+    /// Señal de la pista tras sus efectos (antes del fader), para el sidechain de otras pistas.
+    pub salida: Mutex<Vec<[f32; 2]>>,
 }
 
 impl Node {
@@ -548,7 +550,18 @@ impl Engine {
                 p.in_meter.max(peak);
             }
             for fx in &node.fx {
-                fx.process(tmp, sr, bpm_now, offline);
+                // Sidechain: la señal de otra pista (ya procesada en este bloque) como clave.
+                let slot = fx.clave.load(Relaxed);
+                let mut clave = [[0f32; 2]; BLOCK];
+                let con_clave = slot > 0
+                    && graph.get(slot - 1).and_then(|n| n.salida.try_lock().ok()).is_some_and(|s| {
+                        clave[..tmp.len()].copy_from_slice(&s[..tmp.len()]);
+                        true
+                    });
+                fx.process_clave(tmp, sr, bpm_now, offline, con_clave.then_some(&clave[..tmp.len()]));
+            }
+            if let Ok(mut s) = node.salida.try_lock() {
+                s[..tmp.len()].copy_from_slice(tmp);
             }
             // Render previo al fader de una pista: sin fader, panorama, automatización ni envíos.
             if offline && self.prefader.load(Relaxed) && only.is_some_and(|o| Arc::ptr_eq(o, &node.params)) {

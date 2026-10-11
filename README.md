@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.9.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.10.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -40,7 +40,8 @@ Versión actual: **0.9.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
 
 ### Plugins QUANTUM
 - **QUANTUM Curves**: EQ de 7 bandas con analizador en vivo, nodos arrastrables, detección automática de
-  frecuencias molestas, supresor dinámico de resonancias y presets (batería, guitarras, voces, coros, synth).
+  frecuencias molestas, supresor dinámico de resonancias, **sidechain** (otra pista le abre espacio en sus
+  frecuencias), curvas por banda, vúmetros IN/OUT y presets (batería, guitarras, voces, coros, synth).
 - EQ de 3 bandas paramétrico, compresor (ataque, release, rodilla, mezcla paralela), delay (ping-pong,
   filtros, sincronía al tempo), reverb (pre-delay, anchura), saturación (suave, dura, válvula) y
   **QUANTUM Tune** (afinación automática o manual de voces).

@@ -79,7 +79,12 @@ fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
 }
 
 /// Perilla de consola: escala logarítmica en rangos amplios (frecuencias, tiempos), color del plugin.
-fn param_knob(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (&str, f32, f32, f32), a: &AtomicF32) {
+fn param_knob(ui: &mut egui::Ui, kind: Option<FxKind>, def: (&str, f32, f32, f32), a: &AtomicF32) {
+    perilla(ui, kind, def, a, 58.0);
+}
+
+/// Perilla de un parámetro con su valor y su nombre, del tamaño indicado.
+pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (&str, f32, f32, f32), a: &AtomicF32, size: f32) {
     let log = min > 0.0 && max / min > 10.0;
     let to_t = |v: f32| {
         if log { (v / min).ln() / (max / min).ln() } else { (v - min) / (max - min) }
@@ -88,11 +93,11 @@ fn param_knob(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (&
         if log { min * (max / min).powf(t) } else { min + t * (max - min) }
     };
     let color = kind_color(kind);
-    ui.allocate_ui(vec2(84.0, 102.0), |ui| {
+    ui.allocate_ui(vec2(size + 26.0, size + 44.0), |ui| {
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             let mut t = to_t(a.get());
-            let r = widgets::console_knob(ui, &mut t, to_t(def), color);
+            let r = widgets::console_knob_size(ui, &mut t, to_t(def), color, size);
             if r.dragged() || r.double_clicked() {
                 let v = from_t(t);
                 a.set(if DISCRETE.contains(&name) { v.round() } else { v });
@@ -186,14 +191,17 @@ impl App {
         enum Act {
             Add(FxKind),
             Detectar(usize),
+            Sincronizar,
             Remove(usize),
             Up(usize),
             MyPlugins,
         }
         let (mut act, sr) = (None, self.engine.sample_rate as f32);
         let title = format!("QUANTUM · {}", self.s.tracks[i].name);
-        let open = self.ventana(ctx, "fx", title, [620.0, 860.0], true, |app, ui| {
+        let open = self.ventana(ctx, "fx", title, [860.0, 900.0], true, |app, ui| {
             let t = &app.s.tracks[i];
+            // Pistas que pueden ser clave del sidechain de Curves (todas menos esta).
+            let pistas: Vec<(u64, String)> = app.s.tracks.iter().filter(|x| x.id != t.id).map(|x| (x.id, x.name.clone())).collect();
             let plugin = |ui: &mut egui::Ui,
                           name: &str,
                           kind: Option<FxKind>,
@@ -237,20 +245,30 @@ impl App {
                     match (kind, fx, j) {
                         // Curves: presets, detección y visor interactivo.
                         (Some(FxKind::Curves), Some(fx), Some(j)) => {
-                            let mut detectar = false;
-                            curves::barra(ui, fx, &mut detectar);
+                            let (mut detectar, mut sincronizar) = (false, false);
+                            curves::barra(ui, fx, &pistas, &mut detectar, &mut sincronizar);
                             if detectar {
                                 *act = Some(Act::Detectar(j));
+                            }
+                            if sincronizar {
+                                *act = Some(Act::Sincronizar);
                             }
                             curves::visor(ui, fx, sr, accent);
                         }
                         _ => display(ui, kind, &values, readout, accent, sr),
                     }
-                    ui.horizontal_wrapped(|ui| {
-                        for (k, def) in defs.iter().enumerate() {
-                            param_knob(ui, kind, *def, &params[k]);
-                        }
-                    });
+                    // Curves muestra solo los controles esenciales; el resto en «Avanzado».
+                    let todos = match (kind, fx) {
+                        (Some(FxKind::Curves), Some(fx)) => curves::controles(ui, fx, accent),
+                        _ => true,
+                    };
+                    if todos {
+                        ui.horizontal_wrapped(|ui| {
+                            for (k, def) in defs.iter().enumerate() {
+                                param_knob(ui, kind, *def, &params[k]);
+                            }
+                        });
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM)));
                 });
                 ui.add_space(6.0);
@@ -302,6 +320,7 @@ impl App {
         match act {
             Some(Act::Add(k)) => self.add_fx(i, k),
             Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
+            Some(Act::Sincronizar) => self.dirty = true,
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),
             Some(Act::Remove(j)) => {
                 self.edit();

@@ -282,8 +282,10 @@ pub fn mini_knob(ui: &mut egui::Ui, v: &mut f32, min: f32, max: f32, default: f3
 }
 
 /// Perilla de consola: marcas alrededor, pista oscura, arco de color, botón con brillo y puntero.
-pub fn console_knob(ui: &mut egui::Ui, t: &mut f32, default: f32, color: Color32) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(58.0, 58.0), Sense::click_and_drag());
+/// Perilla de consola de cualquier tamaño (la grande central de Curves mide 120).
+pub fn console_knob_size(ui: &mut egui::Ui, t: &mut f32, default: f32, color: Color32, size: f32) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(size, size), Sense::click_and_drag());
+    let k = size / 58.0;
     if resp.dragged() {
         let fine = if ui.input(|i| i.modifiers.shift) { 0.2 } else { 1.0 };
         *t = (*t - resp.drag_delta().y / 180.0 * fine).clamp(0.0, 1.0);
@@ -291,26 +293,26 @@ pub fn console_knob(ui: &mut egui::Ui, t: &mut f32, default: f32, color: Color32
     if resp.double_clicked() {
         *t = default;
     }
-    let (c, r) = (rect.center(), 19.0);
+    let (c, r) = (rect.center(), 19.0 * k);
     let angle = |x: f32| (-135.0 + 270.0 * x).to_radians();
     let at = |a: f32, rad: f32| c + vec2(a.sin(), -a.cos()) * rad;
-    let arc = |a0: f32, a1: f32, rad: f32| -> Vec<egui::Pos2> { (0..=36).map(|i| at(a0 + (a1 - a0) * i as f32 / 36.0, rad)).collect() };
+    let arc = |a0: f32, a1: f32, rad: f32| -> Vec<egui::Pos2> { (0..=48).map(|i| at(a0 + (a1 - a0) * i as f32 / 48.0, rad)).collect() };
     let p = ui.painter();
     let hot = resp.hovered() || resp.dragged();
-    for k in 0..=10 {
-        let a = angle(k as f32 / 10.0);
-        p.line_segment([at(a, r + 7.0), at(a, r + 10.0)], Stroke::new(if k % 5 == 0 { 1.6 } else { 1.0 }, TEXT_DIM));
+    for m in 0..=10 {
+        let a = angle(m as f32 / 10.0);
+        p.line_segment([at(a, r + 7.0 * k), at(a, r + 10.0 * k)], Stroke::new(if m % 5 == 0 { 1.6 } else { 1.0 } * k.sqrt(), TEXT_DIM));
     }
-    p.add(egui::Shape::line(arc(angle(0.0), angle(1.0), r + 3.0), Stroke::new(4.0, BG)));
-    p.add(egui::Shape::line(arc(angle(default), angle(*t), r + 3.0), Stroke::new(4.0, color)));
+    p.add(egui::Shape::line(arc(angle(0.0), angle(1.0), r + 3.0 * k), Stroke::new(4.0 * k, BG)));
+    p.add(egui::Shape::line(arc(angle(default), angle(*t), r + 3.0 * k), Stroke::new(4.0 * k, color)));
     if hot {
-        p.circle_filled(c, r + 1.0, color.gamma_multiply(0.18));
+        p.circle_filled(c, r + k, color.gamma_multiply(0.18));
     }
-    p.circle_filled(c, r - 1.0, Color32::from_gray(48));
-    p.circle_filled(c - vec2(0.0, 2.5), r - 6.0, Color32::from_gray(64));
-    p.circle_stroke(c, r - 1.0, Stroke::new(1.0, Color32::from_gray(100)));
-    p.line_segment([at(angle(*t), 4.0), at(angle(*t), r - 4.0)], Stroke::new(3.0, color));
-    p.circle_filled(c, 2.5, color);
+    p.circle_filled(c, r - k, Color32::from_gray(48));
+    p.circle_filled(c - vec2(0.0, 2.5 * k), r - 6.0 * k, Color32::from_gray(64));
+    p.circle_stroke(c, r - k, Stroke::new(1.0, Color32::from_gray(100)));
+    p.line_segment([at(angle(*t), 4.0 * k), at(angle(*t), r - 4.0 * k)], Stroke::new(3.0 * k.sqrt(), color));
+    p.circle_filled(c, 2.5 * k.sqrt(), color);
     resp.on_hover_text(tr("Arrastra arriba/abajo (Shift: ajuste fino) · doble clic: valor por defecto"))
 }
 

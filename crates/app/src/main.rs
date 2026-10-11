@@ -797,6 +797,9 @@ impl App {
         let ids: Vec<u64> = tracks.iter().map(|t| t.id).collect();
         for (t, ts) in tracks.iter_mut().zip(&p.tracks) {
             t.sends = ts.sends.iter().filter_map(|&(j, g)| Some((*ids.get(j)?, g))).collect();
+            for (fx, fs) in t.fx.iter().zip(&ts.fx) {
+                fx.sidechain.store(fs.sidechain.and_then(|j| ids.get(j).copied()).unwrap_or(0), Relaxed);
+            }
         }
         self.xfade_ms = p.comp_xfade_ms;
         // Los instrumentos reales se cargan en segundo plano (o se descargan si faltan).
@@ -847,7 +850,11 @@ impl App {
             (ts.mute, ts.solo, ts.monitor) = (p.mute.load(Relaxed), p.solo.load(Relaxed), p.monitor.load(Relaxed));
             ts.in_gain_db = widgets::db(p.in_gain.get());
             ts.clips = t.clips.iter().map(|c| clip_state(c, sr)).collect();
-            ts.fx = t.fx.iter().map(|f| FxState { kind: f.kind.name().into(), params: f.params.iter().map(|p| p.get()).collect(), bypass: f.bypass.load(Relaxed) }).collect();
+            ts.fx = t
+                .fx
+                .iter()
+                .map(|f| FxState { kind: f.kind.name().into(), params: f.params.iter().map(|p| p.get()).collect(), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)) })
+                .collect();
             ts.synth = t.synth.as_ref().map(|s| s.params.iter().map(|p| p.get()).collect()).unwrap_or_default();
             (ts.instrument, ts.icon) = (t.instrument.clone(), t.icon.clone());
             if let Some(v) = &t.video {
@@ -1082,9 +1089,18 @@ impl App {
                 bus: self.s.tracks.iter().any(|o| o.sends.iter().any(|s| s.0 == t.id)),
                 click: t.kind == TrackKind::Click,
                 recv: Node::recv_buffer(),
+                salida: Node::recv_buffer(),
             }
         });
-        self.old_graph = Some(self.engine.graph.swap(Arc::new(graph.collect())));
+        let graph: Vec<Node> = graph.collect();
+        // Sidechain: cada Curves lee la señal de su pista clave por su posición en el grafo.
+        for &i in &order {
+            for fx in &self.s.tracks[i].fx {
+                let id = fx.sidechain.load(Relaxed);
+                fx.clave.store(if id == 0 { 0 } else { slot(id).map_or(0, |k| k + 1) }, Relaxed);
+            }
+        }
+        self.old_graph = Some(self.engine.graph.swap(Arc::new(graph)));
         self.engine.tempo.store(Arc::new(self.s.tempo.clone()));
         self.dirty = false;
     }

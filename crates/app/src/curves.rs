@@ -2,7 +2,7 @@
 //! arrastrables), presets por instrumento y detección automática de frecuencias molestas.
 use crate::*;
 use egui::{Align2, FontId, Mesh, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
-use engine::{BANDAS, curves_response, frecuencia_banda};
+use engine::{BANDAS, curves_banda, curves_response, frecuencia_banda};
 use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Presets: corte graves, graves dB/Hz, banda 1 dB/Hz/Q, banda 2 dB/Hz/Q, banda 3 dB/Hz/Q,
@@ -29,6 +29,16 @@ const NODOS: [(&str, Option<usize>, usize, Option<usize>); 7] = [
     ("Corte agudos", None, 14, None),
 ];
 const ROJO: Color32 = Color32::from_rgb(0xFF, 0x4D, 0x6D);
+/// Color de cada banda (curva propia y nodo).
+const COLORES: [Color32; 7] = [
+    Color32::from_rgb(0x9A, 0xA4, 0xB8),
+    Color32::from_rgb(0xFF, 0xB0, 0x20),
+    Color32::from_rgb(0x3D, 0xDC, 0x84),
+    Color32::from_rgb(0x2E, 0xD8, 0xC3),
+    Color32::from_rgb(0x5B, 0x9C, 0xFF),
+    Color32::from_rgb(0xB0, 0x8C, 0xF2),
+    Color32::from_rgb(0x9A, 0xA4, 0xB8),
+];
 
 fn fijar(fx: &engine::Fx, k: usize, v: f32) {
     let (_, min, max, _) = FxKind::Curves.params()[k];
@@ -99,8 +109,29 @@ pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32) {
             p.rect_filled(Rect::from_x_y_ranges(x - ancho / 2.0..=x + ancho / 2.0, y_eq(0.0)..=y_eq(-red)), 1.0, ROJO.gamma_multiply(0.75));
         }
     }
-    // Curva del EQ.
+    // Curva de cada banda activa (relleno suave en su color) y curva total del EQ.
     let valores: Vec<f32> = fx.params.iter().map(|a| a.get()).collect();
+    for (b, (_, ganancia, freq, _)) in NODOS.iter().enumerate() {
+        let activa = ganancia.map_or(if b == 0 { valores[*freq] > 21.0 } else { valores[*freq] < 19_900.0 }, |k| valores[k].abs() > 0.05);
+        if !activa {
+            continue;
+        }
+        let col = COLORES[b];
+        let pts: Vec<Pos2> = (0..=160).map(|k| r.left() + k as f32 / 160.0 * r.width()).map(|x| pos2(x, y_eq(curves_banda(&valores, b, f_de(x), sr)))).collect();
+        let mut malla = Mesh::default();
+        let cero = y_eq(0.0);
+        for w in pts.windows(2) {
+            let base = malla.vertices.len() as u32;
+            let tinte = Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 38);
+            for pt in [w[0], w[1], pos2(w[1].x, cero), pos2(w[0].x, cero)] {
+                malla.colored_vertex(pt, tinte);
+            }
+            malla.add_triangle(base, base + 1, base + 2);
+            malla.add_triangle(base, base + 2, base + 3);
+        }
+        p.add(malla);
+        p.add(egui::Shape::line(pts, Stroke::new(1.3, col.gamma_multiply(0.9))));
+    }
     let curva: Vec<Pos2> = (0..=220).map(|k| r.left() + k as f32 / 220.0 * r.width()).map(|x| pos2(x, y_eq(curves_response(&valores, f_de(x), sr)))).collect();
     p.add(egui::Shape::line(curva, Stroke::new(2.5, color)));
     // Nodos arrastrables: horizontal = frecuencia, vertical = ganancia, rueda = Q, doble clic = 0 dB.
@@ -131,7 +162,7 @@ pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32) {
             }
         }
         let activo = resp.hovered() || resp.dragged();
-        let relleno = if ganancia.is_some_and(|k| valores[k].abs() > 0.05) || (*freq == 0 && f > 21.0) || (*freq == 14 && f < 19_900.0) { color } else { Color32::from_gray(70) };
+        let relleno = if ganancia.is_some_and(|k| valores[k].abs() > 0.05) || (*freq == 0 && f > 21.0) || (*freq == 14 && f < 19_900.0) { COLORES[n] } else { Color32::from_gray(70) };
         p.circle_filled(c, if activo { 10.0 } else { 8.0 }, relleno);
         p.circle_stroke(c, if activo { 10.0 } else { 8.0 }, Stroke::new(1.5, Color32::WHITE.gamma_multiply(0.8)));
         p.text(c, Align2::CENTER_CENTER, (n + 1).to_string(), FontId::proportional(10.0), BG);
@@ -241,11 +272,11 @@ impl App {
     }
 }
 
-/// Encabezado de Curves: selector de presets y detección automática.
-pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, detectar: &mut bool) {
-    ui.horizontal(|ui| {
+/// Encabezado de Curves: presets, detección automática y pista clave del sidechain.
+pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, String)], detectar: &mut bool, sincronizar: &mut bool) {
+    ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(tr("Preset")).size(12.0).color(TEXT_DIM));
-        egui::ComboBox::from_id_salt(("curves-preset", fx as *const _ as usize)).selected_text(tr("Elegir…")).width(190.0).show_ui(ui, |ui| {
+        egui::ComboBox::from_id_salt(("curves-preset", fx as *const _ as usize)).selected_text(tr("Elegir…")).width(170.0).show_ui(ui, |ui| {
             for (i, (nombre, _)) in PRESETS.iter().enumerate() {
                 if ui.selectable_label(false, tr(nombre)).clicked() {
                     aplicar_preset(fx, i);
@@ -256,5 +287,89 @@ pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, detectar: &mut bool) {
         if ui.add(boton).on_hover_text(tr("Analiza la pista y atenúa las frecuencias que sobresalen (resonancias molestas)")).clicked() {
             *detectar = true;
         }
+        // Sidechain: otra pista (por ejemplo la voz) hace que esta le abra espacio en sus frecuencias.
+        ui.label(RichText::new(tr("Sidechain")).size(12.0).color(TEXT_DIM));
+        let actual = fx.sidechain.load(Relaxed);
+        let nombre = pistas.iter().find(|p| p.0 == actual).map_or_else(|| tr("Ninguno").to_string(), |p| p.1.clone());
+        egui::ComboBox::from_id_salt(("curves-sc", fx as *const _ as usize))
+            .selected_text(nombre)
+            .width(130.0)
+            .show_ui(ui, |ui| {
+                for (id, nombre) in std::iter::once((0, tr("Ninguno").to_string())).chain(pistas.iter().cloned()) {
+                    if ui.selectable_label(actual == id, nombre).clicked() && actual != id {
+                        fx.sidechain.store(id, Relaxed);
+                        *sincronizar = true;
+                    }
+                }
+            })
+            .response
+            .on_hover_text(tr("Cuando la pista elegida suena, Curves atenúa esta pista en esas mismas frecuencias para dejarle espacio"));
     });
+}
+
+/// Vúmetro analógico con aguja (nivel RMS en dB VU, -20 a +3).
+fn vumetro(ui: &mut egui::Ui, id: egui::Id, etiqueta: &str, nivel: f32) {
+    let (rect, _) = ui.allocate_exact_size(vec2(118.0, 78.0), Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, widgets::rr(8.0), Color32::from_rgb(0xF2, 0xE6, 0xC8));
+    p.rect_stroke(rect, widgets::rr(8.0), Stroke::new(2.0, Color32::from_gray(40)), StrokeKind::Inside);
+    // 0 VU = -18 dBFS RMS; la aguja tiene inercia (≈ 300 ms) como un VU real.
+    let vu = 20.0 * (nivel.max(1e-6)).log10() + 18.0;
+    let objetivo = ((vu + 20.0) / 23.0).clamp(0.0, 1.0);
+    let t = ui.ctx().animate_value_with_time(id, objetivo, 0.3);
+    let centro = pos2(rect.center().x, rect.bottom() - 10.0);
+    let radio = 56.0;
+    let ang = |x: f32| (-50.0 + 100.0 * x).to_radians();
+    let punto = |x: f32, r: f32| centro + vec2(ang(x).sin(), -ang(x).cos()) * r;
+    for (db, marca) in [(-20.0, "20"), (-10.0, "10"), (-7.0, "7"), (-5.0, "5"), (-3.0, "3"), (0.0, "0"), (3.0, "+3")] {
+        let x = (db + 20.0) / 23.0;
+        let col = if db > 0.0 { Color32::from_rgb(0xC8, 0x2A, 0x2A) } else { Color32::from_gray(40) };
+        p.line_segment([punto(x, radio - 8.0), punto(x, radio - 2.0)], Stroke::new(1.4, col));
+        p.text(punto(x, radio + 4.0), Align2::CENTER_BOTTOM, marca, FontId::proportional(8.0), col);
+    }
+    p.add(egui::Shape::line((0..=30).map(|k| punto(20.0 / 23.0 + k as f32 / 30.0 * 3.0 / 23.0, radio - 5.0)).collect(), Stroke::new(3.0, Color32::from_rgb(0xC8, 0x2A, 0x2A))));
+    p.line_segment([centro, punto(t, radio - 1.0)], Stroke::new(1.8, Color32::from_gray(25)));
+    p.circle_filled(centro, 4.0, Color32::from_gray(30));
+    p.text(pos2(rect.center().x, rect.bottom() - 22.0), Align2::CENTER_CENTER, "VU", FontId::proportional(10.0), Color32::from_gray(60));
+    p.text(rect.left_top() + vec2(6.0, 4.0), Align2::LEFT_TOP, etiqueta, FontId::proportional(9.5), Color32::from_gray(60));
+}
+
+/// Controles esenciales: vúmetros de entrada y salida, perilla grande de intensidad en el centro y
+/// sensibilidad, sidechain, salida y mezcla. Devuelve si hay que mostrar todos los controles.
+pub fn controles(ui: &mut egui::Ui, fx: &engine::Fx, color: Color32) -> bool {
+    let defs = FxKind::Curves.params();
+    let clave = egui::Id::new(("curves-avanzado", fx as *const _ as usize));
+    let mut avanzado = ui.data(|d| d.get_temp::<bool>(clave).unwrap_or(false));
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        let ancho = ui.available_width();
+        // Centrado: vúmetro · 2 perillas · perilla grande · 2 perillas · vúmetro.
+        let total = 118.0 * 2.0 + 84.0 * 4.0 + 146.0 + 6.0 * 12.0;
+        ui.add_space(((ancho - total) / 2.0).max(0.0));
+        vumetro(ui, clave.with("in"), "IN", fx.vu[0].get());
+        ui.vertical(|ui| {
+            plugins::perilla(ui, Some(FxKind::Curves), defs[16], &fx.params[16], 58.0);
+        });
+        ui.vertical(|ui| {
+            plugins::perilla(ui, Some(FxKind::Curves), defs[19], &fx.params[19], 58.0);
+        });
+        ui.vertical(|ui| {
+            ui.label(RichText::new(tr("INTENSIDAD")).size(11.0).strong().color(color));
+            plugins::perilla(ui, Some(FxKind::Curves), defs[15], &fx.params[15], 120.0);
+        });
+        ui.vertical(|ui| {
+            plugins::perilla(ui, Some(FxKind::Curves), defs[17], &fx.params[17], 58.0);
+        });
+        ui.vertical(|ui| {
+            plugins::perilla(ui, Some(FxKind::Curves), defs[18], &fx.params[18], 58.0);
+        });
+        vumetro(ui, clave.with("out"), "OUT", fx.vu[1].get());
+    });
+    ui.horizontal(|ui| {
+        if ui.selectable_label(avanzado, RichText::new(tr("Avanzado: todas las bandas")).size(12.0)).clicked() {
+            avanzado = !avanzado;
+            ui.data_mut(|d| d.insert_temp(clave, avanzado));
+        }
+    });
+    avanzado
 }

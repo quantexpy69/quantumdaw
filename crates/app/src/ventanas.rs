@@ -3,14 +3,32 @@
 //! video usan este mismo mecanismo; las ventanas separadas se recuerdan entre sesiones.
 use crate::*;
 use egui::{RichText, vec2};
+use std::sync::OnceLock;
+
+/// Con el driver libre nouveau (GPUs NVIDIA sin driver propietario) abrir un segundo contexto OpenGL
+/// puede colgar el kernel y todo el equipo: en ese caso las ventanas nunca se separan.
+fn driver_inestable() -> bool {
+    static INESTABLE: OnceLock<bool> = OnceLock::new();
+    *INESTABLE.get_or_init(|| cfg!(target_os = "linux") && std::path::Path::new("/sys/module/nouveau").exists() && std::env::var_os("QUANTUM_VENTANAS_SEPARADAS").is_none())
+}
+
+/// El ícono se decodifica una sola vez y no en cada cuadro.
+fn icono_ventana() -> Option<Arc<egui::IconData>> {
+    static ICONO: OnceLock<Option<Arc<egui::IconData>>> = OnceLock::new();
+    ICONO.get_or_init(|| logo_icon().map(Arc::new)).clone()
+}
 
 impl App {
     fn separada(&self, id: &str) -> bool {
-        self.config.separadas.iter().any(|s| s == id)
+        !driver_inestable() && self.config.separadas.iter().any(|s| s == id)
     }
 
     /// Separa o acopla una ventana y lo recuerda.
     pub fn alternar_separada(&mut self, id: &str) {
+        if driver_inestable() {
+            self.status = tr("Ventanas separadas desactivadas: el driver de video nouveau se cuelga con varias ventanas OpenGL. Instala el driver de NVIDIA.").into();
+            return;
+        }
         if self.separada(id) {
             self.config.separadas.retain(|s| s != id);
         } else {
@@ -26,8 +44,8 @@ impl App {
         let (mut abierta, mut alternar) = (true, false);
         if self.separada(id) {
             let mut builder = egui::ViewportBuilder::default().with_title(format!("{titulo} — Quantum DAW")).with_inner_size(tam).with_min_inner_size([240.0, 160.0]).with_app_id("quantum-daw");
-            if let Some(icono) = logo_icon() {
-                builder = builder.with_icon(Arc::new(icono));
+            if let Some(icono) = icono_ventana() {
+                builder = builder.with_icon(icono);
             }
             ctx.show_viewport_immediate(egui::ViewportId::from_hash_of(("ventana", id)), builder, |ui, _| {
                 egui::Panel::top(egui::Id::new(("barra-ventana", id))).frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {

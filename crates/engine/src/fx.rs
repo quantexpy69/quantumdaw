@@ -6,7 +6,7 @@ use std::{
     f32::consts::{PI, TAU},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering::Relaxed},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering::Relaxed},
     },
 };
 
@@ -111,6 +111,7 @@ impl FxKind {
                 ("Sensibilidad", 0.0, 1.0, 0.5),
                 ("Salida dB", -12.0, 12.0, 0.0),
                 ("Mezcla", 0.0, 1.0, 1.0),
+                ("Sidechain", 0.0, 1.0, 0.5),
             ],
             Self::Tune => {
                 &[("Tonalidad", 0.0, 11.0, 0.0), ("Escala", 0.0, 2.0, 0.0), ("Velocidad ms", 0.0, 200.0, 20.0), ("Mezcla", 0.0, 1.0, 1.0), ("Modo", 0.0, 1.0, 0.0), ("Nota manual", 0.0, 11.0, 0.0)]
@@ -156,6 +157,11 @@ pub struct Fx {
     pub espectro: Vec<AtomicF32>,
     pub reduccion: Vec<AtomicF32>,
     pub promedio: Vec<AtomicF32>,
+    /// Curves con sidechain: pista clave (id de la app, 0 = ninguna) y su posición en el grafo + 1.
+    pub sidechain: AtomicU64,
+    pub clave: AtomicUsize,
+    /// Curves: nivel RMS de entrada y de salida del último bloque (para los vúmetros).
+    pub vu: [AtomicF32; 2],
     state: Mutex<State>,
 }
 
@@ -177,11 +183,16 @@ impl Fx {
         let params = kind.params().iter().map(|p| AtomicF32::new(p.3)).collect();
         let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
         let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
-        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, state: Mutex::new(st) }
+        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), state: Mutex::new(st) }
     }
 
     /// `bpm`: tempo actual (para el delay sincronizado).
     pub fn process(&self, buf: &mut [[f32; 2]], sr: f32, bpm: f32, offline: bool) {
+        self.process_clave(buf, sr, bpm, offline, None);
+    }
+
+    /// Como `process`, con la señal clave del sidechain (Curves).
+    pub fn process_clave(&self, buf: &mut [[f32; 2]], sr: f32, bpm: f32, offline: bool, clave: Option<&[[f32; 2]]>) {
         if self.bypass.load(Relaxed) {
             return;
         }
@@ -307,8 +318,10 @@ impl Fx {
             FxKind::Tune => self.tune(st, buf, sr, &p),
             FxKind::Curves => {
                 let co = curves_coefs(&p, sr);
-                let (salida, mezcla, cantidad, sens) = (db(p[17]), p[18], p[15], p[16]);
-                for s in buf.iter_mut() {
+                let (salida, mezcla, cantidad, sens, lateral) = (db(p[17]), p[18], p[15], p[16], if clave.is_some() { p[19] } else { 0.0 });
+                let rms = |b: &[[f32; 2]]| (b.iter().map(|s| (s[0] * s[0] + s[1] * s[1]) * 0.5).sum::<f32>() / b.len().max(1) as f32).sqrt();
+                self.vu[0].set(rms(buf));
+                for (n, s) in buf.iter_mut().enumerate() {
                     let seco = *s;
                     for (ch, x) in s.iter_mut().enumerate() {
                         for (b, c) in co.iter().enumerate() {
@@ -319,10 +332,12 @@ impl Fx {
                         }
                     }
                     if let Some(e) = st.espectral.as_deref_mut() {
-                        *s = e.muestra(*s, cantidad, sens, self);
+                        let k = clave.and_then(|c| c.get(n)).map_or(0.0, |c| (c[0] + c[1]) * 0.5);
+                        *s = e.muestra(*s, cantidad, sens, lateral, k, self);
                     }
                     *s = [(seco[0] + (s[0] - seco[0]) * mezcla) * salida, (seco[1] + (s[1] - seco[1]) * mezcla) * salida];
                 }
+                self.vu[1].set(rms(buf));
             }
         }
     }
@@ -475,6 +490,11 @@ pub fn curves_response(p: &[f32], freq: f32, sr: f32) -> f32 {
     curves_coefs(p, sr).iter().map(|c| magnitud(*c, w)).sum::<f32>() + p[17]
 }
 
+/// Respuesta (dB) de una sola banda `b` (0–6) de Curves, para dibujar su curva por separado.
+pub fn curves_banda(p: &[f32], b: usize, freq: f32, sr: f32) -> f32 {
+    magnitud(curves_coefs(p, sr)[b], TAU * freq / sr)
+}
+
 /// Frecuencia central de una banda del visor de Curves.
 pub fn frecuencia_banda(b: usize) -> f32 {
     20.0 * 1000f32.powf((b as f32 + 0.5) / BANDAS as f32)
@@ -490,6 +510,9 @@ struct Espectral {
     norma: f32,
     entrada: [Vec<f32>; 2],
     salida: [Vec<f32>; 2],
+    /// Sidechain: señal clave (mono) y su espectro.
+    clave: Vec<f32>,
+    clave_bins: Vec<Complex<f32>>,
     pos: usize,
     cuenta: usize,
     bins: [Vec<Complex<f32>>; 2],
@@ -520,6 +543,8 @@ impl Espectral {
             norma,
             entrada: [vec![0.0; FFT_N], vec![0.0; FFT_N]],
             salida: [vec![0.0; FFT_N], vec![0.0; FFT_N]],
+            clave: vec![0.0; FFT_N],
+            clave_bins: vec![Complex::default(); FFT_N],
             pos: 0,
             cuenta: 0,
             bins: [vec![Complex::default(); FFT_N], vec![Complex::default(); FFT_N]],
@@ -533,8 +558,9 @@ impl Espectral {
     }
 
     /// Procesa una muestra; con `cantidad` = 0 solo analiza (sin latencia ni cambios en el sonido).
-    fn muestra(&mut self, x: [f32; 2], cantidad: f32, sens: f32, fx: &Fx) -> [f32; 2] {
-        let activo = cantidad > 0.001;
+    fn muestra(&mut self, x: [f32; 2], cantidad: f32, sens: f32, lateral: f32, clave: f32, fx: &Fx) -> [f32; 2] {
+        let activo = cantidad > 0.001 || lateral > 0.001;
+        self.clave[self.pos] = clave;
         let mut y = x;
         for ch in 0..2 {
             self.entrada[ch][self.pos] = x[ch];
@@ -547,13 +573,20 @@ impl Espectral {
         self.cuenta += 1;
         if self.cuenta == FFT_HOP {
             self.cuenta = 0;
-            self.salto(activo, cantidad, sens, fx);
+            self.salto(activo, cantidad, sens, lateral, fx);
         }
         y
     }
 
-    fn salto(&mut self, activo: bool, cantidad: f32, sens: f32, fx: &Fx) {
+    fn salto(&mut self, activo: bool, cantidad: f32, sens: f32, lateral: f32, fx: &Fx) {
         let mitad = FFT_N / 2 + 1;
+        // Espectro de la clave (sidechain): dónde suena la otra pista.
+        if lateral > 0.001 {
+            for i in 0..FFT_N {
+                self.clave_bins[i] = Complex::new(self.clave[(self.pos + i) % FFT_N] * self.ventana[i], 0.0);
+            }
+            self.fft.process_with_scratch(&mut self.clave_bins, &mut self.scratch);
+        }
         for ch in 0..2 {
             for i in 0..FFT_N {
                 self.bins[ch][i] = Complex::new(self.entrada[ch][(self.pos + i) % FFT_N] * self.ventana[i], 0.0);
@@ -574,7 +607,12 @@ impl Espectral {
             let (a, b) = (k.saturating_sub(w), (k + w + 1).min(mitad));
             let envolvente = (self.suma[b] - self.suma[a]) / (b - a) as f32;
             let exceso = self.nivel[k] - envolvente;
-            let objetivo = if (80.0..18000.0).contains(&self.hz[k]) && self.nivel[k] > -70.0 && exceso > umbral { ((exceso - umbral) * 1.5 * cantidad).min(18.0) } else { 0.0 };
+            let mut objetivo = if (80.0..18000.0).contains(&self.hz[k]) && self.nivel[k] > -70.0 && exceso > umbral { ((exceso - umbral) * 1.5 * cantidad).min(18.0) } else { 0.0 };
+            // Sidechain: cuanto más fuerte suena la clave en esta frecuencia, más se abre espacio aquí.
+            if lateral > 0.001 {
+                let k_db = 20.0 * (self.clave_bins[k].norm() / self.norma + 1e-9).log10();
+                objetivo = objetivo.max(((k_db + 54.0) / 42.0).clamp(0.0, 1.0) * 12.0 * lateral);
+            }
             let r = &mut self.reduccion[k];
             *r += (objetivo - *r) * if objetivo > *r { 0.6 } else { 0.12 };
         }
