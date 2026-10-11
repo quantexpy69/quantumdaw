@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.8.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.9.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -61,6 +61,8 @@ Versión actual: **0.8.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa�
 - **Proyectos que agrupan canciones** (por ejemplo un álbum): cada proyecto tiene su ficha
   (`proyecto.json`) y cada canción guarda quién la creó, fecha y hora de creación y del último guardado,
   formato (frecuencia y bits), tempo, métrica y número de pistas.
+- **Ventanas independientes**: mixer, biblioteca, plugins, ruteo y video pueden flotar dentro del programa o
+  separarse como ventanas del sistema (por ejemplo en otro monitor) y volver a acoplarse.
 - Atajos de teclado y de rueda del ratón configurables, analizador de espectro e interfaz escalable.
 
 ---

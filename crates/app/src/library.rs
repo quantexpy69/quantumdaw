@@ -184,8 +184,15 @@ impl App {
                 if ui.button("×").on_hover_text(tr("Ocultar (Y)")).clicked() {
                     self.show_lib = false;
                 }
-                if ui.button(if self.lib_float { "Acoplar" } else { "Flotar" }).clicked() {
+                // Flotar dentro del programa, ventana independiente del sistema o acoplar al lateral.
+                if ui.button(tr(if self.lib_float { "Acoplar" } else { "Flotar" })).clicked() {
                     self.lib_float = !self.lib_float;
+                    self.config.separadas.retain(|s| s != "lib-win");
+                    self.config.save();
+                }
+                if !self.lib_float && ui.button(tr("Ventana independiente")).on_hover_text(tr("Abre la biblioteca fuera del programa (por ejemplo en otro monitor)")).clicked() {
+                    self.lib_float = true;
+                    self.alternar_separada("lib-win");
                 }
             });
         });
@@ -595,13 +602,11 @@ impl App {
 
     pub fn floating_windows(&mut self, ctx: &egui::Context) {
         if self.show_mixer && self.mixer_float {
-            let mut open = true;
-            egui::Window::new("Mixer").id(Id::new("mixer-win")).open(&mut open).default_size([1000.0, 500.0]).show(ctx, |ui| self.mixer(ui));
+            let open = self.ventana(ctx, "mixer-win", tr("Mixer").into(), [1100.0, 560.0], false, |app, ui| app.mixer(ui));
             self.show_mixer &= open;
         }
         if self.show_lib && self.lib_float {
-            let mut open = true;
-            egui::Window::new("Biblioteca").id(Id::new("lib-win")).open(&mut open).default_size([320.0, 600.0]).show(ctx, |ui| self.library(ui));
+            let open = self.ventana(ctx, "lib-win", tr("Biblioteca").into(), [340.0, 640.0], false, |app, ui| app.library(ui));
             self.show_lib &= open;
         }
     }

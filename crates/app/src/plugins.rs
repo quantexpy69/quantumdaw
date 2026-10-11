@@ -3,7 +3,7 @@ use crate::{
     widgets::{self, rr},
     *,
 };
-use egui::{Align2, FontId, Id, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
+use egui::{Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 
 const PLUGIN_BG: Color32 = Color32::from_rgb(0x15, 0x15, 0x19);
@@ -190,10 +190,10 @@ impl App {
             Up(usize),
             MyPlugins,
         }
-        let (mut open, mut act, sr) = (true, None, self.engine.sample_rate as f32);
-        let t = &self.s.tracks[i];
-        let title = RichText::new(format!("QUANTUM · {}", t.name)).strong();
-        egui::Window::new(title).id(Id::new("fx")).open(&mut open).default_width(620.0).default_height(860.0).vscroll(true).show(ctx, |ui| {
+        let (mut act, sr) = (None, self.engine.sample_rate as f32);
+        let title = format!("QUANTUM · {}", self.s.tracks[i].name);
+        let open = self.ventana(ctx, "fx", title, [620.0, 860.0], true, |app, ui| {
+            let t = &app.s.tracks[i];
             let plugin = |ui: &mut egui::Ui,
                           name: &str,
                           kind: Option<FxKind>,

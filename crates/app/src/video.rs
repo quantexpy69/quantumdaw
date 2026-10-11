@@ -179,11 +179,10 @@ impl App {
         let Some(i) = chosen.or_else(|| self.s.tracks.iter().position(|t| t.video.is_some())).filter(|_| self.show_video) else {
             return;
         };
-        let mut open = true;
         let frame = self.video_texture(i, self.pos());
         let title = self.s.tracks[i].name.clone();
         let (a, b) = self.s.tracks[i].clips.iter().fold((u64::MAX, 0), |(a, b), c| (a.min(c.start), b.max(c.end())));
-        egui::Window::new(title).id(egui::Id::new("video-win")).open(&mut open).default_size([520.0, 360.0]).show(ctx, |ui| {
+        let open = self.ventana(ctx, "video-win", title, [560.0, 420.0], false, |app, ui| {
             let w = ui.available_width();
             match frame {
                 Some((tex, [vw, vh])) => _ = ui.add(egui::Image::new(&tex).fit_to_exact_size(egui::vec2(w, w * vh as f32 / vw as f32)).corner_radius(widgets::rr(6.0))),
@@ -195,27 +194,27 @@ impl App {
             }
             // Barra de posición dentro del video.
             if b > a {
-                let mut t = (self.pos().clamp(a, b) - a) as f64;
+                let mut t = (app.pos().clamp(a, b) - a) as f64;
                 let slider = egui::Slider::new(&mut t, 0.0..=(b - a) as f64).show_value(false);
                 if ui.add_sized([w, 18.0], slider).changed() {
-                    self.go(a + t as u64);
+                    app.go(a + t as u64);
                 }
             }
             ui.horizontal(|ui| {
                 if widgets::icon_button(ui, false, widgets::draw_prev).on_hover_text(tr("Ir al inicio del video")).clicked() {
-                    self.go(if a == u64::MAX { 0 } else { a });
+                    app.go(if a == u64::MAX { 0 } else { a });
                 }
-                let playing = self.playing();
+                let playing = app.playing();
                 if widgets::icon_button(ui, playing, if playing { widgets::draw_pause } else { widgets::draw_play }).on_hover_text(tr("Reproducir / pausa (Espacio)")).clicked() {
-                    self.toggle_play();
+                    app.toggle_play();
                 }
                 if widgets::icon_button(ui, false, widgets::draw_stop).on_hover_text(tr("Detener")).clicked() {
-                    self.stop();
+                    app.stop();
                 }
                 if widgets::icon_button(ui, false, widgets::draw_next).on_hover_text(tr("Ir al final del video")).clicked() {
-                    self.go(b);
+                    app.go(b);
                 }
-                let s = self.pos() as f64 / self.sr();
+                let s = app.pos() as f64 / app.sr();
                 ui.label(egui::RichText::new(format!("{:02}:{:02}:{:02}.{:02}", (s / 3600.0) as u32, (s / 60.0) as u32 % 60, s as u32 % 60, ((s.fract()) * 100.0) as u32)).monospace().size(16.0));
             });
         });

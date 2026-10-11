@@ -18,6 +18,7 @@ mod routing;
 mod timeline;
 mod video;
 mod welcome;
+mod ventanas;
 mod widgets;
 
 use eframe::egui::{self, Color32, Event, Key};
@@ -141,6 +142,8 @@ struct Config {
     header_w: f32,
     /// Nombre de quien crea los proyectos (se recuerda).
     author: String,
+    /// Ventanas flotantes que se muestran separadas del programa (ventanas del sistema).
+    separadas: Vec<String>,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
     /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
@@ -1834,8 +1837,14 @@ impl App {
                 if ui.button("×").on_hover_text(tr("Ocultar panel (X)")).clicked() {
                     self.show_mixer = false;
                 }
-                if self.bottom_tab == 0 && ui.button(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" }).clicked() {
+                if self.bottom_tab == 0 && ui.button(tr(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" })).clicked() {
                     self.mixer_float = !self.mixer_float;
+                    self.config.separadas.retain(|s| s != "mixer-win");
+                    self.config.save();
+                }
+                if self.bottom_tab == 0 && !self.mixer_float && ui.button(tr("Ventana independiente")).on_hover_text(tr("Abre el mixer fuera del programa (por ejemplo en otro monitor)")).clicked() {
+                    self.mixer_float = true;
+                    self.alternar_separada("mixer-win");
                 }
             });
         });

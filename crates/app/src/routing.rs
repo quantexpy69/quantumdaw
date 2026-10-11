@@ -1,6 +1,6 @@
 //! Ruteo estilo REAPER: salida al master, envíos post-fader entre canales y buses.
 use crate::{widgets::rr, *};
-use egui::{Id, RichText};
+use egui::RichText;
 
 impl App {
     fn index_of(&self, id: u64) -> Option<usize> {
@@ -76,28 +76,28 @@ impl App {
             Remove(usize),
             Bus,
         }
-        let (mut open, mut act) = (true, None);
-        let title = RichText::new(format!("ROUTE · {} {}", i + 1, self.s.tracks[i].name)).strong();
-        egui::Window::new(title).id(Id::new("route")).open(&mut open).default_width(380.0).show(ctx, |ui| {
-            let t = &mut self.s.tracks[i];
+        let mut act = None;
+        let title = format!("ROUTE · {} {}", i + 1, self.s.tracks[i].name);
+        let open = self.ventana(ctx, "route", title, [400.0, 460.0], true, |app, ui| {
+            let t = &mut app.s.tracks[i];
             if ui.checkbox(&mut t.to_master, tr("Salida al master (Stereo Out)")).changed() {
-                self.dirty = true;
+                app.dirty = true;
             }
             ui.separator();
             ui.label(RichText::new(tr("ENVÍOS (post-fader)")).size(10.0).color(TEXT_DIM));
-            if self.s.tracks[i].sends.is_empty() {
+            if app.s.tracks[i].sends.is_empty() {
                 ui.label(RichText::new(tr("Sin envíos. Envía a un bus para compartir efectos (reverb, delay…).")).color(TEXT_DIM));
             }
-            for k in 0..self.s.tracks[i].sends.len() {
-                let (id, mut g) = self.s.tracks[i].sends[k];
-                let Some(j) = self.index_of(id) else { continue };
+            for k in 0..app.s.tracks[i].sends.len() {
+                let (id, mut g) = app.s.tracks[i].sends[k];
+                let Some(j) = app.index_of(id) else { continue };
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("→ {} {}", j + 1, self.s.tracks[j].name)).color(self.s.tracks[j].color).strong());
+                    ui.label(RichText::new(format!("→ {} {}", j + 1, app.s.tracks[j].name)).color(app.s.tracks[j].color).strong());
                     let mut db = widgets::db(g);
                     if ui.add(egui::Slider::new(&mut db, -60.0..=6.0).suffix(" dB").show_value(true)).changed() {
                         g = if db <= -60.0 { 0.0 } else { 10f32.powf(db / 20.0) };
-                        self.s.tracks[i].sends[k].1 = g;
-                        self.dirty = true;
+                        app.s.tracks[i].sends[k].1 = g;
+                        app.dirty = true;
                     }
                     if ui.small_button(tr("Quitar")).clicked() {
                         act = Some(Act::Remove(k));
@@ -106,9 +106,9 @@ impl App {
             }
             ui.horizontal(|ui| {
                 ui.menu_button(tr("+ Añadir envío a…"), |ui| {
-                    for j in (0..self.s.tracks.len()).filter(|&j| j != i && !self.s.tracks[j].midi()) {
-                        let ok = !self.would_cycle(i, j) && !self.s.tracks[i].sends.iter().any(|s| s.0 == self.s.tracks[j].id);
-                        if ui.add_enabled(ok, egui::Button::new(format!("{} {}", j + 1, self.s.tracks[j].name))).clicked() {
+                    for j in (0..app.s.tracks.len()).filter(|&j| j != i && !app.s.tracks[j].midi()) {
+                        let ok = !app.would_cycle(i, j) && !app.s.tracks[i].sends.iter().any(|s| s.0 == app.s.tracks[j].id);
+                        if ui.add_enabled(ok, egui::Button::new(format!("{} {}", j + 1, app.s.tracks[j].name))).clicked() {
                             act = Some(Act::Add(j));
                         }
                     }
@@ -117,8 +117,8 @@ impl App {
                     act = Some(Act::Bus);
                 }
             });
-            let id = self.s.tracks[i].id;
-            let receives: Vec<String> = self.s.tracks.iter().enumerate().filter(|(_, t)| t.sends.iter().any(|s| s.0 == id)).map(|(j, t)| format!("{} {}", j + 1, t.name)).collect();
+            let id = app.s.tracks[i].id;
+            let receives: Vec<String> = app.s.tracks.iter().enumerate().filter(|(_, t)| t.sends.iter().any(|s| s.0 == id)).map(|(j, t)| format!("{} {}", j + 1, t.name)).collect();
             if !receives.is_empty() {
                 ui.separator();
                 ui.label(RichText::new(format!("RECIBE DE: {}", receives.join(", "))).size(11.0).color(TEXT_DIM));
