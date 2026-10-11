@@ -36,6 +36,8 @@ pub enum Drag {
     RazorMove(f64),
     /// Tramo elegido en el carril de tempo (inicio, fin).
     Tempo(u64, u64),
+    /// Cursor de reproducción arrastrado desde su tirador en la regla.
+    Cursor,
 }
 
 /// Zona de una región bajo el puntero.
@@ -311,8 +313,15 @@ impl App {
                 self.go(self.project_end());
             }
         });
-        // Regla: clic = mover cursor, arrastrar = definir rango de loop.
-        if ruler_r.drag_started() {
+        // Regla: clic = mover cursor, arrastrar = definir rango de loop; arrastrar sobre el cursor
+        // (o su tirador) lo mueve.
+        let cerca_cursor = |x: f32| (x - x_of(self.pos())).abs() <= 8.0;
+        if ruler_r.hover_pos().is_some_and(|p| cerca_cursor(p.x)) || matches!(self.drag, Some(Drag::Cursor)) {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        }
+        if ruler_r.drag_started() && press.is_some_and(|p| cerca_cursor(p.x)) {
+            self.drag = Some(Drag::Cursor);
+        } else if ruler_r.drag_started() {
             self.drag = Some(Drag::Loop(snap(frame_at(press.unwrap_or_default().x))));
         } else if ruler_r.clicked() {
             self.go(frame_at(ptr.unwrap_or_default().x) as u64);
@@ -496,6 +505,7 @@ impl App {
                 Some(Drag::Swipe(_, _, _, b)) => *b = snap(at),
                 Some(Drag::RazorMove(acc)) => *acc += body_r.drag_delta().x as f64 / pps * sr,
                 Some(Drag::Tempo(_, b)) => *b = snap(at),
+                Some(Drag::Cursor) => self.go(if mods.shift { snap(at) } else { at as u64 }),
                 Some(Drag::Loop(a)) => {
                     let (a, b) = ((*a).min(snap(at)), (*a).max(snap(at)));
                     self.set_loop(a, b);
@@ -830,6 +840,9 @@ impl App {
         let px = x_of(self.pos());
         if px >= x0 {
             painter.vline(px, ruler.top()..=full.bottom(), Stroke::new(1.5, TEXT));
+            // Tirador en la regla para arrastrar el cursor.
+            let t = ruler.top();
+            painter.add(egui::Shape::convex_polygon(vec![pos2(px - 7.0, t), pos2(px + 7.0, t), pos2(px + 7.0, t + 7.0), pos2(px, t + 13.0), pos2(px - 7.0, t + 7.0)], ACCENT, Stroke::new(1.0, BG)));
         }
 
         // Cabeceras de pista (widgets). El fondo de la columna tiene su propio menú contextual.

@@ -530,8 +530,11 @@ impl App {
         }
         ui.allocate_rect(area, Sense::hover());
         let lane_h = self.roll.lane_h.clamp(50.0, (area.height() * 0.6).max(50.0));
-        let keys = Rect::from_min_max(area.min, pos2(area.left() + KEYS_W, area.bottom() - lane_h));
-        let grid = Rect::from_min_max(pos2(keys.right(), area.top()), pos2(area.right(), area.bottom() - lane_h));
+        // Regla arriba (compases y cursor de reproducción), teclado y rejilla debajo.
+        const REGLA_H: f32 = 18.0;
+        let regla = Rect::from_min_max(pos2(area.left() + KEYS_W, area.top()), pos2(area.right(), area.top() + REGLA_H));
+        let keys = Rect::from_min_max(pos2(area.left(), area.top() + REGLA_H), pos2(area.left() + KEYS_W, area.bottom() - lane_h));
+        let grid = Rect::from_min_max(pos2(keys.right(), area.top() + REGLA_H), pos2(area.right(), area.bottom() - lane_h));
         // Carril de control: separador arrastrable arriba, pestañas a la izquierda y barras a la derecha.
         let vel = Rect::from_min_max(pos2(keys.right(), grid.bottom() + 6.0), area.max);
         let lane_tabs = Rect::from_min_max(pos2(area.left(), grid.bottom() + 6.0), pos2(keys.right(), area.bottom()));
@@ -554,6 +557,42 @@ impl App {
         let key_at = |y: f32| (127.0 - ((y - grid.top() + scroll.y) / kh).floor()).clamp(0.0, 127.0) as u8;
         let rel_of = |n: &Note| (origin + n.start as i64 - clip.start as i64) as f64;
         let note_rect = |n: &Note| Rect::from_x_y_ranges(x_of(rel_of(n))..=x_of(rel_of(n) + n.len as f64).max(x_of(rel_of(n)) + 3.0), y_of(n.key) + 1.0..=y_of(n.key) + kh - 1.0);
+
+        // Cursor de reproducción: clic o arrastre en la regla lo mueven; la línea también se arrastra
+        // desde la rejilla (si no hay una nota debajo).
+        let cursor_x = x_of(self.pos() as f64 - clip.start as f64);
+        let frame_en = |x: f32| (rel_at(x) + clip.start as f64).max(0.0) as u64;
+        let rr_ = ui.interact(regla, Id::new("roll-regla"), Sense::click_and_drag());
+        if rr_.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        if (rr_.clicked() || rr_.dragged() || rr_.drag_started())
+            && let Some(p) = ui.input(|i| i.pointer.interact_pos())
+        {
+            self.go(frame_en(p.x.max(grid.left())));
+        }
+        let linea_id = Id::new("roll-cursor-linea");
+        let arrastrando_linea = ui.data(|d| d.get_temp::<bool>(linea_id)).unwrap_or(false);
+        let sobre_linea = |p: egui::Pos2| (p.x - cursor_x).abs() <= 5.0 && grid.contains(p) && !notes.iter().any(|n| note_rect(n).contains(p));
+        if let Some(p) = ui.input(|i| i.pointer.hover_pos())
+            && (sobre_linea(p) || arrastrando_linea)
+        {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        let (pulsado, abajo, puntero) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.interact_pos()));
+        if pulsado && puntero.is_some_and(sobre_linea) {
+            ui.data_mut(|d| d.insert_temp(linea_id, true));
+        }
+        if arrastrando_linea {
+            if abajo {
+                if let Some(p) = puntero {
+                    self.go(frame_en(p.x.max(grid.left())));
+                }
+            } else {
+                ui.data_mut(|d| d.insert_temp(linea_id, false));
+            }
+        }
+        let linea_activa = arrastrando_linea || (pulsado && puntero.is_some_and(sobre_linea));
 
         // Interacción con la rejilla: clic en una nota la selecciona (Shift suma), sus bordes la estiran
         // o acortan por cualquiera de los dos lados, arrastrar en vacío dibuja un recuadro de selección
@@ -594,6 +633,7 @@ impl App {
             self.preview(Some(n.key));
         } else if gr.hovered()
             && pressed
+            && !linea_activa
             && let Some(p) = ptr
         {
             match hit_at(p) {
@@ -623,6 +663,7 @@ impl App {
             }
         }
         if gr.dragged()
+            && !linea_activa
             && let Some(d) = &mut self.roll.drag
         {
             let delta = gr.drag_delta();
@@ -905,6 +946,26 @@ impl App {
             let r = Rect::from_min_size(pos2(pos.x, (pos.y - g.size().y / 2.0).clamp(vel.top(), vel.bottom() - g.size().y)), g.size()).expand(3.0);
             bp.rect_filled(r, rr(3.0), Color32::from_black_alpha(200));
             bp.galley(r.min + vec2(3.0, 3.0), g, Color32::WHITE);
+        }
+        // Regla con números de compás y cursor de reproducción sobre rejilla y carril.
+        let rp = p.with_clip_rect(regla);
+        rp.rect_filled(regla, 0.0, PANEL);
+        let compas = beat * self.engine.beats.load(Relaxed).max(1) as f64;
+        let primero = ((rel_at(grid.left()) + clip.start as f64 - origin as f64) / compas).floor().max(0.0) as i64;
+        for b in primero..primero + 400 {
+            let x = x_of(origin as f64 + b as f64 * compas - clip.start as f64);
+            if x > regla.right() {
+                break;
+            }
+            rp.vline(x, regla.center().y..=regla.bottom(), Stroke::new(1.0, BORDER));
+            rp.text(pos2(x + 3.0, regla.top() + 1.0), Align2::LEFT_TOP, (b + 1).to_string(), FontId::monospace(10.0), TEXT_DIM);
+        }
+        let cx = x_of(self.pos() as f64 - clip.start as f64);
+        if (regla.left()..=regla.right()).contains(&cx) {
+            let lp = p.with_clip_rect(Rect::from_min_max(regla.min, pos2(area.right(), area.bottom())));
+            lp.vline(cx, regla.top()..=area.bottom(), Stroke::new(1.5, TEXT));
+            let t = regla.top();
+            lp.add(egui::Shape::convex_polygon(vec![pos2(cx - 6.0, t), pos2(cx + 6.0, t), pos2(cx + 6.0, t + 6.0), pos2(cx, t + 12.0), pos2(cx - 6.0, t + 6.0)], ACCENT, Stroke::new(1.0, BG)));
         }
     }
 }
