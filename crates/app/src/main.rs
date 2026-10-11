@@ -1950,7 +1950,7 @@ fn theme(ctx: &egui::Context) {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        informes::latido();
+        informes::latido(ctx.input(|i| i.viewport().focused.unwrap_or(true)));
         for aviso in engine::avisos() {
             informes::registrar("AUDIO", &aviso);
         }

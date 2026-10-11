@@ -68,6 +68,9 @@ impl App {
                         }
                     }
                 });
+                if ui.ctx().input(|i| i.viewport().focused == Some(true)) {
+                    informes::foco_separada();
+                }
                 if ui.ctx().input(|i| i.viewport().close_requested()) {
                     abierta = false;
                 }

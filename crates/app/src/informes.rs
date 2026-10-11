@@ -22,6 +22,8 @@ static LOG: Mutex<Option<fs::File>> = Mutex::new(None);
 /// Datos que acompañan a cada informe (GPU, audio, proyecto…).
 static CONTEXTO: Mutex<Vec<(&'static str, String)>> = Mutex::new(Vec::new());
 static LATIDO: AtomicU64 = AtomicU64::new(0);
+/// La ventana principal tenía el foco en el último cuadro dibujado.
+static FOCO: AtomicBool = AtomicBool::new(false);
 /// Hay un informe nuevo que mostrar (por ejemplo un fallo en otro hilo mientras el programa sigue abierto).
 pub static NUEVO: AtomicBool = AtomicBool::new(false);
 
@@ -75,9 +77,16 @@ pub fn contexto(clave: &'static str, valor: String) {
     c.push((clave, valor));
 }
 
-/// La interfaz dibujó un cuadro: el vigilante sabe que no está colgada.
-pub fn latido() {
+/// La interfaz dibujó un cuadro: el vigilante sabe que no está colgada. Sin foco el sistema puede
+/// dejar de pedir cuadros (ventana tapada, en otro escritorio o minimizada) y eso no es un cuelgue.
+pub fn latido(con_foco: bool) {
+    FOCO.store(con_foco, Relaxed);
     LATIDO.store(ms(), Relaxed);
+}
+
+/// Una ventana separada (plugin, mixer…) tiene el foco: también cuenta como «en uso».
+pub fn foco_separada() {
+    FOCO.store(true, Relaxed);
 }
 
 /// Sistema operativo y versión, para los informes.
@@ -180,11 +189,21 @@ fn herramienta_pilas() -> Option<&'static str> {
 #[cfg(target_os = "linux")]
 fn pilas() -> Option<String> {
     let pid = std::process::id().to_string();
-    let salida = match herramienta_pilas()? {
-        "eu-stack" => comando("eu-stack").args(["-p", &pid]).output(),
-        _ => comando("gdb").args(["-batch", "-p", &pid, "-ex", "thread apply all bt"]).output(),
-    }
-    .ok()?;
+    // Mientras se leen las pilas el proceso queda detenido: nada de descargar símbolos de internet
+    // (debuginfod, activo por defecto en Fedora), que lo dejaría congelado durante segundos.
+    let mut c = match herramienta_pilas()? {
+        "eu-stack" => {
+            let mut c = comando("eu-stack");
+            c.args(["-p", &pid]);
+            c
+        }
+        _ => {
+            let mut c = comando("gdb");
+            c.args(["-batch", "-iex", "set debuginfod enabled off", "-p", &pid, "-ex", "thread apply all bt"]);
+            c
+        }
+    };
+    let salida = c.env_remove("DEBUGINFOD_URLS").stdin(std::process::Stdio::null()).output().ok()?;
     Some(String::from_utf8_lossy(&salida.stdout).into_owned()).filter(|s| !s.trim().is_empty())
 }
 
@@ -200,11 +219,12 @@ fn en_reposo(pilas: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn vigilar() {
-    let mut avisado = false;
+    // `revisado`: latido ya examinado (ventana oculta o minimizada); no se vuelve a mirar hasta que cambie.
+    let (mut avisado, mut revisado) = (false, 0);
     loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
         let ultimo = LATIDO.load(Relaxed);
-        if ultimo == 0 {
+        if ultimo == 0 || ultimo == revisado || !FOCO.load(Relaxed) {
             continue;
         }
         let parado = ms().saturating_sub(ultimo) / 1000;
@@ -217,6 +237,7 @@ fn vigilar() {
         let Some(p) = pilas() else { continue };
         // Un diálogo de archivos abierto o la ventana minimizada no son cuelgues.
         if p.contains("rfd") || en_reposo(&p) {
+            revisado = ultimo;
             continue;
         }
         avisado = true;
