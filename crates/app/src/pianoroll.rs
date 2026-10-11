@@ -50,6 +50,21 @@ pub struct Roll {
     lane_h: f32,
     /// Último punto del arrastre en el carril, para pintar varias barras de un trazo.
     lane_prev: Option<egui::Pos2>,
+    /// Notas copiadas (inicio relativo a la primera) y si el ratón estuvo sobre el piano roll.
+    portapapeles: Vec<Note>,
+    hover: bool,
+    /// Crear acordes: tipo de acorde que escribe cada nota nueva (None = notas sueltas) e inversión.
+    modo_acorde: Option<usize>,
+    inversion: usize,
+    /// Ventanas del círculo de quintas y del instrumento de la pista.
+    pub circulo: bool,
+    pub instrumento: bool,
+    /// Tonalidad elegida en el círculo y progresión automática (progresión, ritmo, compases por acorde).
+    tono: u8,
+    menor: bool,
+    progresion: usize,
+    ritmo: usize,
+    compases: u32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -92,7 +107,7 @@ impl Carril {
 
 impl Default for Roll {
     fn default() -> Self {
-        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None }
+        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None, portapapeles: Vec::new(), hover: false, modo_acorde: None, inversion: 0, circulo: false, instrumento: false, tono: 0, menor: false, progresion: 0, ritmo: 0, compases: 1 }
     }
 }
 
@@ -135,7 +150,9 @@ impl App {
         let (at, origin) = (self.pos().max(c.start), c.origin());
         let mut notes = c.notes().map(|n| (**n).clone()).unwrap_or_default();
         self.edit();
-        notes.push(Note::new((at as i64 - origin).max(0) as u64, step, key, 100));
+        for k in self.teclas_nota(key) {
+            notes.push(Note::new((at as i64 - origin).max(0) as u64, step, k, 100));
+        }
         self.set_notes(notes);
         self.go(at + step);
     }
@@ -182,6 +199,9 @@ impl App {
                 }
             }
         });
+        if pick.is_some() {
+            self.roll.instrumento = true;
+        }
         match pick {
             Some(Pick::Real(id)) => self.set_instrument(i, id),
             Some(Pick::Preset(k)) => {
@@ -204,6 +224,195 @@ impl App {
         self.edit();
         let sel = std::mem::take(&mut self.roll.sel);
         self.set_notes(notes.into_iter().enumerate().filter(|(k, _)| !sel.contains(k)).map(|(_, n)| n).collect());
+    }
+
+    /// Notas que escribe una tecla: ella sola o el acorde elegido con esa raíz.
+    fn teclas_nota(&self, key: u8) -> Vec<u8> {
+        self.roll.modo_acorde.map_or_else(|| vec![key], |t| acordes::notas(key, t, self.roll.inversion))
+    }
+
+    /// Los atajos de copiar/pegar van al piano roll si el ratón estuvo sobre él en el último cuadro.
+    pub fn roll_tomar_foco(&mut self) -> bool {
+        std::mem::take(&mut self.roll.hover) && self.roll_clip().is_some()
+    }
+
+    /// Copia (o corta) las notas seleccionadas.
+    pub fn roll_copiar(&mut self, cortar: bool) {
+        let Some((i, j)) = self.roll_clip() else { return };
+        let notes = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
+        let mut sel: Vec<Note> = self.roll.sel.iter().filter_map(|&k| notes.get(k).copied()).collect();
+        let Some(base) = sel.iter().map(|n| n.start).min() else { return };
+        sel.iter_mut().for_each(|n| n.start -= base);
+        self.roll.portapapeles = sel;
+        // egui solo emite el evento de pegar si el portapapeles del sistema tiene texto.
+        self.ctx.copy_text("quantum-daw:notas".into());
+        if cortar {
+            self.roll_delete_selected();
+        }
+        self.status = format!("{} nota(s) copiada(s)", self.roll.portapapeles.len());
+    }
+
+    /// Pega las notas copiadas en el cursor (dentro de la región) y las deja seleccionadas.
+    pub fn roll_pegar(&mut self) {
+        let Some((i, j)) = self.roll_clip().filter(|_| !self.roll.portapapeles.is_empty()) else { return };
+        let c = &self.s.tracks[i].clips[j];
+        let en = (self.pos().max(c.start) as i64 - c.origin()).max(0) as u64;
+        let mut notes = c.notes().map(|n| (**n).clone()).unwrap_or_default();
+        self.edit();
+        let primera = notes.len();
+        notes.extend(self.roll.portapapeles.iter().map(|n| Note { start: n.start + en, ..*n }));
+        self.roll.sel = (primera..notes.len()).collect();
+        self.set_notes(notes);
+    }
+
+    /// Escribe acordes (inicio absoluto, duración, notas) en la región abierta y los selecciona.
+    fn insertar_acordes(&mut self, acordes: Vec<(u64, u64, Vec<u8>)>) {
+        let Some((i, j)) = self.roll_clip() else { return };
+        let c = &self.s.tracks[i].clips[j];
+        let origin = c.origin();
+        let mut notes = c.notes().map(|n| (**n).clone()).unwrap_or_default();
+        self.edit();
+        let primera = notes.len();
+        for (at, len, teclas) in acordes {
+            notes.extend(teclas.into_iter().map(|k| Note::new((at as i64 - origin).max(0) as u64, len, k, 100)));
+        }
+        self.roll.sel = (primera..notes.len()).collect();
+        self.set_notes(notes);
+    }
+
+    /// Escribe un acorde de un compás en el cursor y avanza el cursor (clics seguidos arman una progresión).
+    fn acorde_en_cursor(&mut self, raiz: u8, tipo: usize) {
+        let Some((i, j)) = self.roll_clip() else { return };
+        let compas = (self.engine.beat_frames() * self.engine.beats.load(Relaxed) as f64) as u64;
+        let at = self.pos().max(self.s.tracks[i].clips[j].start);
+        self.insertar_acordes(vec![(at, compas, acordes::notas(acordes::base_central(raiz), tipo, self.roll.inversion))]);
+        self.go(at + compas);
+    }
+
+    /// Escribe la progresión elegida desde el cursor con el ritmo elegido.
+    fn escribir_progresion(&mut self) {
+        let Some((i, j)) = self.roll_clip() else { return };
+        let beat = self.engine.beat_frames();
+        let tiempos = self.engine.beats.load(Relaxed) as u64;
+        let largo = (beat * (tiempos * self.roll.compases as u64) as f64) as u64;
+        let grados = acordes::diatonicos(self.roll.tono, self.roll.menor);
+        let mut at = self.pos().max(self.s.tracks[i].clips[j].start);
+        let mut todo = Vec::new();
+        for &g in acordes::PROGRESIONES[self.roll.progresion].1 {
+            let (raiz, tipo, _) = grados[g];
+            let teclas = acordes::notas(acordes::base_central(raiz), tipo, self.roll.inversion);
+            match self.roll.ritmo {
+                // Negras: el acorde en cada tiempo.
+                1 => (0..tiempos * self.roll.compases as u64).for_each(|b| todo.push((at + (b as f64 * beat) as u64, (beat * 0.9) as u64, teclas.clone()))),
+                // Arpegio: las notas del acorde de una en una, en corcheas.
+                2 => (0..tiempos * self.roll.compases as u64 * 2).for_each(|b| todo.push((at + (b as f64 * beat / 2.0) as u64, (beat / 2.0) as u64, vec![teclas[b as usize % teclas.len()]]))),
+                _ => todo.push((at, largo, teclas)),
+            }
+            at += largo;
+        }
+        self.insertar_acordes(todo);
+        self.go(at);
+    }
+
+    /// Ventana del círculo de quintas: tonalidad, sus acordes y progresiones automáticas.
+    pub fn ventana_acordes(&mut self, ctx: &egui::Context) {
+        if !self.roll.circulo || self.roll_clip().is_none() {
+            return;
+        }
+        let mut abierta = true;
+        let mut accion = None;
+        egui::Window::new(RichText::new(tr("Círculo de quintas y acordes")).strong()).id(Id::new("roll-circulo")).open(&mut abierta).default_size([360.0, 640.0]).show(ctx, |ui| {
+            let r = &mut self.roll;
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut r.menor, false, tr("Mayor"));
+                ui.selectable_value(&mut r.menor, true, tr("Menor"));
+                ui.label(RichText::new(format!("{} {}", tr("Tonalidad"), acordes::tonalidad(r.tono, r.menor))).color(ACCENT).strong());
+            });
+            if let Some((raiz, tipo)) = acordes::circulo(ui, &mut r.tono, &mut r.menor) {
+                accion = Some((raiz, tipo));
+            }
+            ui.label(RichText::new(tr("Acordes de la tonalidad: clic para escribirlo en el cursor (un compás); el cursor avanza.")).size(11.0).color(TEXT_DIM));
+            ui.horizontal_wrapped(|ui| {
+                for (raiz, tipo, grado) in acordes::diatonicos(r.tono, r.menor) {
+                    let b = egui::Button::new(RichText::new(format!("{grado}\n{}", acordes::nombre(raiz, tipo))).size(12.0)).min_size(vec2(44.0, 38.0));
+                    if ui.add(b).clicked() {
+                        accion = Some((raiz, tipo));
+                    }
+                }
+            });
+            ui.separator();
+            ui.label(RichText::new(tr("Progresión automática")).strong());
+            egui::ComboBox::from_id_salt("roll-prog").width(300.0).selected_text(tr(acordes::PROGRESIONES[r.progresion].0)).show_ui(ui, |ui| {
+                for (k, (n, _)) in acordes::PROGRESIONES.iter().enumerate() {
+                    ui.selectable_value(&mut r.progresion, k, tr(n));
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("Ritmo"));
+                for (k, n) in acordes::RITMOS.iter().enumerate() {
+                    ui.selectable_value(&mut r.ritmo, k, tr(n));
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("Compases por acorde"));
+                for c in [1, 2] {
+                    ui.selectable_value(&mut r.compases, c, c.to_string());
+                }
+            });
+            if ui.add(egui::Button::new(RichText::new(tr("Escribir progresión en el cursor")).color(BG).strong()).fill(ACCENT)).clicked() {
+                accion = Some((u8::MAX, 0));
+            }
+        });
+        match accion {
+            Some((u8::MAX, _)) => self.escribir_progresion(),
+            Some((raiz, tipo)) => self.acorde_en_cursor(raiz, tipo),
+            None => {}
+        }
+        self.roll.circulo &= abierta;
+    }
+
+    /// Ventana flotante con el instrumento de la pista del piano roll (se abre al elegir uno).
+    pub fn ventana_instrumento(&mut self, ctx: &egui::Context) {
+        let Some((i, _)) = self.roll_clip().filter(|_| self.roll.instrumento) else {
+            return;
+        };
+        let mut abierta = true;
+        let t = &self.s.tracks[i];
+        let titulo = format!("{} · {}", tr("Instrumento"), t.name);
+        egui::Window::new(RichText::new(titulo).strong()).id(Id::new("roll-instrumento")).open(&mut abierta).default_width(420.0).show(ctx, |ui| {
+            if let Some(s) = &t.sampler {
+                let e = instruments::find(&t.instrument);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("QUANTUM").size(10.0).strong().color(ACCENT));
+                    ui.label(RichText::new(e.map_or(s.name.as_str(), |e| e.name)).size(16.0).strong());
+                });
+                let mut db = widgets::db(s.gain.get());
+                if ui.add(egui::Slider::new(&mut db, -30.0..=12.0).suffix(" dB").text(tr("Volumen"))).changed() {
+                    s.gain.set(10f32.powf(db / 20.0));
+                }
+                if let Some(e) = e {
+                    ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM));
+                }
+            } else if let Some(s) = &t.synth {
+                let preset = t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth");
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("QUANTUM SYNTH").size(10.0).strong().color(ACCENT));
+                    ui.label(RichText::new(preset).size(16.0).strong());
+                });
+                ui.horizontal_wrapped(|ui| {
+                    for (k, def) in engine::SYNTH_PARAMS.iter().enumerate() {
+                        plugins::param_knob(ui, None, *def, &s.params[k]);
+                    }
+                });
+            } else {
+                ui.label(RichText::new(tr("Esta pista no tiene instrumento.")).color(TEXT_DIM));
+            }
+            ui.add_space(6.0);
+            if ui.button(tr("Cerrar")).clicked() {
+                self.roll.instrumento = false;
+            }
+        });
+        self.roll.instrumento &= abierta;
     }
 
     fn preview(&mut self, key: Option<u8>) {
@@ -275,10 +484,50 @@ impl App {
                 }
             });
         });
+        // Segunda fila: acorde que suena y herramientas de acordes.
+        ui.horizontal(|ui| {
+            let Some((i, j)) = self.roll_clip() else { return };
+            let c = &self.s.tracks[i].clips[j];
+            let notes: Vec<Note> = c.notes().map(|n| (**n).clone()).unwrap_or_default();
+            // Notas seleccionadas o, si no hay, las que suenan en el cursor.
+            let teclas: Vec<u8> = if self.roll.sel.len() >= 2 {
+                self.roll.sel.iter().filter_map(|&k| notes.get(k).map(|n| n.key)).collect()
+            } else {
+                let rel = self.pos() as i64 - c.origin();
+                notes.iter().filter(|n| (n.start as i64..(n.start + n.len) as i64).contains(&rel)).map(|n| n.key).collect()
+            };
+            ui.label(RichText::new(tr("Acorde")).color(TEXT_DIM));
+            ui.label(RichText::new(acordes::detectar(&teclas).unwrap_or_else(|| "—".into())).size(15.0).strong().color(ACCENT));
+            ui.separator();
+            ui.label(tr("Crear acordes"));
+            let actual = self.roll.modo_acorde.map_or(tr("Notas sueltas").to_string(), |t| tr(acordes::TIPOS[t].1).to_string());
+            egui::ComboBox::from_id_salt("roll-modo-acorde").width(150.0).selected_text(actual).show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.roll.modo_acorde, None, tr("Notas sueltas"));
+                for (k, (_, n, _)) in acordes::TIPOS.iter().enumerate() {
+                    ui.selectable_value(&mut self.roll.modo_acorde, Some(k), tr(n));
+                }
+            })
+            .response
+            .on_hover_text(tr("Con un tipo elegido, cada nota que crees (doble clic, escribir por pasos) escribe el acorde completo con esa nota como raíz"));
+            egui::ComboBox::from_id_salt("roll-inversion").width(110.0).selected_text(tr(acordes::INVERSIONES[self.roll.inversion])).show_ui(ui, |ui| {
+                for (k, n) in acordes::INVERSIONES.iter().enumerate() {
+                    ui.selectable_value(&mut self.roll.inversion, k, tr(n));
+                }
+            });
+            if ui.add(egui::Button::selectable(self.roll.circulo, tr("Círculo de quintas"))).on_hover_text(tr("Tonalidad, sus acordes y progresiones automáticas")).clicked() {
+                self.roll.circulo = !self.roll.circulo;
+            }
+            if ui.add(egui::Button::selectable(self.roll.instrumento, tr("Ver instrumento"))).clicked() {
+                self.roll.instrumento = !self.roll.instrumento;
+            }
+        });
         let Some((i, j)) = self.roll_clip() else {
             return;
         };
         let area = ui.available_rect_before_wrap();
+        if ui.input(|i| i.pointer.hover_pos()).is_some_and(|p| area.contains(p)) {
+            self.roll.hover = true;
+        }
         ui.allocate_rect(area, Sense::hover());
         let lane_h = self.roll.lane_h.clamp(50.0, (area.height() * 0.6).max(50.0));
         let keys = Rect::from_min_max(area.min, pos2(area.left() + KEYS_W, area.bottom() - lane_h));
@@ -336,8 +585,10 @@ impl App {
             let rel = (rel_at(p.x) / step).floor() * step;
             let n = Note::new((rel + clip.start as f64 - origin as f64).max(0.0) as u64, (self.roll.last_len * beat) as u64, key_at(p.y), 100);
             let mut v = notes.clone();
-            v.push(n);
-            self.roll.sel = vec![v.len() - 1];
+            for k in self.teclas_nota(n.key) {
+                v.push(Note { key: k, ..n });
+            }
+            self.roll.sel = (notes.len()..v.len()).collect();
             self.set_notes(v);
             self.roll.drag = None;
             self.preview(Some(n.key));

@@ -260,8 +260,13 @@ impl App {
             return;
         }
         let typing = self.roll.typing && self.show_mixer && self.bottom_tab == 1;
+        let en_roll = self.roll_tomar_foco();
         for e in ctx.input(|i| i.events.clone()) {
             match e {
+                // Con el ratón sobre el piano roll, copiar/cortar/pegar actúan sobre las notas.
+                Event::Copy if en_roll => self.roll_copiar(false),
+                Event::Cut if en_roll => self.roll_copiar(true),
+                Event::Paste(_) if en_roll => self.roll_pegar(),
                 Event::Copy if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Copy),
                 Event::Cut if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Cut),
                 Event::Paste(_) if self.aedit_active() => self.aedit_edit(audioedit::EditAct::Paste),

@@ -79,7 +79,7 @@ fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
 }
 
 /// Perilla de consola: escala logarítmica en rangos amplios (frecuencias, tiempos), color del plugin.
-fn param_knob(ui: &mut egui::Ui, kind: Option<FxKind>, def: (&str, f32, f32, f32), a: &AtomicF32) {
+pub fn param_knob(ui: &mut egui::Ui, kind: Option<FxKind>, def: (&str, f32, f32, f32), a: &AtomicF32) {
     perilla(ui, kind, def, a, 58.0);
 }
 

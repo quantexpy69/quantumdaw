@@ -1,6 +1,7 @@
 // En Windows la app abre sin ventana de consola.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod acordes;
 mod analyzer;
 mod audioedit;
 mod chrome;
@@ -2010,6 +2011,8 @@ impl eframe::App for App {
         self.video_window(&ctx);
         self.welcome_window(&ctx);
         self.ventana_informe(&ctx);
+        self.ventana_acordes(&ctx);
+        self.ventana_instrumento(&ctx);
         self.apply_deletes();
         self.write_automation();
         if self.dirty {
