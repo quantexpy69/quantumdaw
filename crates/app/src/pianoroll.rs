@@ -4,7 +4,9 @@ use egui::{Align2, FontId, Id, Rect, RichText, Sense, Stroke, StrokeKind, pos2, 
 
 const KEYS_W: f32 = 64.0;
 /// Instrumentos preestablecidos del QUANTUM Synth: (nombre, parámetros en el orden de `SYNTH_PARAMS`).
-pub const PRESETS: [(&str, [f32; 10]); 7] = [
+/// Preset que convierte el sintetizador en caja de ritmos (sonidos de batería por nota).
+pub const CAJA_RITMOS: &str = "Caja de ritmos";
+pub const PRESETS: [(&str, [f32; 10]); 8] = [
     ("Piano eléctrico", [3.0, 4.0, 3500.0, 0.1, 0.3, 2.0, 900.0, 0.25, 400.0, -6.0]),
     ("Bajo sintetizado", [0.0, 6.0, 700.0, 0.45, 0.5, 2.0, 250.0, 0.6, 120.0, -4.0]),
     ("Pad cálido", [0.0, 14.0, 1800.0, 0.2, 0.2, 600.0, 1500.0, 0.8, 1500.0, -10.0]),
@@ -12,6 +14,7 @@ pub const PRESETS: [(&str, [f32; 10]); 7] = [
     ("Órgano", [2.0, 3.0, 6000.0, 0.05, 0.0, 5.0, 50.0, 1.0, 80.0, -8.0]),
     ("Pluck", [0.0, 7.0, 1200.0, 0.5, 0.9, 1.0, 220.0, 0.0, 200.0, -6.0]),
     ("Cuerdas", [0.0, 18.0, 2600.0, 0.15, 0.15, 300.0, 800.0, 0.85, 900.0, -10.0]),
+    (CAJA_RITMOS, [3.0, 0.0, 16000.0, 0.0, 0.0, 1.0, 50.0, 1.0, 50.0, -6.0]),
 ];
 const BLACK: [bool; 12] = [false, true, false, true, false, false, true, false, true, false, true, false];
 
@@ -219,6 +222,7 @@ impl App {
                 let t = &mut self.s.tracks[i];
                 if let Some(s) = &t.synth {
                     s.params.iter().zip(values).for_each(|(a, v)| a.set(v));
+                    s.kit.store(name == CAJA_RITMOS, Relaxed);
                 }
                 (t.instrument, t.sampler, self.dirty) = (format!("synth:{name}"), None, true);
             }

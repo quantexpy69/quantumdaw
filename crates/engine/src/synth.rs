@@ -50,12 +50,15 @@ struct State {
 
 pub struct Synth {
     pub params: Vec<AtomicF32>,
+    /// Modo caja de ritmos: las notas disparan sonidos de batería sintetizados (mapa General MIDI).
+    pub kit: std::sync::atomic::AtomicBool,
     state: Mutex<State>,
+    caja: Mutex<crate::caja::Caja>,
 }
 
 impl Default for Synth {
     fn default() -> Self {
-        Self { params: SYNTH_PARAMS.iter().map(|p| AtomicF32::new(p.3)).collect(), state: Default::default() }
+        Self { params: SYNTH_PARAMS.iter().map(|p| AtomicF32::new(p.3)).collect(), kit: Default::default(), state: Default::default(), caja: Default::default() }
     }
 }
 
@@ -97,8 +100,32 @@ impl State {
 }
 
 impl Synth {
+    /// Modo caja de ritmos: cada nota dispara su golpe; el volumen es el parámetro «Volumen».
+    fn render_kit(&self, out: &mut [[f32; 2]], events: &[(usize, MidiEvent)], sr: f32, offline: bool) {
+        let Some(mut caja) = (if offline { self.caja.lock().ok() } else { self.caja.try_lock().ok() }) else {
+            return;
+        };
+        let vol = 10f32.powf(self.params[9].get() / 20.0) * 2.0;
+        let mut ev = events.iter().peekable();
+        for (i, o) in out.iter_mut().enumerate() {
+            while let Some(&(_, e)) = ev.next_if(|e| e.0 <= i) {
+                match (e[0] & 0xF0, e[2]) {
+                    (0x90, v) if v > 0 => caja.golpear(e[1], v),
+                    (0xB0, _) if e[1] >= 120 => caja.callar(),
+                    _ => {}
+                }
+            }
+            let v = caja.muestra(sr) * vol;
+            *o = [o[0] + v, o[1] + v];
+        }
+    }
+
     /// Suma al buffer las voces activas, aplicando los eventos en su posición exacta dentro del bloque.
     pub fn render(&self, out: &mut [[f32; 2]], events: &[(usize, MidiEvent)], sr: f32, offline: bool, pos: u64, playing: bool) {
+        if self.kit.load(std::sync::atomic::Ordering::Relaxed) {
+            self.render_kit(out, events, sr, offline);
+            return;
+        }
         let Some(mut st) = (if offline { self.state.lock().ok() } else { self.state.try_lock().ok() }) else {
             return;
         };

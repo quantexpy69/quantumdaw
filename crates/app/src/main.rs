@@ -20,6 +20,7 @@ mod mastering;
 mod midi_archivo;
 mod mixer;
 mod paleta;
+mod patron;
 mod pie;
 mod partitura;
 mod pianoroll;
@@ -665,6 +666,8 @@ struct App {
     partitura_sp: f32,
     /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
     partitura_todas: bool,
+    /// Secuenciador de patrones.
+    patron: patron::Patron,
     /// Menú circular abierto y menú clásico de la región («Más opciones»).
     pie: Option<pie::Pie>,
     menu_region: Option<egui::Pos2>,
@@ -800,6 +803,7 @@ impl App {
             mastering: Default::default(),
             partitura_todas: true,
             partitura_sp: 8.0,
+            patron: Default::default(),
             pie: None,
             menu_region: None,
             show_inspector: false,
@@ -909,6 +913,9 @@ impl App {
                 s.params.iter().zip(&ts.synth).for_each(|(a, v)| a.set(*v));
             }
             (t.instrument, t.icon) = (ts.instrument.clone(), ts.icon.clone());
+            if let Some(s) = &t.synth {
+                s.kit.store(ts.instrument == format!("synth:{}", pianoroll::CAJA_RITMOS), Relaxed);
+            }
             if ts.synth.is_empty()
                 && let (Some(s), Some(name)) = (&t.synth, ts.instrument.strip_prefix("synth:"))
                 && let Some((_, v)) = pianoroll::PRESETS.iter().find(|p| p.0 == name)
@@ -2076,7 +2083,7 @@ impl App {
     /// Panel inferior con pestañas: mixer, piano roll y analizador.
     fn bottom_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura")] {
+            for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura"), (5, "Patrón")] {
                 if widgets::pildora(ui, self.bottom_tab == k, tr(label)).clicked() {
                     self.bottom_tab = k;
                 }
@@ -2104,6 +2111,7 @@ impl App {
             1 => self.piano_roll(ui),
             2 => self.analyzer(ui),
             4 => self.vista_partitura(ui),
+            5 => self.vista_patron(ui),
             _ => self.audio_editor(ui),
         }
     }

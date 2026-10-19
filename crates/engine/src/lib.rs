@@ -1,5 +1,6 @@
 //! Motor de audio en tiempo real. El hilo de audio solo lee atómicos, un `ArcSwap`
 //! con el grafo de pistas y ring buffers sin locks: no bloquea ni reserva memoria.
+mod caja;
 mod devices;
 pub mod loudness;
 mod dsp;

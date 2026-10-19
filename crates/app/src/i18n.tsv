@@ -969,3 +969,31 @@ Invertir	Reverse	Inverter
 Más opciones	More options	Mais opções
 Generar acordes	Generate chords	Gerar acordes
 Borrar	Delete	Apagar
+Patrón	Pattern	Padrão
+Secuenciador de patrones	Pattern sequencer	Sequenciador de padrões
+Abre una región MIDI (doble clic) para editarla por pasos, o crea un patrón de batería nuevo.	Open a MIDI region (double click) to edit it by steps, or create a new drum pattern.	Abra uma região MIDI (duplo clique) para editá-la por passos, ou crie um novo padrão de bateria.
++ Crear patrón de batería	+ Create drum pattern	+ Criar padrão de bateria
+LARGO	LENGTH	DURAÇÃO
+pasos	steps	passos
+Colocar en el cursor	Place at cursor	Colocar no cursor
+Pone una copia del patrón donde está el cursor	Places a copy of the pattern at the cursor	Coloca uma cópia do padrão no cursor
+Reproducir en bucle	Play in loop	Tocar em loop
+Llenar	Fill	Preencher
+Euclidiano	Euclid	Euclidiano
+Reparte los golpes lo más parejo posible en el patrón	Spreads the hits as evenly as possible across the pattern	Distribui os golpes da forma mais uniforme possível
+Rotar el carril un paso	Rotate the lane one step	Rotacionar a pista um passo
+Borrar carril	Clear lane	Limpar pista
+Bombo	Kick	Bumbo
+Caja	Snare	Caixa
+Palmas	Clap	Palmas
+Aro	Rim	Aro
+Hi-hat cerrado	Closed hi-hat	Hi-hat fechado
+Hi-hat abierto	Open hi-hat	Hi-hat aberto
+Tom bajo	Low tom	Tom grave
+Tom alto	High tom	Tom agudo
+Crash	Crash	Crash
+Ride	Ride	Ride
+Cencerro	Cowbell	Cowbell
+Vel	Vel	Vel
+Rep	Rep	Rep
+Caja de ritmos	Drum machine	Bateria eletrônica
