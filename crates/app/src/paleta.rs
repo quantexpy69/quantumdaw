@@ -14,6 +14,7 @@ enum Accion {
     Registros,
     Informe,
     Tema(usize),
+    Mastering,
 }
 
 /// Estado de la paleta abierta: texto buscado y fila elegida.
@@ -45,6 +46,7 @@ fn acciones() -> Vec<(String, &'static str, Accion)> {
         (tr("Ver instrumento").to_string(), tr("Piano roll"), Accion::Instrumento),
         (tr("Piano roll").to_string(), tr("Ver"), Accion::PianoRoll),
         (tr("Abrir carpeta de registros").to_string(), tr("Herramientas"), Accion::Registros),
+        (tr("Mastering y loudness…").to_string(), tr("Ver"), Accion::Mastering),
         (tr("Enviar informe de error…").to_string(), tr("Herramientas"), Accion::Informe),
     ]);
     v.extend(TEMAS.iter().enumerate().map(|(k, (n, _))| (format!("{}: {}", tr("Tema"), tr(n)), tr("Ver"), Accion::Tema(k))));
@@ -106,6 +108,7 @@ impl App {
             Some(Accion::Circulo) => self.roll.circulo = true,
             Some(Accion::Instrumento) => self.roll.instrumento = true,
             Some(Accion::PianoRoll) => (self.show_mixer, self.bottom_tab) = (true, 1),
+            Some(Accion::Mastering) => self.mastering.abierta = true,
             Some(Accion::Registros) => informes::abrir_carpeta(&informes::carpeta()),
             Some(Accion::Informe) => {
                 informes::guardar("error", tr("Informe enviado por el usuario desde el menú"), "");

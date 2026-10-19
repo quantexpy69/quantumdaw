@@ -162,6 +162,9 @@ impl App {
                     self.config.save();
                     theme(ui.ctx());
                 }
+                if item(ui, tr("Mastering y loudness…"), "") {
+                    self.mastering.abierta = true;
+                }
                 ui.menu_button(tr("Tema"), |ui| {
                     widgets::menu_style(ui);
                     for (k, (nombre, colores)) in TEMAS.iter().enumerate() {

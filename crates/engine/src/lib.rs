@@ -1,6 +1,7 @@
 //! Motor de audio en tiempo real. El hilo de audio solo lee atómicos, un `ArcSwap`
 //! con el grafo de pistas y ring buffers sin locks: no bloquea ni reserva memoria.
 mod devices;
+pub mod loudness;
 mod dsp;
 mod fx;
 mod io;
@@ -375,6 +376,10 @@ pub struct Live<'a> {
 pub struct Engine {
     pub graph: ArcSwap<Vec<Node>>,
     pub master: Params,
+    /// Efectos del master (limitador, EQ…), antes del fader del master.
+    pub master_fx: ArcSwap<Vec<Arc<Fx>>>,
+    /// Medidor de loudness de la salida del master.
+    pub medidor: loudness::Medidor,
     pub playing: AtomicBool,
     pub pos: AtomicU64,
     pub looping: AtomicBool,
@@ -504,6 +509,8 @@ impl Engine {
         let engine = Arc::new(Self {
             graph: Default::default(),
             master: Default::default(),
+            master_fx: Default::default(),
+            medidor: loudness::Medidor::new(config.sample_rate),
             playing: false.into(),
             pos: 0.into(),
             looping: false.into(),
@@ -652,7 +659,13 @@ impl Engine {
             }
         }
         if !(offline && self.prefader.load(Relaxed)) {
+            for fx in self.master_fx.load().iter() {
+                fx.process(out, sr, bpm_now, offline);
+            }
             self.master.apply(out, self.master.gain.get(), true);
+            if !offline && only.is_none() {
+                self.medidor.medir(out);
+            }
         }
         if playing && !offline && self.metronome.load(Relaxed) {
             self.click(out, pos);

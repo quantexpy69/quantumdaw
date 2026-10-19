@@ -13,6 +13,7 @@ mod icons;
 mod instruments;
 mod keys;
 mod library;
+mod mastering;
 mod midi_archivo;
 mod mixer;
 mod paleta;
@@ -645,6 +646,9 @@ struct App {
     cambios: bool,
     autoguardado: std::time::Instant,
     recuperar: Option<SystemTime>,
+    /// Efectos del master y ventana de mastering y loudness.
+    master_fx: Vec<Arc<Fx>>,
+    mastering: mastering::Mastering,
     /// Paleta de comandos abierta (Ctrl/Cmd+K).
     paleta: Option<paleta::Paleta>,
     audio: AudioConfig,
@@ -756,6 +760,8 @@ impl App {
             cambios: false,
             autoguardado: std::time::Instant::now(),
             recuperar: autoguardado_inicio,
+            master_fx: vec![],
+            mastering: Default::default(),
             paleta: None,
             informe: informes::pendiente(),
             status: String::new(),
@@ -801,6 +807,17 @@ impl App {
 
     fn apply_project(&mut self, p: Project) {
         let (e, sr) = (self.engine.clone(), self.sr());
+        self.master_fx = p
+            .master_fx
+            .iter()
+            .filter_map(|f| {
+                let fx = Fx::new(FxKind::from_name(&f.kind)?, e.sample_rate);
+                fx.params.iter().zip(&f.params).for_each(|(a, v)| a.set(*v));
+                fx.bypass.store(f.bypass, Relaxed);
+                Some(Arc::new(fx))
+            })
+            .collect();
+        e.master_fx.store(Arc::new(self.master_fx.clone()));
         e.bpm.set(p.bpm);
         e.beats.store(p.signature.0, Relaxed);
         e.unit.store(p.signature.1, Relaxed);
@@ -963,6 +980,7 @@ impl App {
             markers: self.s.markers.iter().map(|(f, n)| (*f as f64 / sr, n.clone())).collect(),
             chords: self.s.chords.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
+            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.kind.name().into(), params: f.params.iter().map(|p| p.get()).collect(), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
             ..Default::default()
         }
     }
@@ -2165,6 +2183,7 @@ impl eframe::App for App {
         self.ventana_informe(&ctx);
         self.ventana_paleta(&ctx);
         self.ventana_recuperar(&ctx);
+        self.ventana_mastering(&ctx);
         // Autoguardado cada minuto si hay cambios (no mientras se graba).
         if self.cambios && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > Duration::from_secs(60) {
             self.autoguardado = std::time::Instant::now();

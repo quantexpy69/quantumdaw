@@ -20,6 +20,13 @@ pub enum FxKind {
     Tune,
     /// EQ de 7 bandas con analizador y supresor de resonancias (al estilo de Curves AQ).
     Curves,
+    /// Limitador con anticipación (lookahead) y techo: para el master.
+    Limiter,
+    /// Puerta de ruido: silencia lo que queda por debajo del umbral.
+    Gate,
+    Chorus,
+    /// Reduce las eses (sibilancias) bajando solo los agudos cuando superan el umbral.
+    DeEsser,
 }
 
 const SCALES: [&[u8]; 3] = [&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], &[0, 2, 4, 5, 7, 9, 11], &[0, 2, 3, 5, 7, 8, 10]];
@@ -32,7 +39,7 @@ const FFT_HOP: usize = 256;
 pub const BANDAS: usize = 96;
 
 impl FxKind {
-    pub const ALL: [Self; 7] = [Self::Eq, Self::Curves, Self::Compressor, Self::Delay, Self::Reverb, Self::Drive, Self::Tune];
+    pub const ALL: [Self; 11] = [Self::Eq, Self::Curves, Self::Compressor, Self::Limiter, Self::Gate, Self::DeEsser, Self::Delay, Self::Reverb, Self::Chorus, Self::Drive, Self::Tune];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -43,6 +50,10 @@ impl FxKind {
             Self::Drive => "Saturación",
             Self::Tune => "QUANTUM Tune",
             Self::Curves => "QUANTUM Curves",
+            Self::Limiter => "Limitador",
+            Self::Gate => "Puerta de ruido",
+            Self::Chorus => "Chorus",
+            Self::DeEsser => "De-esser",
         }
     }
 
@@ -113,6 +124,10 @@ impl FxKind {
                 ("Mezcla", 0.0, 1.0, 1.0),
                 ("Sidechain", 0.0, 1.0, 0.5),
             ],
+            Self::Limiter => &[("Techo dB", -12.0, 0.0, -1.0), ("Ganancia dB", 0.0, 24.0, 0.0), ("Release ms", 5.0, 500.0, 60.0), ("Anticipación ms", 0.5, 10.0, 3.0)],
+            Self::Gate => &[("Umbral dB", -80.0, 0.0, -45.0), ("Rango dB", -80.0, 0.0, -60.0), ("Ataque ms", 0.1, 50.0, 1.0), ("Release ms", 10.0, 1000.0, 120.0), ("Retención ms", 0.0, 500.0, 30.0)],
+            Self::Chorus => &[("Velocidad Hz", 0.05, 5.0, 0.8), ("Profundidad ms", 0.5, 15.0, 4.0), ("Mezcla", 0.0, 1.0, 0.5), ("Anchura", 0.0, 1.0, 1.0), ("Retardo ms", 5.0, 30.0, 12.0)],
+            Self::DeEsser => &[("Frecuencia", 2000.0, 12000.0, 6500.0), ("Umbral dB", -60.0, 0.0, -30.0), ("Reducción máx. dB", 0.0, 24.0, 10.0), ("Escuchar eses", 0.0, 1.0, 0.0)],
             Self::Tune => {
                 &[("Tonalidad", 0.0, 11.0, 0.0), ("Escala", 0.0, 2.0, 0.0), ("Velocidad ms", 0.0, 200.0, 20.0), ("Mezcla", 0.0, 1.0, 1.0), ("Modo", 0.0, 1.0, 0.0), ("Nota manual", 0.0, 11.0, 0.0)]
             }
@@ -178,6 +193,12 @@ impl Fx {
             }
             FxKind::Tune => (st.line, st.ana, st.yin) = (vec![[0.0; 2]; 8192], vec![0.0; YIN_W], vec![0.0; YIN_W]),
             FxKind::Curves => st.espectral = Some(Box::new(Espectral::new(sample_rate as f32))),
+            // Limitador: retardo de anticipación y ganancia necesaria de cada muestra (10 ms como máximo).
+            FxKind::Limiter => {
+                let n = sample_rate as usize / 100 + 2;
+                (st.line, st.ana, st.env) = (vec![[0.0; 2]; n], vec![1.0; n], 1.0);
+            }
+            FxKind::Chorus => st.line = vec![[0.0; 2]; sample_rate as usize / 20 + 2],
             _ => {}
         }
         let params = kind.params().iter().map(|p| AtomicF32::new(p.3)).collect();
@@ -316,6 +337,88 @@ impl Fx {
                 }
             }
             FxKind::Tune => self.tune(st, buf, sr, &p),
+            FxKind::Limiter => {
+                let (techo, entrada) = (db(p[0]), db(p[1]));
+                let n = st.line.len();
+                let l = ((p[3] * 0.001 * sr) as usize).clamp(1, n - 2);
+                let rel = 1.0 - (-1.0 / (p[2].max(1.0) * 0.001 * sr)).exp();
+                // El ataque llega a la ganancia necesaria antes de que el pico salga del retardo.
+                let att = 1.0 - (-4.0 / l as f32).exp();
+                let mut gr = 0f32;
+                for s in buf.iter_mut() {
+                    let x = [s[0] * entrada, s[1] * entrada];
+                    let pico = x[0].abs().max(x[1].abs());
+                    (st.ana[st.idx], st.line[st.idx]) = (if pico > techo { techo / pico } else { 1.0 }, x);
+                    let m = (0..=l).map(|k| st.ana[(st.idx + n - k) % n]).fold(1.0f32, f32::min);
+                    st.env += (m - st.env) * if m < st.env { att } else { rel };
+                    let y = st.line[(st.idx + n - l) % n];
+                    st.idx = (st.idx + 1) % n;
+                    *s = [(y[0] * st.env).clamp(-techo, techo), (y[1] * st.env).clamp(-techo, techo)];
+                    gr = gr.max(-20.0 * st.env.max(1e-6).log10());
+                }
+                self.readout[0].set(gr);
+            }
+            FxKind::Gate => {
+                let (umbral, rango) = (db(p[0]), db(p[1]));
+                let coef = |ms: f32| 1.0 - (-1.0 / (ms.max(0.05) * 0.001 * sr)).exp();
+                let (att, rel, caida, retencion) = (coef(p[2]), coef(p[3]), coef(10.0), (p[4] * 0.001 * sr) as usize);
+                for s in buf.iter_mut() {
+                    let lvl = s[0].abs().max(s[1].abs());
+                    st.env = if lvl > st.env { lvl } else { st.env + (lvl - st.env) * caida };
+                    if st.env > umbral {
+                        st.hop = retencion;
+                    } else {
+                        st.hop = st.hop.saturating_sub(1);
+                    }
+                    let objetivo = if st.env > umbral || st.hop > 0 { 1.0 } else { rango };
+                    st.ratio += (objetivo - st.ratio) * if objetivo > st.ratio { att } else { rel };
+                    *s = [s[0] * st.ratio, s[1] * st.ratio];
+                }
+                self.readout[0].set(-20.0 * st.ratio.max(1e-6).log10());
+            }
+            FxKind::Chorus => {
+                let n = st.line.len();
+                let paso = p[0] / sr;
+                for s in buf.iter_mut() {
+                    st.line[st.idx] = *s;
+                    let mut out = *s;
+                    for (ch, o) in out.iter_mut().enumerate() {
+                        let lfo = (TAU * (st.phase + ch as f32 * 0.25 * p[3])).sin();
+                        let d = ((p[4] + p[1] * 0.5 * (1.0 + lfo)) * 0.001 * sr).clamp(1.0, n as f32 - 2.0);
+                        let (k, f) = (d as usize, d.fract());
+                        let a = st.line[(st.idx + n - k) % n][ch];
+                        let b = st.line[(st.idx + n - k - 1) % n][ch];
+                        *o = s[ch] * (1.0 - p[2] * 0.5) + (a + (b - a) * f) * p[2];
+                    }
+                    *s = out;
+                    st.idx = (st.idx + 1) % n;
+                    st.phase = (st.phase + paso).fract();
+                }
+            }
+            FxKind::DeEsser => {
+                let co = biquad(3, p[0], 0.0, 0.707, sr);
+                let (umbral, maximo, escuchar) = (p[1], p[2], p[3] >= 0.5);
+                let (att, rel) = (1.0 - (-1.0 / (0.001 * sr)).exp(), 1.0 - (-1.0 / (0.06 * sr)).exp());
+                let mut gr = 0f32;
+                for s in buf.iter_mut() {
+                    let mut agudos = [0f32; 2];
+                    for (ch, x) in s.iter().enumerate() {
+                        let z = &mut st.z[0][ch];
+                        let y = co[0] * x + z[0];
+                        (z[0], z[1]) = (co[1] * x - co[3] * y + z[1], co[2] * x - co[4] * y);
+                        agudos[ch] = y;
+                    }
+                    let lvl = agudos[0].abs().max(agudos[1].abs());
+                    st.env += (lvl - st.env) * if lvl > st.env { att } else { rel };
+                    let red = ((20.0 * st.env.max(1e-6).log10() - umbral) * 0.75).clamp(0.0, maximo);
+                    gr = gr.max(red);
+                    let g = db(-red);
+                    // Banda completa: mientras hay eses baja toda la señal (sin desfases de un filtro
+                    // separador). «Escuchar eses» deja oír solo lo que dispara la reducción.
+                    *s = if escuchar { agudos } else { [s[0] * g, s[1] * g] };
+                }
+                self.readout[0].set(gr);
+            }
             FxKind::Curves => {
                 let co = curves_coefs(&p, sr);
                 let (salida, mezcla, cantidad, sens, lateral) = (db(p[17]), p[18], p[15], p[16], if clave.is_some() { p[19] } else { 0.0 });
@@ -719,5 +822,43 @@ mod pruebas_curves {
         let (a, b) = (energia(&señal[48_000..], 500.0, sr), energia(&out[49_024..], 500.0, sr));
         assert!((20.0 * (b / a).log10()).abs() < 3.0, "500 Hz cambió {:.1} dB", 20.0 * (b / a).log10());
         assert!(fx.reduccion.iter().any(|r| r.get() > 3.0), "el visor no muestra la reducción");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_dinamica {
+    use super::*;
+
+    fn seno(f: f32, amp: f32, n: usize) -> Vec<[f32; 2]> {
+        (0..n).map(|i| [(TAU * f * i as f32 / 48_000.0).sin() * amp; 2]).collect()
+    }
+
+    fn pico(b: &[[f32; 2]]) -> f32 {
+        b.iter().fold(0f32, |m, s| m.max(s[0].abs()).max(s[1].abs()))
+    }
+
+    #[test]
+    fn limitador_puerta_y_deesser() {
+        // Limitador: +12 dB sobre un seno a -6 dBFS nunca pasa del techo de -1 dB.
+        let lim = Fx::new(FxKind::Limiter, 48_000);
+        lim.params[1].set(12.0);
+        let mut b = seno(220.0, 0.5, 48_000);
+        b.chunks_mut(256).for_each(|c| lim.process(c, 48_000.0, 120.0, true));
+        assert!(pico(&b) <= db(-1.0) + 1e-4, "pico {}", pico(&b));
+        assert!(pico(&b[24_000..]) > db(-1.5), "el limitador no debe hundir el nivel");
+        // Puerta: un seno a -60 dBFS (bajo el umbral de -45) queda casi en silencio.
+        let gate = Fx::new(FxKind::Gate, 48_000);
+        let mut b = seno(220.0, db(-60.0), 48_000);
+        b.chunks_mut(256).for_each(|c| gate.process(c, 48_000.0, 120.0, true));
+        assert!(pico(&b[36_000..]) < db(-100.0), "puerta {}", pico(&b[36_000..]));
+        // De-esser: baja un agudo fuerte (8 kHz) y deja pasar un grave (200 Hz).
+        let de = Fx::new(FxKind::DeEsser, 48_000);
+        let mut agudo = seno(8000.0, 0.5, 24_000);
+        agudo.chunks_mut(256).for_each(|c| de.process(c, 48_000.0, 120.0, true));
+        let de = Fx::new(FxKind::DeEsser, 48_000);
+        let mut grave = seno(200.0, 0.5, 24_000);
+        grave.chunks_mut(256).for_each(|c| de.process(c, 48_000.0, 120.0, true));
+        assert!(pico(&agudo[12_000..]) < 0.5 * db(-8.0), "eses {}", pico(&agudo[12_000..]));
+        assert!(pico(&grave[12_000..]) > 0.45);
     }
 }

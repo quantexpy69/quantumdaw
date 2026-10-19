@@ -20,6 +20,10 @@ pub fn kind_color(kind: Option<FxKind>) -> Color32 {
         Some(FxKind::Drive) => Color32::from_rgb(0xFF, 0x7A, 0x45),
         Some(FxKind::Tune) => Color32::from_rgb(0x3D, 0xDC, 0x84),
         Some(FxKind::Curves) => Color32::from_rgb(0xFF, 0x6B, 0x9A),
+        Some(FxKind::Limiter) => Color32::from_rgb(0xFF, 0x4D, 0x4F),
+        Some(FxKind::Gate) => Color32::from_rgb(0x9C, 0xD6, 0x4A),
+        Some(FxKind::Chorus) => Color32::from_rgb(0x4F, 0xC3, 0xF7),
+        Some(FxKind::DeEsser) => Color32::from_rgb(0xF2, 0xC9, 0x4C),
         None => Color32::from_rgb(0xF2, 0x8C, 0xD0),
     }
 }
@@ -34,6 +38,10 @@ pub fn summary(k: FxKind) -> &'static str {
         FxKind::Drive => "Saturación analógica suave, dura o de válvula, con control de tono y salida.",
         FxKind::Tune => "Afinación de voz automática a la tonalidad y escala, o manual a una nota fija.",
         FxKind::Curves => "EQ de 7 bandas con analizador en vivo, detección automática y supresor de resonancias molestas, con presets por instrumento.",
+        FxKind::Limiter => "Limitador con anticipación: sube el volumen sin pasar del techo. Ideal al final de la cadena del master.",
+        FxKind::Gate => "Puerta de ruido: silencia el ruido de fondo entre frases o golpes, con retención y rango.",
+        FxKind::Chorus => "Duplica la señal con pequeñas variaciones de tiempo para un sonido más ancho y envolvente.",
+        FxKind::DeEsser => "Baja las eses y sibilancias de las voces: detecta los agudos fuertes y reduce el volumen solo en ese instante.",
     }
 }
 
@@ -149,6 +157,19 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
                 if x < r.right() {
                     painter.vline(x, r.bottom() - h * r.height()..=r.bottom(), Stroke::new(3.0, color));
                 }
+            }
+        }
+        // Dinámica con lectura de reducción de ganancia.
+        Some(FxKind::Limiter | FxKind::Gate | FxKind::DeEsser) => {
+            let techo = if kind == Some(FxKind::Limiter) { 1.0 - p[0] / -12.0 } else { 0.5 };
+            painter.hline(r.x_range(), r.bottom() - techo * r.height(), Stroke::new(1.5, color));
+            let gr = Rect::from_min_max(pos2(r.right() - 10.0, r.top()), r.max);
+            painter.rect_filled(Rect::from_min_max(gr.min, pos2(gr.right(), gr.top() + (readout[0] / 24.0).min(1.0) * gr.height())), rr(2.0), METER[1]);
+            label(pos2(r.right() - 14.0, r.top()), Align2::RIGHT_TOP, format!("GR -{:.1} dB", readout[0]), 11.0, METER[1]);
+        }
+        Some(FxKind::Chorus) => {
+            for ch in 0..2 {
+                curve(&|t| 0.5 + 0.35 * p[1] / 15.0 * (std::f32::consts::TAU * (t * 2.0 + ch as f32 * 0.25 * p[3])).sin());
             }
         }
         Some(FxKind::Reverb) => _ = curve(&|t| p[2].max(0.15) * (-t * 9.0 * (1.05 - p[0])).exp() * (1.0 - 0.5 * p[1] * t)),

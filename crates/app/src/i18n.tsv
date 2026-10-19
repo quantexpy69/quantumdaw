@@ -741,3 +741,52 @@ Importar MIDI…	Import MIDI…	Importar MIDI…
 Exportar MIDI…	Export MIDI…	Exportar MIDI…
 MIDI importado	MIDI imported	MIDI importado
 Exportar región a MIDI…	Export region to MIDI…	Exportar região para MIDI…
+Limitador	Limiter	Limitador
+Puerta de ruido	Noise gate	Gate de ruído
+Chorus	Chorus	Chorus
+De-esser	De-esser	De-esser
+Techo dB	Ceiling dB	Teto dB
+Anticipación ms	Lookahead ms	Antecipação ms
+Rango dB	Range dB	Faixa dB
+Retención ms	Hold ms	Retenção ms
+Velocidad Hz	Rate Hz	Velocidade Hz
+Profundidad ms	Depth ms	Profundidade ms
+Retardo ms	Delay ms	Atraso ms
+Frecuencia	Frequency	Frequência
+Reducción máx. dB	Max reduction dB	Redução máx. dB
+Escuchar eses	Listen to esses	Ouvir sibilâncias
+Limitador con anticipación: sube el volumen sin pasar del techo. Ideal al final de la cadena del master.	Lookahead limiter: raises the volume without going over the ceiling. Ideal at the end of the master chain.	Limitador com antecipação: aumenta o volume sem passar do teto. Ideal no final da cadeia do master.
+Puerta de ruido: silencia el ruido de fondo entre frases o golpes, con retención y rango.	Noise gate: silences background noise between phrases or hits, with hold and range.	Gate de ruído: silencia o ruído de fundo entre frases ou golpes, com retenção e faixa.
+Duplica la señal con pequeñas variaciones de tiempo para un sonido más ancho y envolvente.	Doubles the signal with small timing variations for a wider, richer sound.	Duplica o sinal com pequenas variações de tempo para um som mais largo e envolvente.
+Baja las eses y sibilancias de las voces: detecta los agudos fuertes y reduce el volumen solo en ese instante.	Tames esses and sibilance in vocals: it detects loud highs and lowers the volume only at that moment.	Reduz os esses e sibilâncias da voz: detecta agudos fortes e baixa o volume só naquele instante.
+Techo y volumen para el master	Ceiling and loudness for the master	Teto e volume para o master
+Quita el ruido de fondo	Removes background noise	Remove o ruído de fundo
+Ancho y movimiento	Width and movement	Largura e movimento
+Controla las eses de la voz	Controls vocal esses	Controla os esses da voz
+Mastering y loudness	Mastering and loudness	Masterização e loudness
+Mastering y loudness…	Mastering and loudness…	Masterização e loudness…
+Integrado	Integrated	Integrado
+Corto plazo (3 s)	Short term (3 s)	Curto prazo (3 s)
+Momentáneo	Momentary	Momentâneo
+True peak máx.	Max true peak	True peak máx.
+Rango (LRA)	Range (LRA)	Faixa (LRA)
+Correlación de fase	Phase correlation	Correlação de fase
+Reiniciar medición	Reset measurement	Reiniciar medição
+Empieza a medir de nuevo el integrado, el rango y el true peak (reproduce la canción entera para medirla)	Starts measuring integrated loudness, range and true peak again (play the whole song to measure it)	Recomeça a medir o integrado, a faixa e o true peak (toque a música inteira para medi-la)
+Mide la salida del master mientras reproduces.	Measures the master output while you play.	Mede a saída do master enquanto você toca.
+Objetivo	Target	Alvo
+Radio y TV (EBU R128)	Radio and TV (EBU R128)	Rádio e TV (EBU R128)
+Máster fuerte (club, CD)	Loud master (club, CD)	Master forte (clube, CD)
+La sonoridad está en el objetivo.	Loudness is on target.	A loudness está no alvo.
+Está	It is	Está
+por encima: la plataforma la bajará; puedes bajar la ganancia del limitador.	above: the platform will turn it down; you can lower the limiter gain.	acima: a plataforma vai baixá-la; você pode baixar o ganho do limitador.
+Faltan	Missing	Faltam
+para el objetivo: sube la ganancia del limitador del master.	to reach the target: raise the master limiter gain.	para o alvo: aumente o ganho do limitador do master.
+El true peak supera	True peak exceeds	O true peak passa de
+baja el techo del limitador.	lower the limiter ceiling.	baixe o teto do limitador.
+Efectos del master	Master effects	Efeitos do master
+Cadena de mastering sugerida	Suggested mastering chain	Cadeia de masterização sugerida
+Curves, compresor suave y limitador a -1 dBTP	Curves, gentle compressor and limiter at -1 dBTP	Curves, compressor suave e limitador a -1 dBTP
+Sin efectos en el master.	No effects on the master.	Sem efeitos no master.
+Activo	Active	Ativo
+Ábrelo en una pista para ver el visor; aquí se ajustan sus perillas.	Open it on a track to see the display; adjust its knobs here.	Abra-o em uma faixa para ver o visor; aqui se ajustam os botões.

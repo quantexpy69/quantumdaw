@@ -52,6 +52,8 @@ pub struct Project {
     /// Pista de acordes y pista de arreglo (Intro, Estrofa, Coro…): (inicio, fin en segundos, nombre).
     pub chords: Vec<(f64, f64, String)>,
     pub sections: Vec<(f64, f64, String)>,
+    /// Efectos del master (cadena de mastering).
+    pub master_fx: Vec<FxState>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -117,6 +119,7 @@ impl Default for Project {
             markers: vec![],
             chords: vec![],
             sections: vec![],
+            master_fx: vec![],
         }
     }
 }

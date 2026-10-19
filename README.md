@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.15.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.16.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -45,6 +45,11 @@ Versión actual: **0.15.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
 - EQ de 3 bandas paramétrico, compresor (ataque, release, rodilla, mezcla paralela), delay (ping-pong,
   filtros, sincronía al tempo), reverb (pre-delay, anchura), saturación (suave, dura, válvula) y
   **QUANTUM Tune** (afinación automática o manual de voces).
+- **Limitador** con anticipación, **puerta de ruido**, **chorus** y **de-esser**.
+- **Mastering y loudness** (Ver → Mastering y loudness…): LUFS integrado, de corto plazo y momentáneo
+  (BS.1770), true peak, rango (LRA) y correlación de fase; objetivos de Spotify, YouTube, Apple Music,
+  Amazon, Tidal, Deezer, SoundCloud y EBU R128 con consejos; **cadena de efectos del master** y cadena
+  de mastering sugerida.
 - Perillas tipo consola con color por plugin, visor gráfico y vista previa al pasar el ratón en la biblioteca.
 
 ### Instrumentos y MIDI

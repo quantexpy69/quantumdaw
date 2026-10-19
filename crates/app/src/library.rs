@@ -19,9 +19,9 @@ const SECTIONS: [(&str, &str); 4] = [("files", "Archivos"), ("fx", "Efectos"), (
 /// Índice de la sección de plugins (para abrirla desde «Agregar mis efectos»).
 pub const PLUGINS_TAB: usize = 3;
 const FX_CATEGORIES: [(&str, &[FxKind]); 5] = [
-    ("Dinámica", &[FxKind::Compressor]),
+    ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::DeEsser]),
     ("EQ y filtros", &[FxKind::Curves, FxKind::Eq]),
-    ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb]),
+    ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb, FxKind::Chorus]),
     ("Color y saturación", &[FxKind::Drive]),
     ("Afinación", &[FxKind::Tune]),
 ];
@@ -36,6 +36,10 @@ fn describe(k: FxKind) -> &'static str {
         FxKind::Drive => "Calidez y distorsión",
         FxKind::Tune => "Afinación automática o manual de voces",
         FxKind::Curves => "EQ con analizador y resonancias",
+        FxKind::Limiter => "Techo y volumen para el master",
+        FxKind::Gate => "Quita el ruido de fondo",
+        FxKind::Chorus => "Ancho y movimiento",
+        FxKind::DeEsser => "Controla las eses de la voz",
     }
 }
 
