@@ -25,6 +25,7 @@ mod proxies;
 mod routing;
 mod timeline;
 mod video;
+mod web;
 mod welcome;
 mod ventanas;
 mod widgets;

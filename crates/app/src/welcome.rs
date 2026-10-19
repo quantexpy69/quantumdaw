@@ -738,6 +738,76 @@ impl App {
             }
         });
         ui.add_space(10.0);
+        // Novedades del blog y tienda de quantumdaw.com.
+        let web = web::contenido();
+        let abrir = |ui: &egui::Ui, url: String| ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+        let tarjeta_web = |ui: &mut egui::Ui, tam: egui::Vec2, arriba: &str, titulo_: &str, texto: &str, pie: (&str, Color32), etiqueta: Option<&str>| -> bool {
+            let (r, resp) = ui.allocate_exact_size(tam, egui::Sense::click());
+            ui.painter().rect(r, rr(10.0), if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
+            let pc = ui.painter().with_clip_rect(r.shrink(6.0));
+            pc.text(r.left_top() + vec2(14.0, 18.0), egui::Align2::LEFT_CENTER, arriba, egui::FontId::proportional(10.5), ACCENT());
+            pc.text(r.left_top() + vec2(14.0, 40.0), egui::Align2::LEFT_CENTER, titulo_, egui::FontId::proportional(14.5), TEXT());
+            let g = ui.painter().layout(texto.to_string(), egui::FontId::proportional(11.5), TEXT_DIM(), r.width() - 28.0);
+            pc.galley(r.left_top() + vec2(14.0, 54.0), g, TEXT_DIM());
+            pc.text(r.left_bottom() + vec2(14.0, -16.0), egui::Align2::LEFT_CENTER, pie.0, egui::FontId::proportional(12.0), pie.1);
+            if let Some(e) = etiqueta.filter(|e| !e.is_empty()) {
+                let g = ui.painter().layout_no_wrap(e.to_string(), egui::FontId::proportional(10.5), BG());
+                let er = egui::Rect::from_min_size(r.right_top() + vec2(-g.size().x - 22.0, 10.0), g.size() + vec2(12.0, 6.0));
+                ui.painter().rect_filled(er, rr(5.0), ACCENT());
+                ui.painter().galley(er.min + vec2(6.0, 3.0), g, BG());
+            }
+            resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
+        };
+        let base = web::base();
+        ui.horizontal(|ui| {
+            titulo(ui, "NOVEDADES", "Del blog de Quantum DAW.");
+            if web.as_ref().is_some_and(|c| !c.en_linea) {
+                ui.label(RichText::new(tr("(sin conexión: lo último guardado)")).size(10.5).color(TEXT_DIM()));
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new(RichText::new(tr("Ver todas…")).size(12.0)).frame(false)).clicked() {
+                    abrir(ui, format!("{base}/noticias.html"));
+                }
+            });
+        });
+        let noticias = web.as_ref().map(|c| c.noticias.clone()).unwrap_or_default();
+        if noticias.is_empty() {
+            ui.label(RichText::new(if web.is_none() { tr("Cargando novedades…") } else { tr("Todavía no hay novedades publicadas.") }).size(12.0).color(TEXT_DIM()));
+        } else {
+            let tam = vec2((ancho - 20.0) / 3.0, 118.0);
+            ui.horizontal(|ui| {
+                for n in noticias.iter().take(3) {
+                    if tarjeta_web(ui, tam, &n.fecha, &n.titulo, &n.resumen, (tr("Leer la noticia"), ACCENT()), None) {
+                        abrir(ui, format!("{base}/noticia.php?n={}", n.slug));
+                    }
+                }
+            });
+        }
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            titulo(ui, "TIENDA QUANTUM", "Plugins, instrumentos y sonidos para tu estudio.");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new(RichText::new(tr("Ir a la tienda…")).size(12.0)).frame(false)).clicked() {
+                    abrir(ui, format!("{base}/tienda.html"));
+                }
+            });
+        });
+        let productos = web.as_ref().map(|c| c.productos.clone()).unwrap_or_default();
+        if productos.is_empty() {
+            ui.label(RichText::new(if web.is_none() { tr("Cargando la tienda…") } else { tr("Muy pronto: plugins, instrumentos y sonidos para Quantum DAW.") }).size(12.0).color(TEXT_DIM()));
+        } else {
+            let n = ((ancho + 10.0) / 260.0).floor().max(1.0) as usize;
+            let tam = vec2((ancho - 10.0 * (n as f32 - 1.0)) / n as f32, 128.0);
+            ui.horizontal(|ui| {
+                for p in productos.iter().take(n) {
+                    let pie = (web::precio(p), if p.gratis { VERDE_PLAY } else { ACCENT() });
+                    if tarjeta_web(ui, tam, &p.tipo.to_uppercase(), &p.nombre, &p.resumen, (pie.0.as_str(), pie.1), p.etiqueta.as_deref()) {
+                        abrir(ui, p.enlace.clone().unwrap_or_else(|| format!("{base}/tienda.html#{}", p.slug)));
+                    }
+                }
+            });
+        }
+        ui.add_space(10.0);
         titulo(ui, "AMPLÍA TU ESTUDIO", "Instrumentos reales gratuitos y libres para descargar.");
         // Tarjetas del mismo tamaño, tantas como entren en una fila.
         let n = ((ancho + 10.0) / 230.0).floor().max(1.0) as usize;

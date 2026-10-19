@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.22.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.23.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -83,7 +83,8 @@ Versión actual: **0.22.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   como cualquier región; doble clic abre el visor con controles de reproducción.
 - Importación WAV/FLAC/OGG/MP3/M4A y video (vía ffmpeg) sincronizado; exportación WAV/FLAC/MP3/OGG
   de la mezcla, de una pista o en stems.
-- Menú principal con nueva canción, datos de la canción y copyright, recientes y demo.
+- **Pantalla inicial** con saludo, continuar, demo, plantillas, recientes, inicio rápido, espacios de trabajo,
+  **novedades del blog** y **tienda QUANTUM** de quantumdaw.com (con caché sin conexión) e instrumentos gratis.
 - **Proyectos que agrupan canciones** (por ejemplo un álbum): cada proyecto tiene su ficha
   (`proyecto.json`) y cada canción guarda quién la creó, fecha y hora de creación y del último guardado,
   formato (frecuencia y bits), tempo, métrica y número de pistas.
