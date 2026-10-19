@@ -136,6 +136,18 @@ pub fn pestana(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
     resp
 }
 
+/// Pestaña de texto (biblioteca): clara y subrayada con el acento cuando está activa; se puede arrastrar.
+pub fn pestana_texto(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
+    let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.0), TEXT());
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 14.0, 28.0), Sense::click_and_drag());
+    let color = if activa || resp.hovered() { TEXT() } else { TEXT_DIM() };
+    ui.painter().galley_with_override_text_color(pos2(r.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0 - 2.0), galley, color);
+    if activa {
+        ui.painter().rect_filled(Rect::from_min_max(pos2(r.left() + 4.0, r.bottom() - 3.0), pos2(r.right() - 4.0, r.bottom() - 1.0)), 1.0, ACCENT());
+    }
+    resp
+}
+
 /// Pestaña tipo píldora (panel inferior): rellena de acento cuando está activa.
 pub fn pildora(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
     let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.5), if activa { BG() } else { TEXT() });

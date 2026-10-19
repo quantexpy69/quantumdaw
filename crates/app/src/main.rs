@@ -663,6 +663,8 @@ struct App {
     partitura_sp: f32,
     /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
     partitura_todas: bool,
+    /// Texto buscado en la biblioteca.
+    lib_buscar: String,
     /// Generador de progresiones de acordes por estilo.
     generador: generador::Generador,
     /// Efectos del master y ventana de mastering y loudness.
@@ -791,6 +793,7 @@ impl App {
             mastering: Default::default(),
             partitura_todas: true,
             partitura_sp: 8.0,
+            lib_buscar: String::new(),
             generador: Default::default(),
             paleta: None,
             informe: informes::pendiente(),

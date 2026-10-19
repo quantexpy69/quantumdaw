@@ -15,7 +15,7 @@ pub enum LibItem {
 /// Sección de la biblioteca que se arrastra para reordenar.
 struct LibSection(usize);
 
-const SECTIONS: [(&str, &str); 4] = [("files", "Archivos"), ("fx", "Efectos"), ("inst", "Instrumentos"), ("plugins", "Mis plugins")];
+const SECTIONS: [(&str, &str); 4] = [("files", "Muestras"), ("fx", "Efectos"), ("inst", "Instrumentos"), ("plugins", "Plugins")];
 /// Índice de la sección de plugins (para abrirla desde «Agregar mis efectos»).
 pub const PLUGINS_TAB: usize = 3;
 const FX_CATEGORIES: [(&str, &[FxKind]); 5] = [
@@ -183,20 +183,21 @@ impl App {
 
     pub fn library(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("Biblioteca")).strong().size(17.0));
+            ui.label(RichText::new(tr("Biblioteca")).strong().size(15.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("×").on_hover_text(tr("Ocultar (Y)")).clicked() {
+                ui.spacing_mut().button_padding = vec2(6.0, 2.0);
+                if ui.small_button("×").on_hover_text(tr("Ocultar (Y)")).clicked() {
                     self.show_lib = false;
                 }
                 // Flotar dentro del programa, ventana independiente del sistema o acoplar al lateral.
-                if ui.button(tr(if self.lib_float { "Acoplar" } else { "Flotar" })).clicked() {
+                if ui.small_button(tr(if self.lib_float { "Acoplar" } else { "Flotar" })).clicked() {
                     if self.lib_float {
                         self.acoplar("lib-win");
                     } else {
                         self.lib_float = true;
                     }
                 }
-                if !self.lib_float && ui.button(tr("Ventana independiente")).on_hover_text(tr("Abre la biblioteca fuera del programa (por ejemplo en otro monitor)")).clicked() {
+                if !self.lib_float && ui.small_button(tr("Separar")).on_hover_text(tr("Abre la biblioteca fuera del programa (por ejemplo en otro monitor)")).clicked() {
                     self.lib_float = true;
                     self.alternar_separada("lib-win");
                 }
@@ -208,10 +209,10 @@ impl App {
         order.extend(missing);
         let mut moved = None;
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = 2.0;
             for (pos, &k) in order.iter().enumerate() {
                 let on = self.lib_tab == k;
-                let r = ui.add(egui::Button::selectable(on, RichText::new(tr(SECTIONS[k].1)).size(14.0).strong()).min_size(vec2(0.0, 30.0)).sense(Sense::click_and_drag()));
+                let r = widgets::pestana_texto(ui, on, tr(SECTIONS[k].1));
                 r.dnd_set_drag_payload(LibSection(pos));
                 if r.dnd_hover_payload::<LibSection>().is_some() {
                     ui.painter().vline(r.rect.left() - 2.0, r.rect.y_range(), Stroke::new(3.0, ACCENT()));
@@ -231,7 +232,14 @@ impl App {
             self.config.lib_order = order.iter().map(|&k| SECTIONS[k].0.to_string()).collect();
             self.config.save();
         }
-        ui.separator();
+        // Buscador de la pestaña abierta.
+        let pista = match SECTIONS[self.lib_tab.min(SECTIONS.len() - 1)].0 {
+            "fx" => tr("Buscar efectos"),
+            "inst" => tr("Buscar instrumentos"),
+            "plugins" => tr("Buscar plugins"),
+            _ => tr("Buscar en esta carpeta"),
+        };
+        ui.add(egui::TextEdit::singleline(&mut self.lib_buscar).hint_text(pista).desired_width(f32::INFINITY));
         if self.lib_tab == 0 {
             self.preview_bar(ui);
         }
@@ -411,18 +419,40 @@ impl App {
     }
 
     fn fx_section(&mut self, ui: &mut egui::Ui) {
+        // Dónde se añade con doble clic: la pista seleccionada.
+        let target = self.s.tracks.iter().position(|t| t.selected && !t.midi());
+        let destino = target.map_or_else(|| tr("ninguna pista seleccionada").to_string(), |i| self.s.tracks[i].name.clone());
+        ui.label(RichText::new(format!("{} {destino} {}", tr("Se añade a:"), tr("(o arrástralo a una pista)"))).size(11.0).color(TEXT_DIM()));
+        let buscado = self.lib_buscar.to_lowercase();
         for (cat, kinds) in FX_CATEGORIES {
-            let key = format!("fx:{cat}");
-            self.fold_header(ui, &key, cat, kinds.len(), false);
-            if !self.is_open(&key) {
+            let visibles: Vec<FxKind> = kinds.iter().copied().filter(|k| buscado.is_empty() || tr(k.name()).to_lowercase().contains(&buscado) || tr(describe(*k)).to_lowercase().contains(&buscado)).collect();
+            if visibles.is_empty() {
                 continue;
             }
-            for &k in kinds {
-                let r = row(ui, 44.0, 20.0, false, |p, r| {
-                    p.rect_filled(Rect::from_min_size(r.left_top() + vec2(2.0, 8.0), vec2(4.0, r.height() - 16.0)), 2.0, plugins::kind_color(Some(k)));
-                    title(p, r.left_center() + vec2(14.0, -8.0), k.name(), 14.5, TEXT());
-                    title(p, r.left_center() + vec2(14.0, 10.0), describe(k), 12.0, TEXT_DIM());
-                });
+            ui.add_space(4.0);
+            ui.label(RichText::new(tr(cat).to_uppercase()).size(10.5).strong().color(TEXT_DIM()));
+            for k in visibles {
+                // Fila plana: punto de color, nombre y descripción a la derecha.
+                let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click_and_drag());
+                let p = ui.painter_at(r);
+                if resp.hovered() || resp.dragged() {
+                    p.rect_filled(r, rr(5.0), ELEVATED());
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                p.circle_filled(r.left_center() + vec2(10.0, 0.0), 4.0, plugins::kind_color(Some(k)));
+                let nombre = p.text(r.left_center() + vec2(22.0, 0.0), Align2::LEFT_CENTER, tr(k.name()), FontId::proportional(13.0), TEXT());
+                // La descripción ocupa lo que queda a la derecha; si no entra, se recorta con «…».
+                let libre = r.right() - 8.0 - nombre.right() - 14.0;
+                let mut desc = tr(describe(k)).to_string();
+                while !desc.is_empty() && p.layout_no_wrap(desc.clone(), FontId::proportional(11.0), TEXT_DIM()).size().x > libre {
+                    desc.pop();
+                    desc = format!("{}…", desc.trim_end_matches('…').trim_end());
+                    if desc == "…" {
+                        desc.clear();
+                    }
+                }
+                p.text(r.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, desc, FontId::proportional(11.0), TEXT_DIM());
+                let r = resp;
                 r.dnd_set_drag_payload(LibItem::Fx(k));
                 r.context_menu(|ui| {
                     widgets::menu_style(ui);
@@ -431,7 +461,6 @@ impl App {
                         targets.into_iter().for_each(|i| self.add_fx(i, k));
                     }
                 });
-                let target = self.s.tracks.iter().position(|t| t.selected && !t.midi());
                 if r.double_clicked()
                     && let Some(i) = target
                 {
@@ -450,7 +479,8 @@ impl App {
         let target = self.s.tracks.iter().position(|t| t.selected && t.midi());
         let mut assign = None;
         let mut family = "";
-        for e in instruments::CATALOG.iter() {
+        let buscado = self.lib_buscar.to_lowercase();
+        for e in instruments::CATALOG.iter().filter(|e| buscado.is_empty() || e.name.to_lowercase().contains(&buscado) || e.family.to_lowercase().contains(&buscado)) {
             if e.family != family {
                 family = e.family;
                 let n = instruments::CATALOG.iter().filter(|x| x.family == family).count();
