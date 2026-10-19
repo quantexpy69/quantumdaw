@@ -370,7 +370,13 @@ impl App {
     pub fn barra_herramientas(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
             ui.toggle_value(&mut self.show_inspector, RichText::new(tr("Inspector")).size(12.5)).on_hover_text("I");
-            ui.label(RichText::new(tr("Arreglo")).size(14.0).strong().color(TEXT()));
+            // Arreglo o escenario de clips (Clip Stage).
+            if widgets::pestana_texto(ui, !self.ver_escenario, tr("Arreglo")).clicked() {
+                self.ver_escenario = false;
+            }
+            if widgets::pestana_texto(ui, self.ver_escenario, tr("Escenario")).on_hover_text(tr("Escenario de clips: lanza regiones y escenas en bucle")).clicked() {
+                self.ver_escenario = true;
+            }
             ui.label(RichText::new(format!("{} {}", self.s.tracks.len(), tr("pistas"))).size(11.5).color(TEXT_DIM()));
             ui.add_space(10.0);
             self.bar_group(ui, "tools");

@@ -172,6 +172,9 @@ pub struct TrackState {
     pub no_master: bool,
     /// Tomas (una lista de regiones por toma) y comp: (inicio, fin, toma) en segundos.
     pub takes: Vec<Vec<ClipState>>,
+    /// Escenario de clips (Clip Stage): una región o nada por escena.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub escenario: Vec<Option<ClipState>>,
     pub comp: Vec<(f64, f64, usize)>,
     pub show_takes: bool,
     /// Polaridad invertida.

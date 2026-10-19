@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.28.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.29.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -71,6 +71,9 @@ Versión actual: **0.28.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   de fa según el registro, pentagrama de percusión para la batería, instrumentos transpositores escritos
   como los leen sus intérpretes (clarinete, trompeta, saxos, trompa), armadura detectada, cifrado de
   acordes encima, e impresión o PDF en A4 (Ctrl+P). Usa la fuente musical Bravura (SIL OFL).
+- **Inspector** (tecla I), **cabeceras de pista** compactas, **menús circulares** (clic derecho o Q sobre una
+  región o en el piano roll), **secuenciador de patrones** con **caja de ritmos** sintetizada y **escenario
+  de clips** (Clip Stage) con escenas que se lanzan en bucle desde el próximo compás.
 - **Generador de progresiones** (botón «Generar…» del piano roll o Ctrl+K): 15 estilos (Cinematic, Ambient,
   Indie Pop, Emo, Pop, Lo-fi/Neo Soul, Jazz, R&B/Gospel, Rock, Synthwave, EDM/Trance, Dark/Horror,
   Folk/Country, Blues, Heroic/Game), tonalidad, largo, velocidad, color, variación y bajo caminante;

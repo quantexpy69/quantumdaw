@@ -997,3 +997,20 @@ Cencerro	Cowbell	Cowbell
 Vel	Vel	Vel
 Rep	Rep	Rep
 Caja de ritmos	Drum machine	Bateria eletrônica
+Escenario	Clip Stage	Palco
+Escenario de clips: lanza regiones y escenas en bucle	Clip Stage: launch clips and scenes in a loop	Palco de clipes: lança regiões e cenas em loop
+Escena	Scene	Cena
+Clic: lanzar la escena · clic derecho: más opciones	Click: launch the scene · right-click: more options	Clique: lançar a cena · clique direito: mais opções
+Capturar lo que suena en el cursor	Capture what plays at the cursor	Capturar o que toca no cursor
+Pasar la escena al arreglo (en el cursor)	Move the scene to the arrangement (at cursor)	Passar a cena ao arranjo (no cursor)
+Vaciar la escena	Clear the scene	Esvaziar a cena
+sonando desde el escenario	playing from the stage	tocando do palco
+arreglo	arrangement	arranjo
+Detener el escenario en esta pista (vuelve el arreglo)	Stop the stage on this track (back to the arrangement)	Parar o palco nesta faixa (volta o arranjo)
+comp.	bars	comp.
+Copiar aquí la región seleccionada de esta pista	Copy this track's selected region here	Copiar aqui a região selecionada desta faixa
+Nuevo clip MIDI vacío (1 compás)	New empty MIDI clip (1 bar)	Novo clipe MIDI vazio (1 compasso)
+Pasar al arreglo (en el cursor)	Move to the arrangement (at cursor)	Passar ao arranjo (no cursor)
+Vaciar la celda	Clear the slot	Esvaziar a célula
+Detener todo el escenario	Stop the whole stage	Parar todo o palco
+Clic derecho en una escena: capturar lo que suena en el cursor o pasarla al arreglo. Clic derecho en una celda: copiar la región seleccionada.	Right-click a scene: capture what plays at the cursor or move it to the arrangement. Right-click a slot: copy the selected region.	Clique direito numa cena: capturar o que toca no cursor ou passá-la ao arranjo. Clique direito numa célula: copiar a região selecionada.

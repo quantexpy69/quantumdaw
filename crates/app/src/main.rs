@@ -8,6 +8,7 @@ mod chrome;
 mod creativo;
 mod generador;
 mod edicion;
+mod escenario;
 mod curves;
 mod i18n;
 mod informes;
@@ -407,6 +408,9 @@ struct Track {
     to_master: bool,
     /// Tomas grabadas (comping) y tramos del comp: (inicio, fin, toma).
     takes: Vec<Vec<Clip>>,
+    /// Escenario de clips: una región o nada por escena, y la lanzada (escena, inicio en frames).
+    escenario: Vec<Option<Clip>>,
+    lanzado: Option<(usize, u64)>,
     comp: Vec<(u64, u64, usize)>,
     show_takes: bool,
     /// Automatización: modo (0 Read, 1 Off, 2 Touch, 3 Latch, 4 Write), fader o panorama tocados en
@@ -448,6 +452,8 @@ impl Track {
             sends: vec![],
             to_master: true,
             takes: vec![],
+            escenario: vec![None; escenario::ESCENAS],
+            lanzado: None,
             comp: vec![],
             show_takes: false,
             auto_mode: 0,
@@ -666,6 +672,8 @@ struct App {
     partitura_sp: f32,
     /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
     partitura_todas: bool,
+    /// Vista del escenario de clips en lugar del arreglo.
+    ver_escenario: bool,
     /// Secuenciador de patrones.
     patron: patron::Patron,
     /// Menú circular abierto y menú clásico de la región («Más opciones»).
@@ -803,6 +811,7 @@ impl App {
             mastering: Default::default(),
             partitura_todas: true,
             partitura_sp: 8.0,
+            ver_escenario: false,
             patron: Default::default(),
             pie: None,
             menu_region: None,
@@ -897,6 +906,7 @@ impl App {
             let mut load = |cs: &[ClipState]| cs.iter().filter_map(|c| load_clip(&self.dir, e.sample_rate, c, midi || c.file.is_empty(), &mut cache, &mut missing)).collect::<Vec<_>>();
             t.clips = load(&ts.clips);
             t.takes = ts.takes.iter().map(|take| load(take)).collect();
+            t.escenario = (0..escenario::ESCENAS).map(|k| ts.escenario.get(k).cloned().flatten().and_then(|c| load(&[c]).pop())).collect();
             t.comp = ts.comp.iter().map(|&(a, b, k)| (f(a), if b >= 1e300 { u64::MAX } else { f(b) }, k)).collect();
             (t.to_master, t.show_takes) = (!ts.no_master, ts.show_takes);
             t.fx = ts
@@ -991,6 +1001,7 @@ impl App {
                 (ts.proxy_file, ts.proxy_firma) = (b.file.clone(), *firma);
             }
             ts.takes = t.takes.iter().map(|take| take.iter().map(|c| clip_state(c, sr)).collect()).collect();
+            ts.escenario = if t.escenario.iter().all(|c| c.is_none()) { vec![] } else { t.escenario.iter().map(|c| c.as_ref().map(|c| clip_state(c, sr))).collect() };
             ts.comp = t.comp.iter().map(|&(a, b, k)| (a as f64 / sr, if b == u64::MAX { f64::MAX } else { b as f64 / sr }, k)).collect();
             let p = &t.params;
             (ts.group, ts.gain, ts.pan, ts.input) = (t.group, p.gain.get(), p.pan.get(), t.input);
@@ -1253,10 +1264,16 @@ impl App {
             // Con proxys, la pista suena desde su render (sin procesar instrumento ni efectos en vivo),
             // salvo que haya cambiado desde que se generó o se esté tocando en vivo (armada o monitoreando).
             let en_vivo = t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed);
-            let proxy = t.proxy.as_ref().filter(|p| self.config.proxies && !self.render_vivo && !en_vivo && p.1 == proxies::firma(t, self.engine.sample_rate));
+            // Un clip lanzado desde el escenario reemplaza al arreglo de la pista (en bucle).
+            let lanzado = t.lanzado.and_then(|(k, inicio)| Some((t.escenario.get(k)?.clone()?, inicio)));
+            let proxy = t.proxy.as_ref().filter(|p| lanzado.is_none() && self.config.proxies && !self.render_vivo && !en_vivo && p.1 == proxies::firma(t, self.engine.sample_rate));
             Node {
                 params: t.params.clone(),
-                clips: proxy.map_or_else(|| t.clips.clone(), |p| vec![Clip::audio(p.0.clone(), 0)]),
+                clips: match (&lanzado, proxy) {
+                    (Some((c, inicio)), _) => (0..256u64).map(|n| Clip { start: inicio + n * c.len.max(1), selected: false, ..c.clone() }).collect(),
+                    (None, Some(p)) => vec![Clip::audio(p.0.clone(), 0)],
+                    (None, None) => t.clips.clone(),
+                },
                 fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
                 synth: if proxy.is_some() { None } else { t.synth.clone() },
                 sampler: if proxy.is_some() { None } else { t.sampler.clone() },
@@ -2239,7 +2256,7 @@ impl eframe::App for App {
         if self.show_lib && !self.lib_float {
             egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));
         }
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG())).show(ui, |ui| self.timeline(ui));
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG()).inner_margin(if self.ver_escenario { 12.0 } else { 0.0 })).show(ui, |ui| if self.ver_escenario { self.vista_escenario(ui) } else { self.timeline(ui) });
         self.floating_windows(&ctx);
         self.fx_window(&ctx);
         self.route_window(&ctx);
