@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.34.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.35.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -212,4 +212,4 @@ pista de acordes · Mastering Assistant · separación de stems · Spatial Audio
 
 ---
 
-© 2026 Ivan Cheaib — QUANTUM DAW. Código bajo licencia [MPL-2.0](LICENSE). Los instrumentos de terceros conservan sus propias licencias; la fuente musical Bravura es de Steinberg bajo SIL Open Font License 1.1 (`assets/fuentes/OFL-Bravura.txt`).
+© 2026 Ivan Cheaib — QUANTUM DAW. Código disponible bajo la [Business Source License 1.1](LICENSE): puedes leerlo, compilarlo, modificarlo y usar Quantum DAW para cualquier trabajo, incluido hacer y vender música; lo que no se permite es vender o distribuir el programa (o uno derivado) como producto o servicio. Cada versión pasa a [MPL-2.0](https://mozilla.org/MPL/2.0/) cuatro años después de publicarse, y las versiones hasta la 0.13.2 siguen bajo MPL-2.0. Los plugins QUANTUM Pro son propietarios: su código no está en este repositorio y se venden en [quantumdaw.com](https://www.quantumdaw.com); quien compila este código obtiene el DAW sin ellos. Los instrumentos de terceros conservan sus propias licencias; la fuente musical Bravura es de Steinberg bajo SIL Open Font License 1.1 (`assets/fuentes/OFL-Bravura.txt`).

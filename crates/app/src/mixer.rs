@@ -330,7 +330,7 @@ impl App {
             ui.label(RichText::new(format!("+{extra} más")).size(10.0).color(TEXT_DIM()));
         }
         ui.menu_button(RichText::new(tr("+ efecto")).size(11.0).color(TEXT_DIM()), |ui| {
-            for k in FxKind::ALL {
+            for k in FxKind::disponibles() {
                 if ui.button(k.name()).clicked() {
                     add = Some(k);
                 }

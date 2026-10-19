@@ -34,5 +34,5 @@ Linux: x86_64 con glibc 2.28 o posterior (Debian 10+, Ubuntu 20.04+, RHEL/Rocky/
 Opcional: \`ffmpeg\` para importar video, \`7z\` y \`curl\` para los instrumentos descargables.
 Verifica las descargas con [SHA256SUMS]($URL/SHA256SUMS): \`sha256sum -c SHA256SUMS\`.
 
-**Versión $VERSION** · Licencia MPL-2.0 · [www.quantumdaw.com](https://www.quantumdaw.com)
+**Versión $VERSION** · Licencia BUSL-1.1 (código disponible) · [www.quantumdaw.com](https://www.quantumdaw.com)
 EOF

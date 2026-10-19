@@ -3,6 +3,7 @@
 mod caja;
 mod devices;
 pub mod loudness;
+pub mod pro;
 mod dsp;
 mod fx;
 mod io;
@@ -12,7 +13,7 @@ mod tempo;
 
 pub use devices::{DeviceInfo, MidiConnections, audio_devices, connect_midi, llegadas_desde, midi_ports, registrar_llegada};
 pub use dsp::{detect_bpm, find_onsets, find_peaks, find_silences, peak, pitch_shift, stretch};
-pub use fx::{BANDAS, Fx, FxKind, curves_banda, curves_response, eq_response, frecuencia_banda};
+pub use fx::{BANDAS, Fx, FxKind, biquad, curves_banda, curves_response, db, eq_response, frecuencia_banda};
 pub use io::{decode, resample};
 pub use sampler::Sampler;
 pub use synth::{SYNTH_PARAMS, Synth};

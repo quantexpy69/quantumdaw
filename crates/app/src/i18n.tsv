@@ -1116,3 +1116,121 @@ Todos	All	Todos
 o arrastra a una pista	or drag to a track	ou arraste para uma faixa
 INSTRUMENTOS	INSTRUMENTS	INSTRUMENTOS
 PLUGINS	PLUGINS	PLUGINS
+PRESETS	PRESETS	PRESETS
+MODO DEMO	DEMO MODE	MODO DEMO
+Suena completo, con un segundo de silencio cada 45 s; sus ajustes no se guardan en el proyecto.	Full sound, with one second of silence every 45 s; its settings aren't saved in the project.	Som completo, com um segundo de silêncio a cada 45 s; seus ajustes não são salvos no projeto.
+Comprar	Buy	Comprar
+Tengo una clave…	I have a key…	Tenho uma chave…
+VELOCIDAD	SPEED	VELOCIDADE
+CONGELADO	FROZEN	CONGELADO
+DECAIMIENTO	DECAY	DECAIMENTO
+ENTRADA	INPUT	ENTRADA
+REVERB	REVERB	REVERB
+DUCKING	DUCKING	DUCKING
+TIPO	TYPE	TIPO
+SALIDA	OUTPUT	SAÍDA
+GRAVES	LOWS	GRAVES
+MEDIOS	MIDS	MÉDIOS
+AGUDOS	HIGHS	AGUDOS
+Sin objetivo	No target	Sem alvo
+Auto	Auto	Auto
+OBJETIVO	TARGET	ALVO
+B · ORIGINAL (mismo volumen)	B · ORIGINAL (same loudness)	B · ORIGINAL (mesmo volume)
+A · PROCESADO	A · PROCESSED	A · PROCESSADO
+Compara con el original al mismo volumen: escuchas el cambio de sonido, no solo que suena más fuerte	Compare with the original at the same loudness: you hear the change in sound, not just louder	Compare com o original no mesmo volume: você ouve a mudança de som, não só que soa mais alto
+Licencias QUANTUM Pro	QUANTUM Pro licenses	Licenças QUANTUM Pro
+Licencias QUANTUM Pro…	QUANTUM Pro licenses…	Licenças QUANTUM Pro…
+Pega aquí la clave que recibiste al comprar en quantumdaw.com. Se verifica sin conexión.	Paste the key you received when buying at quantumdaw.com. It's verified offline.	Cole aqui a chave que você recebeu ao comprar em quantumdaw.com. É verificada sem conexão.
+Activar	Activate	Ativar
+Activado:	Activated:	Ativado:
+Con licencia	Licensed	Licenciado
+Modo demo	Demo mode	Modo demo
+A nombre de:	Licensed to:	Em nome de:
+Sin licencia, los plugins Pro suenan completos pero hacen un silencio de un segundo cada 45 s, y sus ajustes no se guardan en el proyecto.	Without a license, Pro plugins sound complete but go silent for one second every 45 s, and their settings aren't saved in the project.	Sem licença, os plugins Pro soam completos mas fazem um silêncio de um segundo a cada 45 s, e seus ajustes não são salvos no projeto.
+Usar QUANTUM Master Pro	Use QUANTUM Master Pro	Usar QUANTUM Master Pro
+Demo	Demo	Demo
+CINTA	TAPE	FITA
+VÁLVULA	TUBE	VÁLVULA
+MOVIMIENTO	MOTION	MOVIMENTO
+ESPACIO	SPACE	ESPAÇO
+SHIMMER	SHIMMER	SHIMMER
+ECO	ECHO	ECO
+MEZCLA	MIX	MIXAGEM
+CARÁCTER	CHARACTER	CARÁTER
+LIMPIEZA	CLEANUP	LIMPEZA
+ESES	ESSES	ESSES
+NIVEL	LEVEL	NÍVEL
+COMPRESIÓN	COMPRESSION	COMPRESSÃO
+TONO	TONE	TOM
+AFINACIÓN	TUNING	AFINAÇÃO
+DINÁMICA	DYNAMICS	DINÂMICA
+COLOR	COLOR	COR
+LIMITADOR	LIMITER	LIMITADOR
+Cinta y válvula de estudio	Studio tape and tube	Fita e válvula de estúdio
+Salas, placas y shimmer en 3D	Rooms, plates and shimmer in 3D	Salas, placas e shimmer em 3D
+Tu voz lista para la mezcla, en una pantalla	Your voice mix-ready, on one screen	Sua voz pronta para a mixagem, em uma tela
+Mastering en 3 bandas con loudness a medida	3-band mastering with loudness on target	Masterização em 3 bandas com loudness sob medida
+Sala	Room	Sala
+Placa	Plate	Placa
+Catedral	Cathedral	Catedral
+Shimmer	Shimmer	Shimmer
+Congelar	Freeze	Congelar
+Ganancia automática	Auto gain	Ganho automático
+Cinta limpia	Clean tape	Fita limpa
+Cálida 70s	Warm 70s	Quente anos 70
+Lo-fi	Lo-fi	Lo-fi
+Placa vocal	Vocal plate	Placa vocal
+Sala grande	Large room	Sala grande
+Etéreo	Ethereal	Etéreo
+Eco ambiental	Ambient echo	Eco ambiente
+Natural	Natural	Natural
+Pop	Pop	Pop
+Rap	Rap	Rap
+Podcast	Podcast	Podcast
+Balada	Ballad	Balada
+Equilibrado	Balanced	Equilibrado
+Potente	Punchy	Potente
+Golpe de cabeza	Head bump	Head bump
+Desgaste	Wear	Desgaste
+Wow	Wow	Wow
+Flutter	Flutter	Flutter
+Ruido	Noise	Ruído
+Calibración	Calibration	Calibração
+Decaimiento	Decay	Decaimento
+Modulación	Modulation	Modulação
+Eco	Echo	Eco
+Repeticiones	Repeats	Repetições
+Ducking	Ducking	Ducking
+Puerta	Gate	Gate
+Frec. eses	Ess freq.	Freq. esses
+Eses	Esses	Esses
+Cuerpo	Body	Corpo
+Control	Control	Controle
+Calidez	Warmth	Calor
+Presencia	Presence	Presença
+Aire	Air	Ar
+Nivel objetivo	Target level	Nível alvo
+Nivelador	Leveler	Nivelador
+Reverb	Reverb	Reverb
+Carácter	Character	Caráter
+Umbral graves	Low threshold	Limiar graves
+Umbral medios	Mid threshold	Limiar médios
+Umbral agudos	High threshold	Limiar agudos
+Anchura graves	Low width	Largura graves
+Anchura medios	Mid width	Largura médios
+Anchura agudos	High width	Largura agudos
+Inclinación	Tilt	Inclinação
+Techo	Ceiling	Teto
+Cinta y válvula con VU analógicos	Tape and tube with analog VUs	Fita e válvula com VUs analógicos
+Reverb 3D, shimmer y eco	3D reverb, shimmer and echo	Reverb 3D, shimmer e eco
+Toda la cadena de voz en una pantalla	The whole vocal chain on one screen	Toda a cadeia de voz em uma tela
+Mastering con objetivo de LUFS	Mastering with a LUFS target	Masterização com alvo de LUFS
+QUANTUM Pro	QUANTUM Pro	QUANTUM Pro
+La clave no tiene el formato de QUANTUM (QDAW1.…)	The key isn't in QUANTUM format (QDAW1.…)	A chave não tem o formato QUANTUM (QDAW1.…)
+La clave está incompleta o tiene caracteres de más	The key is incomplete or has extra characters	A chave está incompleta ou tem caracteres a mais
+La firma de la clave está incompleta	The key's signature is incomplete	A assinatura da chave está incompleta
+La clave no es válida (no la firmó quantumdaw.com)	The key isn't valid (not signed by quantumdaw.com)	A chave não é válida (não foi assinada por quantumdaw.com)
+La clave no tiene datos de licencia	The key has no license data	A chave não tem dados de licença
+Código disponible bajo la Business Source License 1.1: úsalo para hacer y vender tu música; los plugins QUANTUM Pro tienen su propia licencia.	Source-available under the Business Source License 1.1: use it to make and sell your music; the QUANTUM Pro plugins have their own license.	Código disponível sob a Business Source License 1.1: use-o para fazer e vender sua música; os plugins QUANTUM Pro têm sua própria licença.
+viene en la versión oficial de quantumdaw.com: esta compilación no lo incluye, así que el sonido pasa sin procesar.	comes in the official build from quantumdaw.com: this build doesn't include it, so the sound passes through unprocessed.	vem na versão oficial de quantumdaw.com: esta compilação não o inclui, então o som passa sem processar.
+Los plugins QUANTUM Pro vienen en la versión oficial de quantumdaw.com.	The QUANTUM Pro plugins come in the official build from quantumdaw.com.	Os plugins QUANTUM Pro vêm na versão oficial de quantumdaw.com.

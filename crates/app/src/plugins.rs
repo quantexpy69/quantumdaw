@@ -24,6 +24,10 @@ pub fn kind_color(kind: Option<FxKind>) -> Color32 {
         Some(FxKind::Gate) => Color32::from_rgb(0x9C, 0xD6, 0x4A),
         Some(FxKind::Chorus) => Color32::from_rgb(0x4F, 0xC3, 0xF7),
         Some(FxKind::DeEsser) => Color32::from_rgb(0xF2, 0xC9, 0x4C),
+        Some(FxKind::TapePro) => Color32::from_rgb(0xFF, 0xA8, 0x4A),
+        Some(FxKind::SpacePro) => Color32::from_rgb(0x9D, 0x7C, 0xFF),
+        Some(FxKind::VocalPro) => Color32::from_rgb(0xFF, 0x5C, 0xA8),
+        Some(FxKind::MasterPro) => Color32::from_rgb(0x2E, 0xE6, 0xC8),
         None => Color32::from_rgb(0xF2, 0x8C, 0xD0),
     }
 }
@@ -42,6 +46,10 @@ pub fn summary(k: FxKind) -> &'static str {
         FxKind::Gate => "Puerta de ruido: silencia el ruido de fondo entre frases o golpes, con retención y rango.",
         FxKind::Chorus => "Duplica la señal con pequeñas variaciones de tiempo para un sonido más ancho y envolvente.",
         FxKind::DeEsser => "Baja las eses y sibilancias de las voces: detecta los agudos fuertes y reduce el volumen solo en ese instante.",
+        FxKind::TapePro => "Cinta y válvula de estudio: saturación, golpe de cabeza, wow, flutter y siseo, con VU analógicos y tres velocidades de cinta.",
+        FxKind::SpacePro => "Reverb de 8 líneas (sala, placa, catedral y shimmer) con eco sincronizado, ducking y congelar, en una sala 3D animada.",
+        FxKind::VocalPro => "Cadena de voz completa: limpieza, de-esser, nivelador, dos compresores, tono, afinación y espacio, con un macro de carácter y presets.",
+        FxKind::MasterPro => "Mastering en 3 bandas: compresión e imagen por banda, saturación, limitador y ganancia automática hacia Spotify, YouTube o Apple Music, con A/B al mismo volumen.",
     }
 }
 
@@ -59,7 +67,7 @@ pub fn preview(ui: &mut egui::Ui, k: FxKind, sr: f32) {
 }
 
 /// Texto del valor de un parámetro con su unidad (o su nombre, en los discretos).
-fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
+pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
     let pick = |names: &[&str]| tr(names[(v.round().max(0.0) as usize).min(names.len() - 1)]).to_string();
     let hz = |v: f32| {
         if v >= 1000.0 { format!("{:.1} kHz", v / 1000.0) } else { format!("{v:.0} Hz") }
@@ -73,7 +81,7 @@ fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         "Ping-pong" | "Sincronía" => pick(&["No", "Sí"]),
         "División" => pick(&["1/1", "1/2", "1/4", "1/8", "1/16", "1/8 ·"]),
         "Volumen" => format!("{v:+.1} dB"),
-        "Corte" | "Tono" | "Frec. graves" | "Frec. medios" | "Frec. agudos" | "Corte graves" | "Corte agudos" => hz(v),
+        "Corte" | "Tono" | "Frec. graves" | "Frec. medios" | "Frec. agudos" | "Corte graves" | "Corte agudos" | "Frec. eses" | "Cruce graves" | "Cruce agudos" => hz(v),
         "Q medios" => format!("Q {v:.2}"),
         "Desafinar" => format!("{v:.0} ct"),
         "Ratio" => format!("{v:.1}:1"),
@@ -82,6 +90,7 @@ fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         n if n.ends_with(" Q") => format!("Q {v:.2}"),
         n if n.ends_with("dB") => format!("{v:+.1} dB"),
         n if n.ends_with("ms") => format!("{v:.1} ms"),
+        n if n.ends_with(" s") => format!("{v:.1} s"),
         _ => format!("{:.0} %", v * 100.0),
     }
 }
@@ -192,6 +201,11 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
                 label(r.center(), Align2::CENTER_CENTER, "Canta o toca una nota para ver la corrección".into(), 13.0, TEXT_DIM());
             }
         }
+        Some(k @ (FxKind::TapePro | FxKind::SpacePro | FxKind::VocalPro | FxKind::MasterPro)) => {
+            label(r.center() - vec2(0.0, 10.0), Align2::CENTER_CENTER, tr(k.name()).trim_start_matches("QUANTUM ").to_uppercase(), 22.0, color);
+            let estado = if engine::pro::licenciado(k) { tr("Con licencia").to_string() } else { format!("{} · {} US$", tr("Modo demo"), k.pro().map_or(0, |p| p.2)) };
+            label(r.center() + vec2(0.0, 18.0), Align2::CENTER_CENTER, estado, 11.0, TEXT_DIM());
+        }
         None => {
             // Envolvente ADSR del sintetizador.
             let total = p[5] + p[6] + 400.0 + p[8];
@@ -216,6 +230,7 @@ impl App {
             Remove(usize),
             Up(usize),
             MyPlugins,
+            Licencias,
         }
         let (mut act, sr) = (None, self.engine.sample_rate as f32);
         let title = format!("QUANTUM · {}", self.s.tracks[i].name);
@@ -264,6 +279,12 @@ impl App {
                     });
                     let values: Vec<f32> = params.iter().map(|a| a.get()).collect();
                     match (kind, fx, j) {
+                        // Plugins Pro: su interfaz propia (con todos sus controles).
+                        (Some(k), Some(fx), Some(_)) if k.pro().is_some() => {
+                            if let Some(licencias::PedidoPro::Licencias) = licencias::panel_pro(ui, fx) {
+                                *act = Some(Act::Licencias);
+                            }
+                        }
                         // Curves: presets, detección y visor interactivo.
                         (Some(FxKind::Curves), Some(fx), Some(j)) => {
                             let (mut detectar, mut sincronizar) = (false, false);
@@ -291,6 +312,7 @@ impl App {
                     // Curves muestra solo los controles esenciales; el resto en «Avanzado».
                     let todos = match (kind, fx) {
                         (Some(FxKind::Curves), Some(fx)) => curves::controles(ui, fx, accent),
+                        (Some(k), Some(_)) if k.pro().is_some() => false,
                         _ => true,
                     };
                     if todos {
@@ -337,7 +359,7 @@ impl App {
                 plugin(ui, fx.kind.name(), Some(fx.kind), &fx.params, fx.kind.params(), Some(&fx.bypass), readout, Some(j), Some(fx), &mut act);
             }
             ui.menu_button(tr("+ Añadir efecto"), |ui| {
-                for k in FxKind::ALL {
+                for k in FxKind::disponibles() {
                     if ui.button(k.name()).clicked() {
                         act = Some(Act::Add(k));
                     }
@@ -353,6 +375,7 @@ impl App {
             Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
             Some(Act::Sincronizar) => self.dirty = true,
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),
+            Some(Act::Licencias) => self.licencias_abierta = true,
             Some(Act::Remove(j)) => {
                 self.edit();
                 self.s.tracks[i].fx.remove(j);

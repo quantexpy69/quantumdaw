@@ -1,3 +1,6 @@
+# Plugins QUANTUM Pro: código propietario en su propio repositorio privado (nunca en este)
+/pro/
+
 # Compilación y toolchain local
 /target
 /.toolchain

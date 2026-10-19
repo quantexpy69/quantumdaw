@@ -463,6 +463,7 @@ impl App {
                             ui.label(RichText::new(format!("Quantum DAW {VERSION}")).size(20.0).strong());
                             ui.label(RichText::new(tr("Estación de audio digital escrita en Rust.")).size(14.0));
                             ui.label(RichText::new(tr("Desarrollado por QUANTEX")).size(14.0).strong().color(ACCENT()));
+                            ui.label(RichText::new(tr("Código disponible bajo la Business Source License 1.1: úsalo para hacer y vender tu música; los plugins QUANTUM Pro tienen su propia licencia.")).size(12.0).color(TEXT_DIM()));
                             ui.add_space(8.0);
                             for site in ["www.quantumdaw.com", "www.quantex.com.py"] {
                                 ui.hyperlink_to(RichText::new(site).size(15.0).color(ACCENT()), format!("https://{site}"));

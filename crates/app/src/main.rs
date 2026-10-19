@@ -18,12 +18,17 @@ mod inspector;
 mod instruments;
 mod keys;
 mod library;
+mod licencias;
 mod mastering;
 mod midi_archivo;
 mod mixer;
 mod paleta;
 mod patron;
 mod pie;
+// Plugins QUANTUM Pro: código propietario en `pro/` (repositorio privado), solo con `--features pro`.
+#[cfg(feature = "pro")]
+#[path = "../../../pro/mod.rs"]
+mod pro;
 mod partitura;
 mod pianoroll;
 mod plugins;
@@ -130,6 +135,11 @@ fn config_dir() -> PathBuf {
 
 /// Datos (instrumentos descargados): ~/.local/share/quantum-daw (Linux), Application Support (macOS),
 /// %LOCALAPPDATA%\Quantum DAW (Windows).
+/// Parámetros que se guardan de un efecto: los de un plugin Pro sin licencia vuelven a los de fábrica.
+fn params_guardables(f: &Fx) -> Vec<f32> {
+    if engine::pro::licenciado(f.kind) { f.params.iter().map(|p| p.get()).collect() } else { f.kind.params().iter().map(|d| d.3).collect() }
+}
+
 fn data_dir() -> PathBuf {
     if cfg!(windows) {
         env_dir("LOCALAPPDATA").unwrap_or_else(home).join("Quantum DAW")
@@ -211,6 +221,8 @@ struct Config {
     hidden_plugins: Vec<PathBuf>,
     /// Favoritos de la biblioteca ("fx:Compressor", "inst:guitarra-nylon").
     lib_favoritos: Vec<String>,
+    /// Claves de licencia de los plugins QUANTUM Pro.
+    licencias: Vec<String>,
     /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
     proxies: bool,
 }
@@ -691,6 +703,10 @@ struct App {
     lib_buscar: String,
     /// Filtro (chip) elegido en la pestaña abierta de la biblioteca (0 = todo).
     lib_filtro: usize,
+    /// Ventana de licencias: abierta, clave que se escribe y resultado de la última activación.
+    licencias_abierta: bool,
+    licencia_texto: String,
+    licencia_estado: String,
     /// Generador de progresiones de acordes por estilo.
     generador: generador::Generador,
     /// Efectos del master y ventana de mastering y loudness.
@@ -827,11 +843,17 @@ impl App {
             show_inspector: false,
             lib_buscar: String::new(),
             lib_filtro: 0,
+            licencias_abierta: false,
+            licencia_texto: String::new(),
+            licencia_estado: String::new(),
             generador: Default::default(),
             paleta: None,
             informe: informes::pendiente(),
             status: String::new(),
         };
+        #[cfg(feature = "pro")]
+        pro::registrar();
+        app.aplicar_licencias();
         app.apply_project(p);
         Ok(app)
     }
@@ -1022,7 +1044,7 @@ impl App {
             ts.fx = t
                 .fx
                 .iter()
-                .map(|f| FxState { kind: f.kind.name().into(), params: f.params.iter().map(|p| p.get()).collect(), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)) })
+                .map(|f| FxState { kind: f.kind.name().into(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)) })
                 .collect();
             ts.synth = t.synth.as_ref().map(|s| s.params.iter().map(|p| p.get()).collect()).unwrap_or_default();
             (ts.instrument, ts.icon) = (t.instrument.clone(), t.icon.clone());
@@ -1053,7 +1075,7 @@ impl App {
             chords: self.s.chords.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             partitura: (self.partitura_app.doc != project::partitura::Partitura::default()).then(|| self.partitura_app.doc.clone()),
-            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.kind.name().into(), params: f.params.iter().map(|p| p.get()).collect(), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
+            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.kind.name().into(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
             ..Default::default()
         }
     }
@@ -2271,6 +2293,7 @@ impl eframe::App for App {
         egui::CentralPanel::default().frame(egui::Frame::new().fill(BG()).inner_margin(if self.ver_escenario { 12.0 } else { 0.0 })).show(ui, |ui| if self.ver_escenario { self.vista_escenario(ui) } else { self.timeline(ui) });
         self.floating_windows(&ctx);
         self.fx_window(&ctx);
+        self.ventana_licencias(&ctx);
         self.route_window(&ctx);
         self.dialogs(&ctx);
         self.uninstall_dialog(&ctx);

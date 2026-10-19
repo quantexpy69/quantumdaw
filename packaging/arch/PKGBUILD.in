@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc="Estación de audio digital moderna escrita en Rust"
 arch=('x86_64')
 url="https://www.quantumdaw.com"
-license=('MPL-2.0')
+license=('BUSL-1.1')
 depends=('alsa-lib' 'glibc' 'gcc-libs')
 optdepends=('ffmpeg: importar video'
             '7zip: instrumentos descargables en 7z'

@@ -271,6 +271,9 @@ impl App {
                 if item(ui, tr("Atajos de teclado y ratón…"), "") {
                     self.dialog = Some(Dialog::Keys(None));
                 }
+                if item(ui, tr("Licencias QUANTUM Pro…"), "") {
+                    self.licencias_abierta = true;
+                }
                 ui.menu_button(tr("Idioma"), |ui| {
                     widgets::menu_style(ui);
                     for (k, name) in i18n::LANGS.iter().enumerate() {

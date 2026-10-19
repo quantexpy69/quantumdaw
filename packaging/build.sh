@@ -29,7 +29,10 @@ command -v cargo-deb >/dev/null || cargo install -q cargo-deb --locked
 command -v cargo-generate-rpm >/dev/null || cargo install -q cargo-generate-rpm --locked
 git config --global --add safe.directory "$PWD" 2>/dev/null || true
 
-cargo build --release --locked -p quantum-daw
+# Los plugins QUANTUM Pro se incluyen si está su carpeta privada (pro/).
+PRO=()
+[ -f pro/mod.rs ] && PRO=(--features pro)
+cargo build --release --locked -p quantum-daw ${PRO[@]+"${PRO[@]}"}
 BIN="$CARGO_TARGET_DIR/release/quantum-daw"
 "$BIN" --version
 rm -rf dist && mkdir -p dist

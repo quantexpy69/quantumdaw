@@ -6,8 +6,11 @@ cd "$(dirname "$0")/../.."
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/app/Cargo.toml | head -1)
 export MACOSX_DEPLOYMENT_TARGET=11.0
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
+# Los plugins QUANTUM Pro se incluyen si está su carpeta privada (pro/).
+PRO=()
+[ -f pro/mod.rs ] && PRO=(--features pro)
 for t in aarch64-apple-darwin x86_64-apple-darwin; do
-  cargo build --release --locked -p quantum-daw --target "$t"
+  cargo build --release --locked -p quantum-daw --target "$t" ${PRO[@]+"${PRO[@]}"}
 done
 mkdir -p dist
 APP="dist/Quantum DAW.app"

@@ -18,7 +18,8 @@ struct LibSection(usize);
 const SECTIONS: [(&str, &str); 4] = [("files", "Muestras"), ("fx", "Efectos"), ("inst", "Instrumentos"), ("plugins", "Plugins")];
 /// Índice de la sección de plugins (para abrirla desde «Agregar mis efectos»).
 pub const PLUGINS_TAB: usize = 3;
-const FX_CATEGORIES: [(&str, &[FxKind]); 5] = [
+const FX_CATEGORIES: [(&str, &[FxKind]); 6] = [
+    ("QUANTUM Pro", &[FxKind::VocalPro, FxKind::MasterPro, FxKind::TapePro, FxKind::SpacePro]),
     ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::DeEsser]),
     ("EQ y filtros", &[FxKind::Curves, FxKind::Eq]),
     ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb, FxKind::Chorus]),
@@ -40,6 +41,10 @@ fn describe(k: FxKind) -> &'static str {
         FxKind::Gate => "Quita el ruido de fondo",
         FxKind::Chorus => "Ancho y movimiento",
         FxKind::DeEsser => "Controla las eses de la voz",
+        FxKind::TapePro => "Cinta y válvula con VU analógicos",
+        FxKind::SpacePro => "Reverb 3D, shimmer y eco",
+        FxKind::VocalPro => "Toda la cadena de voz en una pantalla",
+        FxKind::MasterPro => "Mastering con objetivo de LUFS",
     }
 }
 
@@ -174,7 +179,7 @@ impl App {
         let mut order: Vec<usize> = self.config.lib_order.iter().filter_map(|id| SECTIONS.iter().position(|s| s.0 == id)).collect();
         let missing: Vec<usize> = (0..SECTIONS.len()).filter(|k| !order.contains(k)).collect();
         order.extend(missing);
-        let cuentas = [0, FX_CATEGORIES.iter().map(|c| c.1.len()).sum::<usize>(), instruments::CATALOG.len(), self.plugins.len()];
+        let cuentas = [0, FX_CATEGORIES.iter().flat_map(|c| c.1.iter()).filter(|k| visible(**k)).count(), instruments::CATALOG.len(), self.plugins.len()];
         let mut moved = None;
         let ancho = ((ui.available_width() - 6.0) / SECTIONS.len() as f32).max(60.0);
         egui::Frame::new().fill(BG()).corner_radius(rr(10.0)).inner_margin(3.0).show(ui, |ui| {
@@ -268,7 +273,7 @@ impl App {
     /// Resultados de la búsqueda en efectos, instrumentos y plugins.
     fn resultados(&mut self, ui: &mut egui::Ui) {
         let b = self.lib_buscar.trim().to_lowercase();
-        let fx: Vec<FxKind> = FX_CATEGORIES.iter().flat_map(|c| c.1.iter().copied()).filter(|k| tr(k.name()).to_lowercase().contains(&b) || tr(describe(*k)).to_lowercase().contains(&b) || tr(plugins::summary(*k)).to_lowercase().contains(&b)).collect();
+        let fx: Vec<FxKind> = FX_CATEGORIES.iter().flat_map(|c| c.1.iter().copied()).filter(|k| visible(*k)).filter(|k| tr(k.name()).to_lowercase().contains(&b) || tr(describe(*k)).to_lowercase().contains(&b) || tr(plugins::summary(*k)).to_lowercase().contains(&b)).collect();
         let inst: Vec<&'static instruments::Entry> = instruments::CATALOG.iter().filter(|e| e.name.to_lowercase().contains(&b) || e.family.to_lowercase().contains(&b) || tr(e.family).to_lowercase().contains(&b)).collect();
         let plug: Vec<_> = self.plugins.iter().filter(|p| p.0.to_lowercase().contains(&b) || p.1.to_lowercase().contains(&b)).cloned().collect();
         if fx.is_empty() && inst.is_empty() && plug.is_empty() {
@@ -502,8 +507,11 @@ impl App {
             if self.lib_filtro != 0 && self.lib_filtro != k + 1 && self.lib_filtro != favoritos {
                 continue;
             }
-            let lista: Vec<FxKind> = kinds.iter().copied().filter(|x| self.lib_filtro != favoritos || self.es_favorito(&format!("fx:{x:?}"))).collect();
+            let lista: Vec<FxKind> = kinds.iter().copied().filter(|x| visible(*x) && (self.lib_filtro != favoritos || self.es_favorito(&format!("fx:{x:?}")))).collect();
             if lista.is_empty() {
+                if self.lib_filtro == k + 1 && kinds.iter().any(|x| x.pro().is_some()) {
+                    ui.label(RichText::new(tr("Los plugins QUANTUM Pro vienen en la versión oficial de quantumdaw.com.")).size(11.5).color(TEXT_DIM()));
+                }
                 continue;
             }
             grupo(ui, cat, lista.len());
@@ -538,7 +546,14 @@ impl App {
                     p.text(pos2(tile.right() + 8.0, r.top() + 18.0), Align2::LEFT_CENTER, recortar(p, &nombre, 13.0, ancho_txt), FontId::proportional(13.0), TEXT());
                     let desc = recortar(p, tr(describe(k)), 10.5, r.right() - tile.right() - 14.0);
                     p.text(pos2(tile.right() + 8.0, r.top() + 36.0), Align2::LEFT_CENTER, desc, FontId::proportional(10.5), TEXT_DIM());
-                    if k.name().starts_with("QUANTUM") {
+                    if let Some((_, _, precio)) = k.pro() {
+                        // Insignia PRO y si tiene licencia o el precio.
+                        let pro = Rect::from_min_size(pos2(tile.right() + 8.0, r.bottom() - 16.0), vec2(28.0, 12.0));
+                        p.rect_filled(pro, rr(3.0), color);
+                        p.text(pro.center(), Align2::CENTER_CENTER, "PRO", FontId::proportional(8.5), Color32::BLACK);
+                        let estado = if engine::pro::licenciado(k) { tr("Con licencia").to_string() } else { format!("{} · {precio} US$", tr("Demo")) };
+                        p.text(pos2(pro.right() + 6.0, pro.center().y), Align2::LEFT_CENTER, estado, FontId::proportional(9.0), TEXT_DIM());
+                    } else if k.name().starts_with("QUANTUM") {
                         p.text(pos2(tile.right() + 8.0, r.bottom() - 10.0), Align2::LEFT_CENTER, "QUANTUM", FontId::proportional(8.5), color);
                     }
                     // Estrella de favorito.
@@ -813,6 +828,11 @@ impl App {
     }
 }
 
+/// ¿Se muestra el efecto en esta compilación? (los Pro solo si su módulo está incluido)
+fn visible(k: FxKind) -> bool {
+    k.pro().is_none() || engine::pro::disponible()
+}
+
 /// Título de grupo con contador.
 fn grupo(ui: &mut egui::Ui, texto: &str, n: usize) {
     ui.add_space(6.0);
@@ -932,5 +952,26 @@ pub fn icono_fx(p: &Painter, c: Pos2, k: FxKind, color: Color32) {
             }
         }
         FxKind::DeEsser => _ = p.text(c, Align2::CENTER_CENTER, "S", FontId::proportional(16.0), color),
+        FxKind::TapePro => {
+            for x in [-5.0, 5.0] {
+                p.circle_stroke(c + vec2(x, -1.0), 4.0, s);
+            }
+            p.line_segment([c + vec2(-8.0, 5.0), c + vec2(8.0, 5.0)], s);
+        }
+        FxKind::SpacePro => {
+            for (d, r) in [(vec2(-4.0, -3.0), 2.4), (vec2(4.0, 2.0), 1.8), (vec2(0.0, 6.0), 1.2), (vec2(6.0, -6.0), 1.4)] {
+                p.circle_filled(c + d, r, color);
+            }
+        }
+        FxKind::VocalPro => {
+            p.rect_stroke(Rect::from_center_size(c + vec2(0.0, -3.0), vec2(7.0, 11.0)), 3.5, s, StrokeKind::Middle);
+            p.line_segment([c + vec2(0.0, 4.0), c + vec2(0.0, 8.0)], s);
+            p.line_segment([c + vec2(-4.0, 8.0), c + vec2(4.0, 8.0)], s);
+        }
+        FxKind::MasterPro => {
+            for (k, h) in [5.0f32, 9.0, 13.0, 8.0].iter().enumerate() {
+                p.rect_filled(Rect::from_min_max(c + vec2(-8.0 + k as f32 * 4.5, 7.0 - h), c + vec2(-5.0 + k as f32 * 4.5, 7.0)), 1.0, color);
+            }
+        }
     }
 }

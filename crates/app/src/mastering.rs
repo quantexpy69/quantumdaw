@@ -118,7 +118,7 @@ impl App {
                 ui.label(RichText::new(tr("Efectos del master")).strong());
                 ui.menu_button(tr("+ Añadir efecto"), |ui| {
                     widgets::menu_style(ui);
-                    for k in FxKind::ALL.into_iter().filter(|k| *k != FxKind::Tune) {
+                    for k in FxKind::disponibles().filter(|k| *k != FxKind::Tune) {
                         if ui.button(tr(k.name())).clicked() {
                             self.master_fx.push(Arc::new(Fx::new(k, self.engine.sample_rate)));
                             cambio_cadena = true;
@@ -134,11 +134,16 @@ impl App {
                     self.master_fx = vec![Arc::new(Fx::new(FxKind::Curves, sr)), Arc::new(comp), Arc::new(Fx::new(FxKind::Limiter, sr))];
                     cambio_cadena = true;
                 }
+                if self.master_fx.is_empty() && engine::pro::disponible() && ui.button(tr("Usar QUANTUM Master Pro")).on_hover_text(tr(plugins::summary(FxKind::MasterPro))).clicked() {
+                    self.master_fx = vec![Arc::new(Fx::new(FxKind::MasterPro, self.engine.sample_rate))];
+                    cambio_cadena = true;
+                }
             });
             if self.master_fx.is_empty() {
                 ui.label(RichText::new(tr("Sin efectos en el master.")).color(TEXT_DIM()));
             }
             let mut quitar = None;
+            let mut licencias = false;
             for (k, fx) in self.master_fx.iter().enumerate() {
                 let color = plugins::kind_color(Some(fx.kind));
                 egui::Frame::new().fill(ELEVATED()).corner_radius(rr(8.0)).inner_margin(8.0).show(ui, |ui| {
@@ -161,12 +166,20 @@ impl App {
                     if fx.kind == FxKind::Curves {
                         ui.label(RichText::new(tr("Ábrelo en una pista para ver el visor; aquí se ajustan sus perillas.")).size(10.0).color(TEXT_DIM()));
                     }
-                    ui.horizontal_wrapped(|ui| {
-                        for (p, def) in fx.kind.params().iter().enumerate() {
-                            plugins::param_knob(ui, Some(fx.kind), *def, &fx.params[p]);
-                        }
-                    });
+                    if fx.kind.pro().is_some() {
+                        // Plugins Pro: su interfaz completa.
+                        licencias |= licencias::panel_pro(ui, fx).is_some();
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            for (p, def) in fx.kind.params().iter().enumerate() {
+                                plugins::param_knob(ui, Some(fx.kind), *def, &fx.params[p]);
+                            }
+                        });
+                    }
                 });
+            }
+            if licencias {
+                self.licencias_abierta = true;
             }
             if let Some(k) = quitar {
                 self.master_fx.remove(k);

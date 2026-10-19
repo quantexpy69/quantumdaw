@@ -15,6 +15,6 @@
   <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Quantum DAW usa la entrada de audio para grabar tus pistas.</string>
-  <key>NSHumanReadableCopyright</key><string>Quantum DAW · MPL-2.0 · QUANTEX</string>
+  <key>NSHumanReadableCopyright</key><string>Quantum DAW · BUSL-1.1 · QUANTEX</string>
 </dict>
 </plist>

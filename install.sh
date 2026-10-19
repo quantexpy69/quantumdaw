@@ -25,7 +25,10 @@ if ! pkg-config --exists alsa 2>/dev/null && [ ! -f .toolchain/sysroot/usr/lib64
   exit 1
 fi
 
-cargo build --release
+# Con la carpeta pro/ (repositorio privado) se incluyen los plugins QUANTUM Pro.
+PRO=()
+[ -f pro/mod.rs ] && PRO=(--features pro)
+cargo build --release ${PRO[@]+"${PRO[@]}"}
 BIN="$HOME/.local/bin/quantum-daw"
 install -Dm755 target/release/quantum-daw "$BIN"
 install -Dm644 assets/quantumlogo.svg "$HOME/.local/share/icons/hicolor/scalable/apps/quantum-daw.svg"

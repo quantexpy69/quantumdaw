@@ -1,8 +1,8 @@
 [package]
 name = "quantum-daw"
-version = "0.34.0"
+version = "0.35.0"
 edition = "2024"
-license = "MPL-2.0"
+license = "BUSL-1.1"
 authors = ["Ivan Cheaib <ivanchepy@gmail.com>"]
 repository = "https://github.com/quantexpy69/quantumdaw"
 
@@ -12,14 +12,19 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 cpal = "0.18.2"
 eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 egui_extras = { version = "0.36.2", features = ["svg"] }
+ed25519-dalek = "2.2.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
-engine = { version = "0.34.0", path = "../engine" }
-project = { version = "0.34.0", path = "../project" }
+engine = { version = "0.35.0", path = "../engine" }
+project = { version = "0.35.0", path = "../project" }
 resvg = { version = "0.45.1", default-features = false }
 rfd = "0.17.2"
 rustfft = "6.4.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+
+[features]
+# Incluye los plugins QUANTUM Pro (código propietario en la carpeta `pro/`, repositorio privado).
+pro = []
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.190"

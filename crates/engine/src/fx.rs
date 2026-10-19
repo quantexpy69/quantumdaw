@@ -27,6 +27,11 @@ pub enum FxKind {
     Chorus,
     /// Reduce las eses (sibilancias) bajando solo los agudos cuando superan el umbral.
     DeEsser,
+    /// Plugins Pro (de pago, ver `pro.rs`).
+    TapePro,
+    SpacePro,
+    VocalPro,
+    MasterPro,
 }
 
 const SCALES: [&[u8]; 3] = [&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], &[0, 2, 4, 5, 7, 9, 11], &[0, 2, 3, 5, 7, 8, 10]];
@@ -39,7 +44,24 @@ const FFT_HOP: usize = 256;
 pub const BANDAS: usize = 96;
 
 impl FxKind {
-    pub const ALL: [Self; 11] = [Self::Eq, Self::Curves, Self::Compressor, Self::Limiter, Self::Gate, Self::DeEsser, Self::Delay, Self::Reverb, Self::Chorus, Self::Drive, Self::Tune];
+    pub const ALL: [Self; 15] = [Self::Eq, Self::Curves, Self::Compressor, Self::Limiter, Self::Gate, Self::DeEsser, Self::Delay, Self::Reverb, Self::Chorus, Self::Drive, Self::Tune, Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
+    pub const PRO: [Self; 4] = [Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
+
+    /// Efectos de esta compilación: los Pro solo si su módulo está incluido.
+    pub fn disponibles() -> impl Iterator<Item = Self> {
+        Self::ALL.into_iter().filter(|k| k.pro().is_none() || crate::pro::disponible())
+    }
+
+    /// Plugins Pro: (bit de licencia, identificador del producto, precio en US$).
+    pub fn pro(self) -> Option<(u32, &'static str, u32)> {
+        match self {
+            Self::VocalPro => Some((1, "vocal-pro", 8)),
+            Self::MasterPro => Some((2, "master-pro", 8)),
+            Self::TapePro => Some((4, "tape-pro", 5)),
+            Self::SpacePro => Some((8, "space-pro", 5)),
+            _ => None,
+        }
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -54,6 +76,10 @@ impl FxKind {
             Self::Gate => "Puerta de ruido",
             Self::Chorus => "Chorus",
             Self::DeEsser => "De-esser",
+            Self::TapePro => "QUANTUM Tape Pro",
+            Self::SpacePro => "QUANTUM Space Pro",
+            Self::VocalPro => "QUANTUM Vocal Pro",
+            Self::MasterPro => "QUANTUM Master Pro",
         }
     }
 
@@ -131,6 +157,84 @@ impl FxKind {
             Self::Tune => {
                 &[("Tonalidad", 0.0, 11.0, 0.0), ("Escala", 0.0, 2.0, 0.0), ("Velocidad ms", 0.0, 200.0, 20.0), ("Mezcla", 0.0, 1.0, 1.0), ("Modo", 0.0, 1.0, 0.0), ("Nota manual", 0.0, 11.0, 0.0)]
             }
+            Self::TapePro => &[
+                ("Entrada dB", -12.0, 24.0, 0.0),
+                ("Velocidad", 0.0, 2.0, 1.0),
+                ("Saturación", 0.0, 1.0, 0.4),
+                ("Válvula", 0.0, 1.0, 0.2),
+                ("Golpe de cabeza", 0.0, 1.0, 0.5),
+                ("Desgaste", 0.0, 1.0, 0.1),
+                ("Wow", 0.0, 1.0, 0.15),
+                ("Flutter", 0.0, 1.0, 0.1),
+                ("Ruido", 0.0, 1.0, 0.0),
+                ("Calibración dB", -24.0, -6.0, -18.0),
+                ("Mezcla", 0.0, 1.0, 1.0),
+                ("Salida dB", -24.0, 12.0, 0.0),
+            ],
+            Self::SpacePro => &[
+                ("Tipo", 0.0, 3.0, 0.0),
+                ("Tamaño", 0.0, 1.0, 0.5),
+                ("Decaimiento s", 0.2, 20.0, 2.5),
+                ("Pre-delay ms", 0.0, 250.0, 20.0),
+                ("Amortiguación", 0.0, 1.0, 0.4),
+                ("Modulación", 0.0, 1.0, 0.3),
+                ("Shimmer", 0.0, 1.0, 0.0),
+                ("Eco", 0.0, 1.0, 0.0),
+                ("División", 0.0, 5.0, 3.0),
+                ("Repeticiones", 0.0, 0.95, 0.4),
+                ("Ducking", 0.0, 1.0, 0.0),
+                ("Corte graves", 20.0, 1000.0, 120.0),
+                ("Corte agudos", 1000.0, 20000.0, 9000.0),
+                ("Anchura", 0.0, 2.0, 1.0),
+                ("Congelar", 0.0, 1.0, 0.0),
+                ("Mezcla", 0.0, 1.0, 0.3),
+            ],
+            Self::VocalPro => &[
+                ("Corte graves", 20.0, 300.0, 80.0),
+                ("Puerta dB", -80.0, -20.0, -60.0),
+                ("Frec. eses", 3000.0, 10000.0, 6500.0),
+                ("Eses", 0.0, 1.0, 0.4),
+                ("Cuerpo", 0.0, 1.0, 0.5),
+                ("Control", 0.0, 1.0, 0.3),
+                ("Calidez dB", -6.0, 6.0, 0.0),
+                ("Presencia dB", -6.0, 8.0, 2.0),
+                ("Aire dB", -6.0, 8.0, 2.0),
+                ("Nivel objetivo dB", -30.0, -10.0, -18.0),
+                ("Nivelador", 0.0, 1.0, 0.5),
+                ("Afinación", 0.0, 1.0, 0.0),
+                ("Tonalidad", 0.0, 11.0, 0.0),
+                ("Escala", 0.0, 2.0, 1.0),
+                ("Reverb", 0.0, 1.0, 0.15),
+                ("Eco", 0.0, 1.0, 0.1),
+                ("División", 0.0, 5.0, 3.0),
+                ("Saturación", 0.0, 1.0, 0.15),
+                ("Mezcla", 0.0, 1.0, 1.0),
+                ("Salida dB", -12.0, 12.0, 0.0),
+                ("Carácter", 0.0, 1.0, 0.5),
+            ],
+            Self::MasterPro => &[
+                ("Cruce graves", 40.0, 500.0, 150.0),
+                ("Cruce agudos", 1000.0, 10000.0, 4000.0),
+                ("Umbral graves dB", -40.0, 0.0, -18.0),
+                ("Umbral medios dB", -40.0, 0.0, -18.0),
+                ("Umbral agudos dB", -40.0, 0.0, -20.0),
+                ("Ratio", 1.0, 8.0, 2.0),
+                ("Graves dB", -6.0, 6.0, 0.0),
+                ("Medios dB", -6.0, 6.0, 0.0),
+                ("Agudos dB", -6.0, 6.0, 0.0),
+                ("Anchura graves", 0.0, 2.0, 0.6),
+                ("Anchura medios", 0.0, 2.0, 1.0),
+                ("Anchura agudos", 0.0, 2.0, 1.15),
+                ("Ataque ms", 1.0, 100.0, 15.0),
+                ("Release ms", 20.0, 1000.0, 180.0),
+                ("Saturación", 0.0, 1.0, 0.2),
+                ("Inclinación dB", -3.0, 3.0, 0.0),
+                ("Objetivo", 0.0, 4.0, 0.0),
+                ("Ganancia dB", -6.0, 24.0, 0.0),
+                ("Techo dB", -3.0, 0.0, -1.0),
+                ("Auto", 0.0, 1.0, 1.0),
+                ("A/B", 0.0, 1.0, 0.0),
+            ],
         }
     }
 }
@@ -158,6 +262,9 @@ struct State {
     ratio: f32,
     target: f32,
     phase: f32,
+    /// Plugins Pro: su procesador y el contador del modo demo.
+    pro: Option<Box<dyn crate::pro::ProDsp>>,
+    demo_n: u64,
 }
 
 pub struct Fx {
@@ -177,6 +284,8 @@ pub struct Fx {
     pub clave: AtomicUsize,
     /// Curves: nivel RMS de entrada y de salida del último bloque (para los vúmetros).
     pub vu: [AtomicF32; 2],
+    /// Plugins Pro: lecturas para su interfaz (ver los índices en `pro.rs`).
+    pub medidores: Vec<AtomicF32>,
     state: Mutex<State>,
 }
 
@@ -199,12 +308,14 @@ impl Fx {
                 (st.line, st.ana, st.env) = (vec![[0.0; 2]; n], vec![1.0; n], 1.0);
             }
             FxKind::Chorus => st.line = vec![[0.0; 2]; sample_rate as usize / 20 + 2],
+            k if k.pro().is_some() => st.pro = crate::pro::crear(k, sample_rate),
             _ => {}
         }
         let params = kind.params().iter().map(|p| AtomicF32::new(p.3)).collect();
         let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
         let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
-        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), state: Mutex::new(st) }
+        let medidores = if kind.pro().is_some() { (0..crate::pro::MEDIDORES).map(|_| AtomicF32::new(-120.0)).collect() } else { vec![] };
+        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, state: Mutex::new(st) }
     }
 
     /// `bpm`: tempo actual (para el delay sincronizado).
@@ -221,7 +332,14 @@ impl Fx {
             return;
         };
         let st = &mut *st;
-        let p: [f32; 20] = std::array::from_fn(|i| self.params.get(i).map_or(0.0, |a| a.get()));
+        let p: [f32; 32] = std::array::from_fn(|i| self.params.get(i).map_or(0.0, |a| a.get()));
+        if let Some(pro) = st.pro.as_mut() {
+            pro.process(buf, sr, bpm, &p, &self.medidores, offline);
+            if !crate::pro::licenciado(self.kind) {
+                crate::pro::demo(buf, &mut st.demo_n, sr);
+            }
+            return;
+        }
         match self.kind {
             FxKind::Eq => {
                 let co = [biquad(0, p[3], p[0], 0.707, sr), biquad(1, p[4], p[1], p[5], sr), biquad(2, p[6], p[2], 0.707, sr)];
@@ -445,12 +563,14 @@ impl Fx {
                 }
                 self.vu[1].set(rms(buf));
             }
+            // Los Pro se procesan arriba (con su estado propio).
+            FxKind::TapePro | FxKind::SpacePro | FxKind::VocalPro | FxKind::MasterPro => {}
         }
     }
 
     /// Autotune: detecta el tono (YIN) cada `YIN_HOP` muestras, elige la nota destino (escala o nota
     /// manual) y corrige con un pitch shifter de dos cabezales cruzados sobre una línea de retardo.
-    fn tune(&self, st: &mut State, buf: &mut [[f32; 2]], sr: f32, p: &[f32; 20]) {
+    fn tune(&self, st: &mut State, buf: &mut [[f32; 2]], sr: f32, p: &[f32; 32]) {
         let speed = 1.0 - (-1.0 / (p[2].max(0.5) * 0.001 * sr)).exp();
         let (win, n) = (0.03 * sr, st.line.len());
         for s in buf.iter_mut() {
