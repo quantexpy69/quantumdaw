@@ -2,7 +2,7 @@
 //! efectos, instrumentos y plugins), con arrastrar y soltar hacia el proyecto. El orden y lo que
 //! está plegado se recuerdan entre sesiones.
 use crate::{widgets::rr, *};
-use egui::{Align2, FontId, Id, Painter, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, vec2};
+use egui::{Align2, FontId, Id, Painter, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
 use std::sync::mpsc;
 
 /// Elemento que se arrastra desde la biblioteca hacia pistas o canales.
@@ -146,41 +146,6 @@ pub fn scan_plugins() -> Vec<(String, &'static str, PathBuf)> {
 }
 
 impl App {
-    fn is_open(&self, key: &str) -> bool {
-        self.config.lib_open.iter().any(|k| k == key)
-    }
-
-    fn toggle(&mut self, key: &str) {
-        match self.config.lib_open.iter().position(|k| k == key) {
-            Some(i) => _ = self.config.lib_open.remove(i),
-            None => self.config.lib_open.push(key.to_string()),
-        }
-        self.config.save();
-    }
-
-    /// Cabecera plegable (sección o categoría) con flecha y contador.
-    fn fold_header(&mut self, ui: &mut egui::Ui, key: &str, text: &str, count: usize, big: bool) -> Response {
-        let open = self.is_open(key);
-        let (h, indent) = if big { (34.0, 0.0) } else { (28.0, 8.0) };
-        let resp = row(ui, h, indent, false, |p, r| {
-            if big {
-                // Asa para reordenar la sección.
-                for k in 0..3 {
-                    for c in 0..2 {
-                        p.circle_filled(r.left_center() + vec2(8.0 + c as f32 * 4.0, -4.0 + k as f32 * 4.0), 1.2, TEXT_DIM());
-                    }
-                }
-            }
-            arrow(p, r.left_center() + vec2(if big { 26.0 } else { 14.0 }, 0.0), open, if big { ACCENT() } else { TEXT() });
-            title(p, r.left_center() + vec2(if big { 38.0 } else { 26.0 }, 0.0), text, if big { 16.0 } else { 14.0 }, TEXT());
-            p.text(r.right_center() - vec2(10.0, 0.0), Align2::RIGHT_CENTER, count.to_string(), FontId::proportional(12.0), TEXT_DIM());
-        });
-        if resp.clicked() {
-            self.toggle(key);
-        }
-        resp
-    }
-
     pub fn library(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr("Biblioteca")).strong().size(15.0));
@@ -203,28 +168,57 @@ impl App {
                 }
             });
         });
-        // Pestañas en el orden guardado; se reordenan arrastrándolas.
+        // Buscador de toda la biblioteca.
+        let buscando = self.buscador(ui);
+        // Pestañas con icono y contador, en el orden guardado; se reordenan arrastrándolas.
         let mut order: Vec<usize> = self.config.lib_order.iter().filter_map(|id| SECTIONS.iter().position(|s| s.0 == id)).collect();
         let missing: Vec<usize> = (0..SECTIONS.len()).filter(|k| !order.contains(k)).collect();
         order.extend(missing);
+        let cuentas = [0, FX_CATEGORIES.iter().map(|c| c.1.len()).sum::<usize>(), instruments::CATALOG.len(), self.plugins.len()];
         let mut moved = None;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            for (pos, &k) in order.iter().enumerate() {
-                let on = self.lib_tab == k;
-                let r = widgets::pestana_texto(ui, on, tr(SECTIONS[k].1));
-                r.dnd_set_drag_payload(LibSection(pos));
-                if r.dnd_hover_payload::<LibSection>().is_some() {
-                    ui.painter().vline(r.rect.left() - 2.0, r.rect.y_range(), Stroke::new(3.0, ACCENT()));
+        let ancho = ((ui.available_width() - 6.0) / SECTIONS.len() as f32).max(60.0);
+        egui::Frame::new().fill(BG()).corner_radius(rr(10.0)).inner_margin(3.0).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (pos, &k) in order.iter().enumerate() {
+                    let on = self.lib_tab == k && !buscando;
+                    let (r, resp) = ui.allocate_exact_size(vec2(ancho - 2.0, 46.0), Sense::click_and_drag());
+                    let p = ui.painter();
+                    p.rect_filled(r, rr(8.0), if on { ELEVATED() } else if resp.hovered() { PANEL() } else { Color32::TRANSPARENT });
+                    if on {
+                        p.rect_filled(Rect::from_min_size(r.left_bottom() + vec2(12.0, -3.0), vec2(r.width() - 24.0, 2.0)), 1.0, ACCENT());
+                    }
+                    let color = if on { ACCENT() } else { TEXT_DIM() };
+                    icono_seccion(p, r.center_top() + vec2(0.0, 14.0), k, color);
+                    // Nombre (abreviado si no entra) y, si sobra espacio, cuántos hay.
+                    let nombre = tr(SECTIONS[k].1);
+                    let cabe = |t: &str| p.layout_no_wrap(t.to_string(), FontId::proportional(11.0), TEXT()).size().x <= r.width() - 6.0;
+                    let con_numero = format!("{nombre} {}", cuentas[k]);
+                    let texto = if cuentas[k] > 0 && cabe(&con_numero) {
+                        con_numero
+                    } else if cabe(nombre) {
+                        nombre.to_string()
+                    } else {
+                        format!("{}.", nombre.chars().take(6).collect::<String>())
+                    };
+                    p.text(r.center_bottom() - vec2(0.0, 13.0), Align2::CENTER_CENTER, texto, FontId::proportional(11.0), if on { TEXT() } else { TEXT_DIM() });
+                    resp.dnd_set_drag_payload(LibSection(pos));
+                    if resp.dnd_hover_payload::<LibSection>().is_some() {
+                        p.vline(r.left() - 1.0, r.y_range(), Stroke::new(3.0, ACCENT()));
+                    }
+                    if let Some(from) = resp.dnd_release_payload::<LibSection>() {
+                        moved = Some((from.0, pos));
+                    }
+                    if resp.clicked() {
+                        if self.lib_tab != k {
+                            self.lib_filtro = 0;
+                        }
+                        self.lib_tab = k;
+                        self.lib_buscar.clear();
+                    }
+                    resp.on_hover_text(format!("{} · {}", tr(SECTIONS[k].1), tr("Clic: abrir · arrastra para cambiar el orden de las pestañas")));
                 }
-                if let Some(from) = r.dnd_release_payload::<LibSection>() {
-                    moved = Some((from.0, pos));
-                }
-                if r.clicked() {
-                    self.lib_tab = k;
-                }
-                r.on_hover_text(tr("Clic: abrir · arrastra para cambiar el orden de las pestañas"));
-            }
+            });
         });
         if let Some((from, to)) = moved.filter(|(a, b)| a != b) {
             let k = order.remove(from);
@@ -232,26 +226,98 @@ impl App {
             self.config.lib_order = order.iter().map(|&k| SECTIONS[k].0.to_string()).collect();
             self.config.save();
         }
-        // Buscador de la pestaña abierta.
-        let pista = match SECTIONS[self.lib_tab.min(SECTIONS.len() - 1)].0 {
-            "fx" => tr("Buscar efectos"),
-            "inst" => tr("Buscar instrumentos"),
-            "plugins" => tr("Buscar plugins"),
-            _ => tr("Buscar en esta carpeta"),
-        };
-        ui.add(egui::TextEdit::singleline(&mut self.lib_buscar).hint_text(pista).desired_width(f32::INFINITY));
-        if self.lib_tab == 0 {
+        let seccion = SECTIONS[self.lib_tab.min(SECTIONS.len() - 1)].0;
+        if seccion == "files" && !buscando {
             self.preview_bar(ui);
         }
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
-            match SECTIONS[self.lib_tab.min(SECTIONS.len() - 1)].0 {
+            if buscando {
+                self.resultados(ui);
+                return;
+            }
+            match seccion {
                 "files" => self.files_section(ui),
                 "fx" => self.fx_section(ui),
                 "inst" => self.instruments_section(ui),
                 _ => self.plugins_section(ui),
             }
         });
+    }
+
+    /// Campo de búsqueda con lupa y botón para borrar; devuelve si hay algo escrito (en Muestras
+    /// filtra los archivos del árbol; en las demás busca en toda la biblioteca).
+    fn buscador(&mut self, ui: &mut egui::Ui) -> bool {
+        let en_archivos = SECTIONS[self.lib_tab.min(SECTIONS.len() - 1)].0 == "files";
+        egui::Frame::new().fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(9.0)).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let (r, _) = ui.allocate_exact_size(vec2(16.0, 18.0), Sense::hover());
+                ui.painter().circle_stroke(r.center() - vec2(1.5, 1.5), 5.0, Stroke::new(1.6, TEXT_DIM()));
+                ui.painter().line_segment([r.center() + vec2(2.0, 2.0), r.center() + vec2(6.0, 6.0)], Stroke::new(1.8, TEXT_DIM()));
+                let pista = if en_archivos { tr("Buscar en las carpetas abiertas…") } else { tr("Buscar en toda la biblioteca…") };
+                let ancho = ui.available_width() - if self.lib_buscar.is_empty() { 0.0 } else { 24.0 };
+                ui.add(egui::TextEdit::singleline(&mut self.lib_buscar).hint_text(pista).frame(egui::Frame::NONE).desired_width(ancho));
+                if !self.lib_buscar.is_empty() && ui.add(egui::Button::new("×").frame(false)).on_hover_text(tr("Borrar la búsqueda")).clicked() {
+                    self.lib_buscar.clear();
+                }
+            });
+        });
+        !self.lib_buscar.trim().is_empty() && !en_archivos
+    }
+
+    /// Resultados de la búsqueda en efectos, instrumentos y plugins.
+    fn resultados(&mut self, ui: &mut egui::Ui) {
+        let b = self.lib_buscar.trim().to_lowercase();
+        let fx: Vec<FxKind> = FX_CATEGORIES.iter().flat_map(|c| c.1.iter().copied()).filter(|k| tr(k.name()).to_lowercase().contains(&b) || tr(describe(*k)).to_lowercase().contains(&b) || tr(plugins::summary(*k)).to_lowercase().contains(&b)).collect();
+        let inst: Vec<&'static instruments::Entry> = instruments::CATALOG.iter().filter(|e| e.name.to_lowercase().contains(&b) || e.family.to_lowercase().contains(&b) || tr(e.family).to_lowercase().contains(&b)).collect();
+        let plug: Vec<_> = self.plugins.iter().filter(|p| p.0.to_lowercase().contains(&b) || p.1.to_lowercase().contains(&b)).cloned().collect();
+        if fx.is_empty() && inst.is_empty() && plug.is_empty() {
+            ui.add_space(20.0);
+            ui.vertical_centered(|ui| ui.label(RichText::new(tr("Nada coincide con la búsqueda.")).color(TEXT_DIM())));
+            return;
+        }
+        if !fx.is_empty() {
+            grupo(ui, "EFECTOS", fx.len());
+            self.fx_grid(ui, &fx);
+        }
+        if !inst.is_empty() {
+            grupo(ui, "INSTRUMENTOS", inst.len());
+            self.inst_rows(ui, &inst);
+        }
+        if !plug.is_empty() {
+            grupo(ui, "PLUGINS", plug.len());
+            self.plugin_rows(ui, &plug);
+        }
+    }
+
+    fn es_favorito(&self, clave: &str) -> bool {
+        self.config.lib_favoritos.iter().any(|f| f == clave)
+    }
+
+    fn alternar_favorito(&mut self, clave: String) {
+        match self.config.lib_favoritos.iter().position(|f| *f == clave) {
+            Some(i) => _ = self.config.lib_favoritos.remove(i),
+            None => self.config.lib_favoritos.push(clave),
+        }
+        self.config.save();
+    }
+
+    /// Fila de chips de filtro; devuelve el elegido.
+    fn chips(&mut self, ui: &mut egui::Ui, nombres: &[String]) {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+            for (k, n) in nombres.iter().enumerate() {
+                let on = self.lib_filtro == k;
+                let g = ui.painter().layout_no_wrap(n.clone(), FontId::proportional(11.5), TEXT());
+                let (r, resp) = ui.allocate_exact_size(vec2(g.size().x + 18.0, 24.0), Sense::click());
+                ui.painter().rect(r, rr(12.0), if on { ACCENT() } else if resp.hovered() { BORDER() } else { ELEVATED() }, Stroke::new(1.0, if on { ACCENT() } else { BORDER() }), StrokeKind::Inside);
+                ui.painter().galley_with_override_text_color(r.center() - g.size() / 2.0, g, if on { BG() } else { TEXT() });
+                if resp.clicked() {
+                    self.lib_filtro = k;
+                }
+            }
+        });
+        ui.add_space(2.0);
     }
 
     fn files_section(&mut self, ui: &mut egui::Ui) {
@@ -330,8 +396,13 @@ impl App {
             if children.is_empty() {
                 ui.label(RichText::new(tr("   (vacía)")).size(11.0).color(TEXT_DIM()));
             }
+            let buscado = self.lib_buscar.trim().to_lowercase();
             for c in children {
                 let name = c.file_name().unwrap_or_default().to_string_lossy().to_string();
+                // La búsqueda filtra los archivos de las carpetas abiertas.
+                if !buscado.is_empty() && !c.is_dir() && !name.to_lowercase().contains(&buscado) {
+                    continue;
+                }
                 self.tree_node(ui, &name, &c, depth + 1);
             }
         }
@@ -419,92 +490,164 @@ impl App {
     }
 
     fn fx_section(&mut self, ui: &mut egui::Ui) {
-        // Dónde se añade con doble clic: la pista seleccionada.
+        let mut nombres = vec![tr("Todos").to_string()];
+        nombres.extend(FX_CATEGORIES.iter().map(|c| tr(c.0).to_string()));
+        nombres.push(format!("★ {}", tr("Favoritos")));
+        self.chips(ui, &nombres);
         let target = self.s.tracks.iter().position(|t| t.selected && !t.midi());
         let destino = target.map_or_else(|| tr("ninguna pista seleccionada").to_string(), |i| self.s.tracks[i].name.clone());
-        ui.label(RichText::new(format!("{} {destino} {}", tr("Se añade a:"), tr("(o arrástralo a una pista)"))).size(11.0).color(TEXT_DIM()));
-        let buscado = self.lib_buscar.to_lowercase();
-        for (cat, kinds) in FX_CATEGORIES {
-            let visibles: Vec<FxKind> = kinds.iter().copied().filter(|k| buscado.is_empty() || tr(k.name()).to_lowercase().contains(&buscado) || tr(describe(*k)).to_lowercase().contains(&buscado)).collect();
-            if visibles.is_empty() {
+        ui.label(RichText::new(format!("{} {destino} · {}", tr("Doble clic añade a:"), tr("o arrastra a una pista"))).size(11.0).color(TEXT_DIM()));
+        let favoritos = nombres.len() - 1;
+        for (k, (cat, kinds)) in FX_CATEGORIES.iter().enumerate() {
+            if self.lib_filtro != 0 && self.lib_filtro != k + 1 && self.lib_filtro != favoritos {
                 continue;
             }
-            ui.add_space(4.0);
-            ui.label(RichText::new(tr(cat).to_uppercase()).size(10.5).strong().color(TEXT_DIM()));
-            for k in visibles {
-                // Fila plana: punto de color, nombre y descripción a la derecha.
-                let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click_and_drag());
-                let p = ui.painter_at(r);
-                if resp.hovered() || resp.dragged() {
-                    p.rect_filled(r, rr(5.0), ELEVATED());
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
-                p.circle_filled(r.left_center() + vec2(10.0, 0.0), 4.0, plugins::kind_color(Some(k)));
-                let nombre = p.text(r.left_center() + vec2(22.0, 0.0), Align2::LEFT_CENTER, tr(k.name()), FontId::proportional(13.0), TEXT());
-                // La descripción ocupa lo que queda a la derecha; si no entra, se recorta con «…».
-                let libre = r.right() - 8.0 - nombre.right() - 14.0;
-                let mut desc = tr(describe(k)).to_string();
-                while !desc.is_empty() && p.layout_no_wrap(desc.clone(), FontId::proportional(11.0), TEXT_DIM()).size().x > libre {
-                    desc.pop();
-                    desc = format!("{}…", desc.trim_end_matches('…').trim_end());
-                    if desc == "…" {
-                        desc.clear();
-                    }
-                }
-                p.text(r.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, desc, FontId::proportional(11.0), TEXT_DIM());
-                let r = resp;
-                r.dnd_set_drag_payload(LibItem::Fx(k));
-                r.context_menu(|ui| {
-                    widgets::menu_style(ui);
-                    let targets: Vec<usize> = (0..self.s.tracks.len()).filter(|&i| self.s.tracks[i].selected && !self.s.tracks[i].midi()).collect();
-                    if ui.add_enabled(!targets.is_empty(), egui::Button::new(tr("Añadir a las pistas seleccionadas"))).clicked() {
-                        targets.into_iter().for_each(|i| self.add_fx(i, k));
-                    }
-                });
-                if r.double_clicked()
-                    && let Some(i) = target
-                {
-                    self.add_fx(i, k);
-                }
-                let sr = self.sr() as f32;
-                r.on_hover_ui(|ui| {
-                    plugins::preview(ui, k, sr);
-                    ui.label(egui::RichText::new(tr("Arrastra a una pista o canal · doble clic: añadir a la pista seleccionada")).size(11.0).color(TEXT_DIM()));
-                });
+            let lista: Vec<FxKind> = kinds.iter().copied().filter(|x| self.lib_filtro != favoritos || self.es_favorito(&format!("fx:{x:?}"))).collect();
+            if lista.is_empty() {
+                continue;
             }
+            grupo(ui, cat, lista.len());
+            self.fx_grid(ui, &lista);
+        }
+        if self.lib_filtro == favoritos && self.config.lib_favoritos.iter().all(|f| !f.starts_with("fx:")) {
+            ui.label(RichText::new(tr("Marca efectos con la estrella para tenerlos aquí.")).size(11.5).color(TEXT_DIM()));
+        }
+    }
+
+    /// Efectos en tarjetas (tantas columnas como entren).
+    fn fx_grid(&mut self, ui: &mut egui::Ui, lista: &[FxKind]) {
+        let target = self.s.tracks.iter().position(|t| t.selected && !t.midi());
+        let cols = ((ui.available_width() + 6.0) / 150.0).floor().max(1.0) as usize;
+        let w = (ui.available_width() - 6.0 * (cols as f32 - 1.0)) / cols as f32;
+        for fila in lista.chunks(cols) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                for &k in fila {
+                    let (r0, resp) = ui.allocate_exact_size(vec2(w, 62.0), Sense::click_and_drag());
+                    let hov = resp.hovered() || resp.dragged();
+                    let r = if hov { r0.translate(vec2(0.0, -1.0)) } else { r0 };
+                    let p = ui.painter();
+                    let color = plugins::kind_color(Some(k));
+                    p.rect_filled(r.translate(vec2(0.0, 3.0)), rr(10.0), Color32::from_black_alpha(if hov { 60 } else { 30 }));
+                    p.rect(r, rr(10.0), if hov { BORDER() } else { ELEVATED() }, Stroke::new(1.0, if hov { color.gamma_multiply(0.8) } else { BORDER() }), StrokeKind::Inside);
+                    let tile = Rect::from_min_size(r.left_top() + vec2(8.0, 9.0), vec2(30.0, 30.0));
+                    p.rect_filled(tile, rr(8.0), color.gamma_multiply(0.22));
+                    icono_fx(p, tile.center(), k, color);
+                    let nombre = tr(k.name()).trim_start_matches("QUANTUM ").to_string();
+                    let ancho_txt = r.right() - tile.right() - 30.0;
+                    p.text(pos2(tile.right() + 8.0, r.top() + 18.0), Align2::LEFT_CENTER, recortar(p, &nombre, 13.0, ancho_txt), FontId::proportional(13.0), TEXT());
+                    let desc = recortar(p, tr(describe(k)), 10.5, r.right() - tile.right() - 14.0);
+                    p.text(pos2(tile.right() + 8.0, r.top() + 36.0), Align2::LEFT_CENTER, desc, FontId::proportional(10.5), TEXT_DIM());
+                    if k.name().starts_with("QUANTUM") {
+                        p.text(pos2(tile.right() + 8.0, r.bottom() - 10.0), Align2::LEFT_CENTER, "QUANTUM", FontId::proportional(8.5), color);
+                    }
+                    // Estrella de favorito.
+                    let clave = format!("fx:{k:?}");
+                    let fav = self.es_favorito(&clave);
+                    let estrella = Rect::from_center_size(r.right_top() + vec2(-14.0, 14.0), vec2(18.0, 18.0));
+                    let re = ui.interact(estrella, Id::new(("fav", &clave)), Sense::click());
+                    if fav || hov || re.hovered() {
+                        dibujar_estrella(ui.painter(), estrella.center(), 6.0, if fav { METER[1] } else { TEXT_DIM() }, fav);
+                    }
+                    if re.on_hover_text(tr(if fav { "Quitar de favoritos" } else { "Agregar a favoritos" })).clicked() {
+                        self.alternar_favorito(clave);
+                    }
+                    if hov {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    resp.dnd_set_drag_payload(LibItem::Fx(k));
+                    resp.context_menu(|ui| {
+                        widgets::menu_style(ui);
+                        let targets: Vec<usize> = (0..self.s.tracks.len()).filter(|&i| self.s.tracks[i].selected && !self.s.tracks[i].midi()).collect();
+                        if ui.add_enabled(!targets.is_empty(), egui::Button::new(tr("Añadir a las pistas seleccionadas"))).clicked() {
+                            targets.into_iter().for_each(|i| self.add_fx(i, k));
+                        }
+                    });
+                    if resp.double_clicked()
+                        && let Some(i) = target
+                    {
+                        self.add_fx(i, k);
+                    }
+                    let sr = self.sr() as f32;
+                    resp.on_hover_ui(|ui| {
+                        plugins::preview(ui, k, sr);
+                        ui.label(egui::RichText::new(tr("Arrastra a una pista o canal · doble clic: añadir a la pista seleccionada")).size(11.0).color(TEXT_DIM()));
+                    });
+                }
+            });
         }
     }
 
     fn instruments_section(&mut self, ui: &mut egui::Ui) {
+        let mut familias: Vec<&'static str> = vec![];
+        for e in instruments::CATALOG.iter() {
+            if !familias.contains(&e.family) {
+                familias.push(e.family);
+            }
+        }
+        let mut nombres = vec![tr("Todos").to_string()];
+        nombres.extend(familias.iter().map(|f| tr(f).to_string()));
+        nombres.push(tr("Instalados").to_string());
+        nombres.push(format!("★ {}", tr("Favoritos")));
+        self.chips(ui, &nombres);
+        let (instalados, favoritos) = (nombres.len() - 2, nombres.len() - 1);
+        let f = self.lib_filtro;
+        let lista: Vec<&'static instruments::Entry> = instruments::CATALOG
+            .iter()
+            .filter(|e| match f {
+                0 => true,
+                x if x == instalados => instruments::installed(e.id),
+                x if x == favoritos => self.es_favorito(&format!("inst:{}", e.id)),
+                x => familias.get(x - 1) == Some(&e.family),
+            })
+            .collect();
+        if lista.is_empty() {
+            ui.label(RichText::new(tr(if f == favoritos { "Marca instrumentos con la estrella para tenerlos aquí." } else { "No hay instrumentos en este filtro." })).size(11.5).color(TEXT_DIM()));
+        }
+        ui.label(RichText::new(tr("Clic: usar en la pista MIDI seleccionada (o descargar) · arrastrar: sobre una pista MIDI")).size(11.0).color(TEXT_DIM()));
+        self.inst_rows(ui, &lista);
+    }
+
+    /// Instrumentos en filas con icono de familia, estado y favorito.
+    fn inst_rows(&mut self, ui: &mut egui::Ui, lista: &[&'static instruments::Entry]) {
         let target = self.s.tracks.iter().position(|t| t.selected && t.midi());
         let mut assign = None;
-        let mut family = "";
-        let buscado = self.lib_buscar.to_lowercase();
-        for e in instruments::CATALOG.iter().filter(|e| buscado.is_empty() || e.name.to_lowercase().contains(&buscado) || e.family.to_lowercase().contains(&buscado)) {
-            if e.family != family {
-                family = e.family;
-                let n = instruments::CATALOG.iter().filter(|x| x.family == family).count();
-                self.fold_header(ui, &format!("inst:{family}"), family, n, false);
-            }
-            if !self.is_open(&format!("inst:{family}")) {
-                continue;
-            }
+        for e in lista {
             let st = self.downloads.get(e.id).and_then(|s| s.lock().ok().map(|s| s.clone())).unwrap_or_default();
             let installed = instruments::installed(e.id);
-            let (right, color) = match (installed, st.as_str()) {
-                (true, _) => ("Instalado".to_string(), METER[0]),
-                (false, "") | (false, "Listo") => (format!("Descargar · {} MB", e.mb), ACCENT()),
+            let (estado, color) = match (installed, st.as_str()) {
+                (true, _) => (tr("Instalado").to_string(), METER[0]),
+                (false, "") | (false, "Listo") => (format!("{} MB", e.mb), ACCENT()),
                 (false, s) => (s.to_string(), METER[1]),
             };
-            let r = row(ui, 46.0, 20.0, target.is_some_and(|i| self.s.tracks[i].instrument == e.id), |p, r| {
-                title(p, r.left_center() + vec2(12.0, -9.0), e.name, 14.5, TEXT());
-                title(p, r.left_center() + vec2(12.0, 10.0), &format!("{} · {}", e.credit, e.license), 11.5, TEXT_DIM());
-                p.text(r.right_center() - vec2(10.0, 0.0), Align2::RIGHT_CENTER, &right, FontId::proportional(12.0), color);
+            let clave = format!("inst:{}", e.id);
+            let fav = self.es_favorito(&clave);
+            let mut estrella_r = Rect::NOTHING;
+            let r = row(ui, 50.0, 0.0, target.is_some_and(|i| self.s.tracks[i].instrument == e.id), |p, r| {
+                let c = color_familia(e.family);
+                let tile = Rect::from_min_size(r.left_top() + vec2(8.0, 9.0), vec2(32.0, 32.0));
+                p.rect_filled(tile, rr(8.0), c.gamma_multiply(0.22));
+                p.text(tile.center(), Align2::CENTER_CENTER, e.family.chars().next().unwrap_or('·').to_string(), FontId::proportional(15.0), c);
+                let libre = r.right() - tile.right() - 110.0;
+                p.text(pos2(tile.right() + 10.0, r.top() + 17.0), Align2::LEFT_CENTER, recortar(p, e.name, 13.5, libre), FontId::proportional(13.5), TEXT());
+                p.text(pos2(tile.right() + 10.0, r.top() + 35.0), Align2::LEFT_CENTER, recortar(p, &format!("{} · {}", tr(e.family), e.license), 10.5, libre), FontId::proportional(10.5), TEXT_DIM());
+                // Estado como píldora y estrella.
+                let g = p.layout_no_wrap(estado.clone(), FontId::proportional(10.5), color);
+                let pill = Rect::from_min_size(pos2(r.right() - 36.0 - g.size().x - 14.0, r.center().y - 10.0), vec2(g.size().x + 14.0, 20.0));
+                p.rect_filled(pill, rr(10.0), color.gamma_multiply(0.16));
+                p.galley(pill.center() - g.size() / 2.0, g, color);
+                estrella_r = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(18.0, 18.0));
+                dibujar_estrella(p, estrella_r.center(), 6.0, if fav { METER[1] } else { BORDER() }, fav);
             });
+            let re = ui.interact(estrella_r, Id::new(("fav", &clave)), Sense::click());
+            if re.on_hover_text(tr(if fav { "Quitar de favoritos" } else { "Agregar a favoritos" })).clicked() {
+                self.alternar_favorito(clave);
+                continue;
+            }
             r.dnd_set_drag_payload(LibItem::Instrument(e.id));
             r.context_menu(|ui| {
                 widgets::menu_style(ui);
-                if !installed && ui.button(format!("Descargar ({} MB)", e.mb)).clicked() {
+                if !installed && ui.button(format!("{} ({} MB)", tr("Descargar"), e.mb)).clicked() {
                     let s = Arc::new(std::sync::Mutex::new(String::new()));
                     instruments::install(e, s.clone());
                     self.downloads.insert(e.id, s);
@@ -532,10 +675,10 @@ impl App {
                         instruments::install(e, s.clone());
                         self.downloads.insert(e.id, s);
                     }
-                    (true, None) => self.status = "Selecciona una pista MIDI (o arrastra el instrumento sobre ella)".into(),
+                    (true, None) => self.status = tr("Selecciona una pista MIDI (o arrastra el instrumento sobre ella)").into(),
                 }
             }
-            r.on_hover_text(tr("Clic: usar en la pista MIDI seleccionada (o descargar) · arrastrar: sobre una pista MIDI"));
+            r.on_hover_text(format!("{} · {}", e.credit, tr("Clic: usar en la pista MIDI seleccionada (o descargar) · arrastrar: sobre una pista MIDI")));
         }
         if let Some((i, id)) = assign {
             self.set_instrument(i, id);
@@ -543,6 +686,10 @@ impl App {
     }
 
     fn plugins_section(&mut self, ui: &mut egui::Ui) {
+        let formatos = ["VST3", "LV2", "CLAP"];
+        let mut nombres = vec![format!("{} {}", tr("Todos"), self.plugins.len())];
+        nombres.extend(formatos.iter().map(|f| format!("{f} {}", self.plugins.iter().filter(|p| p.1 == *f).count())));
+        self.chips(ui, &nombres);
         ui.horizontal(|ui| {
             if ui.button(tr("Volver a buscar")).clicked() {
                 self.plugins = scan_plugins();
@@ -552,14 +699,32 @@ impl App {
         if self.plugins.is_empty() {
             ui.label(RichText::new(tr("No se encontraron plugins VST3/LV2/CLAP. Instala por ejemplo LSP o x42 y pulsa «Volver a buscar».")).color(TEXT_DIM()));
         }
-        for (name, format, path) in self.plugins.clone() {
+        let f = self.lib_filtro;
+        let lista: Vec<_> = self.plugins.iter().filter(|p| f == 0 || formatos.get(f - 1) == Some(&p.1)).cloned().collect();
+        self.plugin_rows(ui, &lista);
+        if !self.config.hidden_plugins.is_empty() && ui.button(format!("{} ({})", tr("Mostrar plugins ocultos"), self.config.hidden_plugins.len())).clicked() {
+            self.config.hidden_plugins.clear();
+            self.config.save();
+        }
+    }
+
+    /// Plugins de terceros en filas con su formato.
+    fn plugin_rows(&mut self, ui: &mut egui::Ui, lista: &[(String, &'static str, PathBuf)]) {
+        for (name, format, path) in lista.iter().cloned() {
             if self.config.hidden_plugins.contains(&path) {
                 continue;
             }
             let r = row(ui, 44.0, 0.0, false, |p, r| {
-                p.text(r.left_center() + vec2(12.0, -8.0), Align2::LEFT_CENTER, format, FontId::proportional(11.0), ACCENT());
-                title(p, r.left_center() + vec2(52.0, -8.0), &name, 14.5, TEXT());
-                title(p, r.left_center() + vec2(12.0, 10.0), &path.display().to_string(), 11.0, TEXT_DIM());
+                let c = match format {
+                    "VST3" => Color32::from_rgb(0x5B, 0x9C, 0xFF),
+                    "LV2" => Color32::from_rgb(0x3D, 0xDC, 0x84),
+                    _ => Color32::from_rgb(0xFF, 0xB0, 0x20),
+                };
+                let pill = Rect::from_min_size(r.left_top() + vec2(8.0, 12.0), vec2(40.0, 20.0));
+                p.rect_filled(pill, rr(6.0), c.gamma_multiply(0.2));
+                p.text(pill.center(), Align2::CENTER_CENTER, format, FontId::proportional(10.0), c);
+                p.text(pos2(pill.right() + 10.0, r.top() + 15.0), Align2::LEFT_CENTER, recortar(p, &name, 13.5, r.right() - pill.right() - 20.0), FontId::proportional(13.5), TEXT());
+                p.text(pos2(pill.right() + 10.0, r.top() + 31.0), Align2::LEFT_CENTER, recortar(p, &path.display().to_string(), 10.0, r.right() - pill.right() - 20.0), FontId::proportional(10.0), TEXT_DIM());
             });
             r.context_menu(|ui| {
                 widgets::menu_style(ui);
@@ -576,10 +741,6 @@ impl App {
                 }
             });
             r.on_hover_text(format!("{} · {}", path.display(), tr("clic derecho: desinstalar u ocultar")));
-        }
-        if !self.config.hidden_plugins.is_empty() && ui.button(format!("{} ({})", tr("Mostrar plugins ocultos"), self.config.hidden_plugins.len())).clicked() {
-            self.config.hidden_plugins.clear();
-            self.config.save();
         }
     }
 
@@ -649,5 +810,127 @@ impl App {
             self.config.separadas.retain(|s| s != "lib-win");
             self.config.save();
         }
+    }
+}
+
+/// Título de grupo con contador.
+fn grupo(ui: &mut egui::Ui, texto: &str, n: usize) {
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(tr(texto).to_uppercase()).size(10.5).strong().color(TEXT_DIM()));
+        ui.label(RichText::new(n.to_string()).size(10.0).color(ACCENT()));
+    });
+}
+
+/// Texto recortado con «…» para que entre en `ancho`.
+fn recortar(p: &Painter, texto: &str, tam: f32, ancho: f32) -> String {
+    let cabe = |s: &str| p.layout_no_wrap(s.to_string(), FontId::proportional(tam), TEXT()).size().x <= ancho;
+    if cabe(texto) {
+        return texto.to_string();
+    }
+    let mut s: String = texto.to_string();
+    while !s.is_empty() && !cabe(&format!("{s}…")) {
+        s.pop();
+    }
+    if s.is_empty() { String::new() } else { format!("{}…", s.trim_end()) }
+}
+
+/// Estrella de favoritos (rellena o solo el contorno).
+fn dibujar_estrella(p: &Painter, c: Pos2, r: f32, color: Color32, llena: bool) {
+    let pts: Vec<Pos2> = (0..10)
+        .map(|k| {
+            let a = std::f32::consts::PI * (k as f32 / 5.0) - std::f32::consts::FRAC_PI_2;
+            let rad = if k % 2 == 0 { r } else { r * 0.45 };
+            c + vec2(a.cos(), a.sin()) * rad
+        })
+        .collect();
+    if llena {
+        // Relleno con triángulos desde el centro (la estrella no es convexa).
+        for k in 0..10 {
+            p.add(egui::Shape::convex_polygon(vec![c, pts[k], pts[(k + 1) % 10]], color, Stroke::NONE));
+        }
+    } else {
+        p.add(egui::Shape::closed_line(pts, Stroke::new(1.2, color)));
+    }
+}
+
+/// Color de cada familia de instrumentos.
+fn color_familia(f: &str) -> Color32 {
+    let h = f.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+    const C: [Color32; 6] = [
+        Color32::from_rgb(0x5B, 0x9C, 0xFF),
+        Color32::from_rgb(0xFF, 0xB0, 0x20),
+        Color32::from_rgb(0x3D, 0xDC, 0x84),
+        Color32::from_rgb(0xB0, 0x8C, 0xF2),
+        Color32::from_rgb(0xFF, 0x6B, 0x9A),
+        Color32::from_rgb(0x2E, 0xD8, 0xC3),
+    ];
+    C[h as usize % C.len()]
+}
+
+/// Icono de cada pestaña: muestras (nota), efectos (perilla), instrumentos (teclado), plugins (enchufe).
+fn icono_seccion(p: &Painter, c: Pos2, k: usize, color: Color32) {
+    let s = Stroke::new(1.6, color);
+    match k {
+        0 => {
+            p.circle_filled(c + vec2(-3.0, 4.0), 3.2, color);
+            p.line_segment([c + vec2(0.0, 4.0), c + vec2(0.0, -7.0)], s);
+            p.line_segment([c + vec2(0.0, -7.0), c + vec2(6.0, -4.0)], s);
+        }
+        1 => {
+            p.circle_stroke(c, 7.0, s);
+            p.line_segment([c, c + vec2(4.0, -5.0)], s);
+        }
+        2 => {
+            p.rect_stroke(Rect::from_center_size(c, vec2(16.0, 12.0)), 2.0, s, StrokeKind::Middle);
+            for x in [-4.0, 0.0, 4.0] {
+                p.line_segment([c + vec2(x, -6.0), c + vec2(x, 6.0)], Stroke::new(1.0, color));
+            }
+        }
+        _ => {
+            p.rect_stroke(Rect::from_center_size(c + vec2(0.0, 1.0), vec2(12.0, 9.0)), 3.0, s, StrokeKind::Middle);
+            p.line_segment([c + vec2(-3.0, -3.5), c + vec2(-3.0, -7.0)], s);
+            p.line_segment([c + vec2(3.0, -3.5), c + vec2(3.0, -7.0)], s);
+            p.line_segment([c + vec2(0.0, 5.5), c + vec2(0.0, 8.0)], s);
+        }
+    }
+}
+
+/// Icono de cada efecto (lo que hace, dibujado).
+pub fn icono_fx(p: &Painter, c: Pos2, k: FxKind, color: Color32) {
+    let s = Stroke::new(1.7, color);
+    let curva = |f: &dyn Fn(f32) -> f32| -> Vec<Pos2> { (0..=16).map(|i| i as f32 / 16.0).map(|t| c + vec2(-9.0 + 18.0 * t, f(t))).collect() };
+    match k {
+        FxKind::Eq | FxKind::Curves => {
+            let f = |t: f32| -5.0 * (-(t - 0.3) * (t - 0.3) * 40.0).exp() + 4.0 * (-(t - 0.75) * (t - 0.75) * 50.0).exp();
+            p.add(egui::Shape::line(curva(&f), s));
+        }
+        FxKind::Compressor | FxKind::Limiter => {
+            p.line_segment([c + vec2(-8.0, 8.0), c + vec2(0.0, 0.0)], s);
+            let y = if k == FxKind::Limiter { 0.0 } else { -3.0 };
+            p.line_segment([c, c + vec2(8.0, y)], s);
+            if k == FxKind::Limiter {
+                p.line_segment([c + vec2(-9.0, -2.0), c + vec2(9.0, -2.0)], Stroke::new(1.0, color.gamma_multiply(0.6)));
+            }
+        }
+        FxKind::Delay => (0..3).for_each(|i| _ = p.circle_filled(c + vec2(-6.0 + i as f32 * 6.0, 0.0), 3.0 - i as f32 * 0.8, color)),
+        FxKind::Reverb => (0..3).for_each(|i| _ = p.add(egui::Shape::line((0..=8).map(|j| j as f32 / 8.0 * std::f32::consts::PI).map(|a| c + vec2(-6.0, 6.0) + vec2(a.cos(), -a.sin()) * (4.0 + i as f32 * 3.5) + vec2(6.0, 0.0)).collect(), Stroke::new(1.4, color.gamma_multiply(1.0 - i as f32 * 0.25))))),
+        FxKind::Drive => {
+            let f = |t: f32| (-(t * std::f32::consts::TAU * 1.5).sin() * 9.0).clamp(-5.0, 5.0);
+            p.add(egui::Shape::line(curva(&f), s));
+        }
+        FxKind::Tune => {
+            p.circle_filled(c + vec2(-2.0, 5.0), 3.2, color);
+            p.line_segment([c + vec2(1.0, 5.0), c + vec2(1.0, -7.0)], s);
+            p.line_segment([c + vec2(1.0, -7.0), c + vec2(7.0, -4.0)], s);
+        }
+        FxKind::Gate => _ = p.add(egui::Shape::line(vec![c + vec2(-9.0, 5.0), c + vec2(-4.0, 5.0), c + vec2(-4.0, -5.0), c + vec2(4.0, -5.0), c + vec2(4.0, 5.0), c + vec2(9.0, 5.0)], s)),
+        FxKind::Chorus => {
+            for (d, a) in [(0.0, 1.0), (2.5, 0.5)] {
+                let f = move |t: f32| (t * std::f32::consts::TAU * 1.2 + d).sin() * 4.5;
+                p.add(egui::Shape::line(curva(&f), Stroke::new(1.5, color.gamma_multiply(a))));
+            }
+        }
+        FxKind::DeEsser => _ = p.text(c, Align2::CENTER_CENTER, "S", FontId::proportional(16.0), color),
     }
 }

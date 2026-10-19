@@ -209,6 +209,8 @@ struct Config {
     clic_acento: f32,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
+    /// Favoritos de la biblioteca ("fx:Compressor", "inst:guitarra-nylon").
+    lib_favoritos: Vec<String>,
     /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
     proxies: bool,
 }
@@ -687,6 +689,8 @@ struct App {
     show_inspector: bool,
     /// Texto buscado en la biblioteca.
     lib_buscar: String,
+    /// Filtro (chip) elegido en la pestaña abierta de la biblioteca (0 = todo).
+    lib_filtro: usize,
     /// Generador de progresiones de acordes por estilo.
     generador: generador::Generador,
     /// Efectos del master y ventana de mastering y loudness.
@@ -822,6 +826,7 @@ impl App {
             menu_region: None,
             show_inspector: false,
             lib_buscar: String::new(),
+            lib_filtro: 0,
             generador: Default::default(),
             paleta: None,
             informe: informes::pendiente(),

@@ -855,23 +855,6 @@ impl App {
         // Novedades del blog y tienda de quantumdaw.com.
         let web = web::contenido();
         let abrir = |ui: &egui::Ui, url: String| ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-        let tarjeta_web = |ui: &mut egui::Ui, tam: egui::Vec2, arriba: &str, titulo_: &str, texto: &str, pie: (&str, Color32), etiqueta: Option<&str>| -> bool {
-            let (r, resp) = ui.allocate_exact_size(tam, egui::Sense::click());
-            ui.painter().rect(r, rr(10.0), if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
-            let pc = ui.painter().with_clip_rect(r.shrink(6.0));
-            pc.text(r.left_top() + vec2(14.0, 18.0), egui::Align2::LEFT_CENTER, arriba, egui::FontId::proportional(10.5), ACCENT());
-            pc.text(r.left_top() + vec2(14.0, 40.0), egui::Align2::LEFT_CENTER, titulo_, egui::FontId::proportional(14.5), TEXT());
-            let g = ui.painter().layout(texto.to_string(), egui::FontId::proportional(11.5), TEXT_DIM(), r.width() - 28.0);
-            pc.galley(r.left_top() + vec2(14.0, 54.0), g, TEXT_DIM());
-            pc.text(r.left_bottom() + vec2(14.0, -16.0), egui::Align2::LEFT_CENTER, pie.0, egui::FontId::proportional(12.0), pie.1);
-            if let Some(e) = etiqueta.filter(|e| !e.is_empty()) {
-                let g = ui.painter().layout_no_wrap(e.to_string(), egui::FontId::proportional(10.5), BG());
-                let er = egui::Rect::from_min_size(r.right_top() + vec2(-g.size().x - 22.0, 10.0), g.size() + vec2(12.0, 6.0));
-                ui.painter().rect_filled(er, rr(5.0), ACCENT());
-                ui.painter().galley(er.min + vec2(6.0, 3.0), g, BG());
-            }
-            resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
-        };
         let base = web::base();
         ui.horizontal(|ui| {
             titulo(ui, "NOVEDADES", "Del blog de Quantum DAW.");
@@ -893,10 +876,13 @@ impl App {
             };
             ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
         } else {
-            let tam = vec2((ancho - 20.0) / 3.0, 118.0);
+            let tam = vec2((ancho - 32.0) / 3.0, 262.0);
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
                 for n in noticias.iter().take(3) {
-                    if tarjeta_web(ui, tam, &n.fecha, &n.titulo, &n.resumen, (tr("Leer la noticia"), ACCENT()), None) {
+                    let img = web::imagen(ui.ctx(), n.imagen.as_deref());
+                    let t = Tarjeta { imagen: img, portada: Portada::Noticia, arriba: &n.fecha, titulo: &n.titulo, texto: &n.resumen, pie: (tr("Leer la noticia"), ACCENT()), etiqueta: None };
+                    if tarjeta_imagen(ui, tam, t) {
                         abrir(ui, format!("{base}/noticia.php?n={}", n.slug));
                     }
                 }
@@ -920,16 +906,23 @@ impl App {
             };
             ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
         } else {
-            let n = ((ancho + 10.0) / 260.0).floor().max(1.0) as usize;
-            let tam = vec2((ancho - 10.0 * (n as f32 - 1.0)) / n as f32, 128.0);
-            ui.horizontal(|ui| {
-                for p in productos.iter().take(n) {
-                    let pie = (web::precio(p), if p.gratis { VERDE_PLAY } else { ACCENT() });
-                    if tarjeta_web(ui, tam, &p.tipo.to_uppercase(), &p.nombre, &p.resumen, (pie.0.as_str(), pie.1), p.etiqueta.as_deref()) {
-                        abrir(ui, p.enlace.clone().unwrap_or_else(|| format!("{base}/tienda.html#{}", p.slug)));
+            let n = ((ancho + 16.0) / 250.0).floor().max(1.0) as usize;
+            let tam = vec2((ancho - 16.0 * (n as f32 - 1.0)) / n as f32, 270.0);
+            for fila in productos.chunks(n).take(2) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 16.0;
+                    for p in fila {
+                        let precio = web::precio(p);
+                        let img = web::imagen(ui.ctx(), p.imagen.as_deref());
+                        let tipo = p.tipo.to_uppercase();
+                        let t = Tarjeta { imagen: img, portada: Portada::Producto(&p.tipo), arriba: &tipo, titulo: &p.nombre, texto: &p.resumen, pie: (&precio, if p.gratis { VERDE_PLAY } else { ACCENT() }), etiqueta: p.etiqueta.as_deref() };
+                        if tarjeta_imagen(ui, tam, t) {
+                            abrir(ui, p.enlace.clone().unwrap_or_else(|| format!("{base}/tienda.html#{}", p.slug)));
+                        }
                     }
-                }
-            });
+                });
+                ui.add_space(12.0);
+            }
         }
         ui.add_space(10.0);
         titulo(ui, "AMPLÍA TU ESTUDIO", "Instrumentos reales gratuitos y libres para descargar.");
@@ -1004,4 +997,163 @@ impl App {
             }
         }
     }
+}
+
+/// Portada dibujada cuando la noticia o el producto no tiene imagen.
+enum Portada<'a> {
+    Noticia,
+    Producto(&'a str),
+}
+
+/// Contenido de una tarjeta con imagen.
+struct Tarjeta<'a> {
+    imagen: Option<egui::TextureHandle>,
+    portada: Portada<'a>,
+    arriba: &'a str,
+    titulo: &'a str,
+    texto: &'a str,
+    pie: (&'a str, Color32),
+    etiqueta: Option<&'a str>,
+}
+
+/// Tarjeta de novedad o producto: imagen arriba (recortada para llenar), fecha o tipo, título,
+/// resumen y pie (precio o «leer»). Se eleva al pasar el ratón; devuelve si se hizo clic.
+fn tarjeta_imagen(ui: &mut egui::Ui, tam: egui::Vec2, t: Tarjeta) -> bool {
+    let (r0, resp) = ui.allocate_exact_size(tam, egui::Sense::click());
+    let hov = resp.hovered();
+    let r = if hov { r0.translate(vec2(0.0, -3.0)) } else { r0 };
+    let p = ui.painter();
+    let radio = rr(14.0);
+    p.rect_filled(r.translate(vec2(0.0, if hov { 8.0 } else { 5.0 })), radio, Color32::from_black_alpha(if hov { 90 } else { 50 }));
+    p.rect(r, radio, ELEVATED(), egui::Stroke::new(1.0, if hov { ACCENT().gamma_multiply(0.7) } else { BORDER() }), egui::StrokeKind::Inside);
+    // Imagen (o portada dibujada) con las esquinas de arriba redondeadas.
+    let img_r = egui::Rect::from_min_size(r.min, vec2(r.width(), (r.height() * 0.5).round()));
+    let esquinas = egui::CornerRadius { nw: radio as u8, ne: radio as u8, sw: 0, se: 0 };
+    match &t.imagen {
+        Some(tex) => {
+            // Recorte tipo «cover»: se llena el recuadro sin deformar.
+            let (iw, ih) = (tex.size()[0] as f32, tex.size()[1] as f32);
+            let (a_img, a_r) = (iw / ih.max(1.0), img_r.width() / img_r.height());
+            let uv = if a_img > a_r {
+                let f = a_r / a_img;
+                egui::Rect::from_min_max(egui::pos2((1.0 - f) / 2.0, 0.0), egui::pos2((1.0 + f) / 2.0, 1.0))
+            } else {
+                let f = a_img / a_r;
+                egui::Rect::from_min_max(egui::pos2(0.0, (1.0 - f) / 2.0), egui::pos2(1.0, (1.0 + f) / 2.0))
+            };
+            let zoom = if hov { img_r.expand(0.0) } else { img_r };
+            p.add(egui::epaint::RectShape::filled(zoom, esquinas, Color32::WHITE).with_texture(tex.id(), uv));
+        }
+        None => portada(ui, img_r, esquinas, t.titulo, &t.portada),
+    }
+    // Degradado inferior sobre la imagen para que la etiqueta se lea.
+    if let Some(e) = t.etiqueta.filter(|e| !e.is_empty()) {
+        let g = p.layout_no_wrap(e.to_uppercase(), egui::FontId::proportional(10.5), Color32::WHITE);
+        let er = egui::Rect::from_min_size(img_r.left_top() + vec2(12.0, 12.0), g.size() + vec2(14.0, 8.0));
+        p.rect_filled(er, rr(6.0), ACCENT());
+        p.galley(er.min + vec2(7.0, 4.0), g, BG());
+    }
+    let pc = p.with_clip_rect(r.shrink(2.0));
+    let x = r.left() + 16.0;
+    let mut y = img_r.bottom() + 20.0;
+    pc.text(egui::pos2(x, y), egui::Align2::LEFT_CENTER, t.arriba, egui::FontId::proportional(10.5), ACCENT());
+    y += 12.0;
+    // Título (hasta dos líneas) y resumen (lo que entre).
+    let ancho = r.width() - 32.0;
+    let mut job = egui::text::LayoutJob::simple(t.titulo.to_string(), egui::FontId::proportional(16.0), TEXT(), ancho);
+    job.wrap.max_rows = 2;
+    let gt = ui.painter().layout_job(job);
+    let alto_t = gt.size().y;
+    pc.galley(egui::pos2(x, y), gt, TEXT());
+    y += alto_t + 6.0;
+    let filas = (((r.bottom() - 34.0 - y) / 15.0).floor().max(0.0)) as usize;
+    if filas > 0 {
+        let mut job = egui::text::LayoutJob::simple(t.texto.to_string(), egui::FontId::proportional(12.0), TEXT_DIM(), ancho);
+        job.wrap.max_rows = filas;
+        let gr = ui.painter().layout_job(job);
+        pc.galley(egui::pos2(x, y), gr, TEXT_DIM());
+    }
+    // Pie: precio en píldora (tienda) o enlace (noticias).
+    let pie_y = r.bottom() - 20.0;
+    if matches!(t.portada, Portada::Producto(_)) {
+        let g = p.layout_no_wrap(t.pie.0.to_string(), egui::FontId::proportional(13.0), t.pie.1);
+        let pr = egui::Rect::from_min_size(egui::pos2(x - 2.0, pie_y - 12.0), g.size() + vec2(18.0, 8.0));
+        p.rect_filled(pr, rr(12.0), t.pie.1.gamma_multiply(0.16));
+        p.galley(pr.min + vec2(9.0, 4.0), g, t.pie.1);
+        let color = if hov { TEXT() } else { TEXT_DIM() };
+        let tr_ = p.text(egui::pos2(r.right() - 30.0, pie_y), egui::Align2::RIGHT_CENTER, tr("Ver"), egui::FontId::proportional(12.0), color);
+        flecha(p, egui::pos2(tr_.right() + 9.0, pie_y), color, hov);
+    } else {
+        let tr_ = p.text(egui::pos2(x, pie_y), egui::Align2::LEFT_CENTER, t.pie.0, egui::FontId::proportional(12.5), t.pie.1);
+        flecha(p, egui::pos2(tr_.right() + 10.0, pie_y), t.pie.1, hov);
+    }
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
+}
+
+/// Portada dibujada: degradado con el color del título y un motivo según el tipo.
+fn portada(ui: &egui::Ui, r: egui::Rect, esquinas: egui::CornerRadius, titulo: &str, tipo: &Portada) {
+    let p = ui.painter();
+    let c = color_de(titulo);
+    let c2 = Color32::from_rgb(c.b() / 2 + 40, c.r() / 3 + 20, c.g() / 2 + 60);
+    p.rect_filled(r, esquinas, c2);
+    let mut mesh = egui::Mesh::default();
+    let (a, b) = (c.gamma_multiply(0.95), Color32::from_black_alpha(0));
+    for (pt, col) in [(r.left_top(), a), (r.right_top(), b), (r.right_bottom(), b), (r.left_bottom(), a)] {
+        mesh.colored_vertex(pt, col);
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    p.with_clip_rect(r.shrink2(vec2(0.0, 0.0))).add(mesh);
+    let pc = p.with_clip_rect(r);
+    // Luces suaves.
+    for (fx, fy, rad, al) in [(0.85, 0.1, 90.0, 26), (0.15, 0.95, 70.0, 18)] {
+        pc.circle_filled(egui::pos2(r.left() + r.width() * fx, r.top() + r.height() * fy), rad, Color32::from_white_alpha(al));
+    }
+    let centro = r.center();
+    let blanco = |a: u8| Color32::from_white_alpha(a);
+    match tipo {
+        Portada::Noticia => {
+            egui::Image::new(egui::include_image!("../../../assets/quantumlogo.svg")).tint(blanco(70)).paint_at(ui, egui::Rect::from_center_size(centro, vec2(r.height() * 0.62, r.height() * 0.62)));
+        }
+        Portada::Producto(t) if t.to_lowercase().contains("instrument") => {
+            let teclas = egui::Rect::from_center_size(centro, vec2(r.width() * 0.55, r.height() * 0.42));
+            pc.rect_filled(teclas, rr(6.0), blanco(200));
+            for k in 1..10 {
+                let xk = teclas.left() + teclas.width() * k as f32 / 10.0;
+                pc.line_segment([egui::pos2(xk, teclas.top()), egui::pos2(xk, teclas.bottom())], egui::Stroke::new(1.0, c2));
+                if ![3, 7].contains(&k) {
+                    pc.rect_filled(egui::Rect::from_center_size(egui::pos2(xk, teclas.top() + teclas.height() * 0.3), vec2(teclas.width() / 18.0, teclas.height() * 0.6)), 1.0, c2);
+                }
+            }
+        }
+        Portada::Producto(t) if t.to_lowercase().contains("sonido") || t.to_lowercase().contains("sample") => {
+            let pts: Vec<egui::Pos2> = (0..80).map(|i| i as f32 / 79.0).map(|t| egui::pos2(r.left() + 20.0 + (r.width() - 40.0) * t, centro.y + (t * 37.0).sin() * (t * 3.1).sin().abs() * r.height() * 0.3)).collect();
+            pc.add(egui::Shape::line(pts, egui::Stroke::new(2.5, blanco(210))));
+        }
+        Portada::Producto(_) => {
+            // Plugin: una perilla grande con su arco de valor.
+            let rad = r.height() * 0.28;
+            pc.circle_filled(centro, rad + 10.0, Color32::from_black_alpha(60));
+            let arco = |desde: f32, hasta: f32, color: Color32, w: f32| {
+                let pts: Vec<egui::Pos2> = (0..=40).map(|i| desde + (hasta - desde) * i as f32 / 40.0).map(|a| centro + vec2(a.cos(), a.sin()) * (rad + 4.0)).collect();
+                pc.add(egui::Shape::line(pts, egui::Stroke::new(w, color)));
+            };
+            let (a0, a1) = (std::f32::consts::PI * 0.75, std::f32::consts::PI * 2.25);
+            arco(a0, a1, blanco(50), 4.0);
+            arco(a0, a0 + (a1 - a0) * 0.7, blanco(230), 4.0);
+            pc.circle_filled(centro, rad - 4.0, Color32::from_rgb(0x1A, 0x1D, 0x26));
+            pc.circle_stroke(centro, rad - 4.0, egui::Stroke::new(1.5, blanco(60)));
+            let ang = a0 + (a1 - a0) * 0.7;
+            pc.line_segment([centro + vec2(ang.cos(), ang.sin()) * (rad * 0.25), centro + vec2(ang.cos(), ang.sin()) * (rad - 10.0)], egui::Stroke::new(3.0, blanco(240)));
+        }
+    }
+}
+
+/// Flecha «→» dibujada (se adelanta un poco al pasar el ratón).
+fn flecha(p: &egui::Painter, c: egui::Pos2, color: Color32, hov: bool) {
+    let c = c + vec2(if hov { 3.0 } else { 0.0 }, 0.0);
+    let s = egui::Stroke::new(1.5, color);
+    p.line_segment([c - vec2(5.0, 0.0), c + vec2(5.0, 0.0)], s);
+    p.line_segment([c + vec2(5.0, 0.0), c + vec2(1.5, -3.5)], s);
+    p.line_segment([c + vec2(5.0, 0.0), c + vec2(1.5, 3.5)], s);
 }
