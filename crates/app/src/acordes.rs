@@ -33,7 +33,7 @@ pub const INVERSIONES: [&str; 4] = ["Fundamental", "1.ª inversión", "2.ª inve
 pub const RITMOS: [&str; 3] = ["Bloque", "Negras", "Arpegio"];
 
 /// Progresiones por grados de la escala (índices de `diatonicos`).
-pub const PROGRESIONES: [(&str, &[usize]); 8] = [
+pub const PROGRESIONES: [(&str, &[usize]); 13] = [
     ("I – V – vi – IV (pop)", &[0, 4, 5, 3]),
     ("I – IV – V – I", &[0, 3, 4, 0]),
     ("vi – IV – I – V", &[5, 3, 0, 4]),
@@ -42,6 +42,11 @@ pub const PROGRESIONES: [(&str, &[usize]); 8] = [
     ("I – IV – vi – V", &[0, 3, 5, 4]),
     ("I – V – vi – iii – IV – I – IV – V (Canon)", &[0, 4, 5, 2, 3, 0, 3, 4]),
     ("i – VI – III – VII (épica, en menor)", &[0, 5, 2, 6]),
+    ("Blues de 12 compases (I – IV – V)", &[0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4]),
+    ("i – VII – VI – VII (rock, en menor)", &[0, 6, 5, 6]),
+    ("I – iii – IV – V (balada)", &[0, 2, 3, 4]),
+    ("vi – ii – V – I (círculo)", &[5, 1, 4, 0]),
+    ("I – IV – I – V (folk)", &[0, 3, 0, 4]),
 ];
 
 /// Círculo de quintas: tonalidades mayores en el orden del círculo (C, G, D…).

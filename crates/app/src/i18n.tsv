@@ -672,3 +672,51 @@ Tonalidad, sus acordes y progresiones automáticas	Key, its chords and automatic
 Ver instrumento	Show instrument	Ver instrumento
 Sacar a otra pantalla	Move to another screen	Levar para outra tela
 Abre esta ventana como ventana propia del sistema: puedes llevarla a otro monitor y volver a acoplarla	Opens this window as its own system window: you can move it to another monitor and dock it back	Abre esta janela como janela própria do sistema: você pode levá-la a outro monitor e acoplá-la de volta
+Herramientas MIDI	MIDI tools	Ferramentas MIDI
+Bloquear a la escala	Lock to scale	Travar na escala
+Las notas nuevas y las que muevas caen solo en notas de la escala; las demás filas se oscurecen	New and moved notes land only on scale notes; other rows are darkened	Notas novas e movidas caem só em notas da escala; as outras linhas escurecem
+Arpegiar la selección	Arpeggiate selection	Arpejar a seleção
+Arriba	Up	Para cima
+Abajo	Down	Para baixo
+Arriba y abajo	Up and down	Para cima e para baixo
+Aleatorio	Random	Aleatório
+Arpegiar	Arpeggiate	Arpejar
+Rasgueo (strum)	Strum	Rasgueado (strum)
+Separación	Spacing	Separação
+Hacia abajo (de la nota más aguda a la más grave)	Downwards (highest to lowest note)	Para baixo (da nota mais aguda à mais grave)
+Rasguear	Strum	Rasguear
+Generar melodía en la escala	Generate melody in scale	Gerar melodia na escala
+Tranquila	Calm	Tranquila
+Media	Medium	Média
+Movida	Busy	Agitada
+Generar en el cursor	Generate at cursor	Gerar no cursor
+Cada clic genera una melodía distinta; Ctrl+Z la quita	Each click generates a different melody; Ctrl+Z removes it	Cada clique gera uma melodia diferente; Ctrl+Z a remove
+Selecciona primero las notas (o acordes)	Select the notes (or chords) first	Selecione primeiro as notas (ou acordes)
+Mayor (jónica)	Major (Ionian)	Maior (jônica)
+Menor natural (eólica)	Natural minor (Aeolian)	Menor natural (eólia)
+Menor armónica	Harmonic minor	Menor harmônica
+Menor melódica	Melodic minor	Menor melódica
+Dórica	Dorian	Dórica
+Frigia	Phrygian	Frígia
+Lidia	Lydian	Lídia
+Mixolidia	Mixolydian	Mixolídia
+Locria	Locrian	Lócria
+Pentatónica mayor	Major pentatonic	Pentatônica maior
+Pentatónica menor	Minor pentatonic	Pentatônica menor
+Blues	Blues	Blues
+Blues mayor	Major blues	Blues maior
+Frigia dominante (flamenca)	Phrygian dominant (flamenco)	Frígia dominante (flamenca)
+Húngara menor	Hungarian minor	Húngara menor
+Doble armónica (árabe)	Double harmonic (Arabic)	Dupla harmônica (árabe)
+Hirajoshi	Hirajoshi	Hirajoshi
+In sen	In sen	In sen
+Tonos enteros	Whole tone	Tons inteiros
+Disminuida (tono-semitono)	Diminished (whole-half)	Diminuta (tom-semitom)
+Bebop dominante	Bebop dominant	Bebop dominante
+Lidia dominante	Lydian dominant	Lídia dominante
+Alterada	Altered	Alterada
+Blues de 12 compases (I – IV – V)	12-bar blues (I – IV – V)	Blues de 12 compassos (I – IV – V)
+i – VII – VI – VII (rock, en menor)	i – VII – VI – VII (rock, minor)	i – VII – VI – VII (rock, em menor)
+I – iii – IV – V (balada)	I – iii – IV – V (ballad)	I – iii – IV – V (balada)
+vi – ii – V – I (círculo)	vi – ii – V – I (circle)	vi – ii – V – I (círculo)
+I – IV – I – V (folk)	I – IV – I – V (folk)	I – IV – I – V (folk)

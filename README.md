@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.13.2** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.14.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -58,6 +58,9 @@ Versión actual: **0.13.2** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   (mayor, menor, 7, maj7, sus, dim… con inversiones); **círculo de quintas** con los acordes de la
   tonalidad y **progresiones automáticas** (pop, años 50, jazz, Canon…) en bloque, negras o arpegio.
 - Al elegir un instrumento se abre su ventana (QUANTUM Synth con sus perillas o instrumento real).
+- **Herramientas MIDI**: bloqueo de escala (24 escalas y modos), arpegiador de la selección (arriba,
+  abajo, arriba y abajo, aleatorio en 1/8, 1/16 o 1/32), rasgueo (strum) y generador de melodías en la
+  escala; 13 estilos de progresión, incluido el blues de 12 compases.
 - Instrumentos reales gratuitos y libres descargables (guitarras, bajos, batería, cuerdas, piano),
   con su licencia indicada en cada uno, y opción de desinstalarlos.
 

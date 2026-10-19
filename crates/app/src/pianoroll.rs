@@ -65,6 +65,16 @@ pub struct Roll {
     progresion: usize,
     ritmo: usize,
     compases: u32,
+    /// Bloqueo de escala (tónica = `tono`) y opciones de arpegio, rasgueo y melodía.
+    escala_on: bool,
+    escala: usize,
+    arp_patron: usize,
+    arp_div: u32,
+    strum_ms: f32,
+    strum_abajo: bool,
+    mel_compases: u32,
+    mel_densidad: usize,
+    semilla: u64,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -107,7 +117,7 @@ impl Carril {
 
 impl Default for Roll {
     fn default() -> Self {
-        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None, portapapeles: Vec::new(), hover: false, modo_acorde: None, inversion: 0, circulo: false, instrumento: false, tono: 0, menor: false, progresion: 0, ritmo: 0, compases: 1 }
+        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None, portapapeles: Vec::new(), hover: false, modo_acorde: None, inversion: 0, circulo: false, instrumento: false, tono: 0, menor: false, progresion: 0, ritmo: 0, compases: 1, escala_on: false, escala: 0, arp_patron: 0, arp_div: 4, strum_ms: 30.0, strum_abajo: false, mel_compases: 2, mel_densidad: 1, semilla: 0x5EED }
     }
 }
 
@@ -226,9 +236,116 @@ impl App {
         self.set_notes(notes.into_iter().enumerate().filter(|(k, _)| !sel.contains(k)).map(|(_, n)| n).collect());
     }
 
-    /// Notas que escribe una tecla: ella sola o el acorde elegido con esa raíz.
+    /// Notas que escribe una tecla: ella sola o el acorde elegido con esa raíz (ajustada a la escala).
     fn teclas_nota(&self, key: u8) -> Vec<u8> {
+        let key = self.en_escala(key);
         self.roll.modo_acorde.map_or_else(|| vec![key], |t| acordes::notas(key, t, self.roll.inversion))
+    }
+
+    /// Con el bloqueo de escala activo, la nota más cercana de la escala.
+    fn en_escala(&self, key: u8) -> u8 {
+        if self.roll.escala_on { creativo::ajustar(key, self.roll.tono, self.roll.escala) } else { key }
+    }
+
+    /// Reemplaza las notas seleccionadas por `f(seleccionadas)` y deja seleccionado el resultado.
+    fn transformar_seleccion(&mut self, f: impl FnOnce(&[Note]) -> Vec<Note>) {
+        let Some((i, j)) = self.roll_clip().filter(|_| !self.roll.sel.is_empty()) else {
+            self.status = tr("Selecciona primero las notas (o acordes)").into();
+            return;
+        };
+        let notes = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
+        let elegidas: Vec<Note> = self.roll.sel.iter().filter_map(|&k| notes.get(k).copied()).collect();
+        let mut resto: Vec<Note> = notes.iter().enumerate().filter(|(k, _)| !self.roll.sel.contains(k)).map(|(_, n)| *n).collect();
+        self.edit();
+        let primera = resto.len();
+        resto.extend(f(&elegidas));
+        self.roll.sel = (primera..resto.len()).collect();
+        self.set_notes(resto);
+    }
+
+    /// Menú «Herramientas MIDI»: escala, arpegiador, rasgueo y generador de melodías.
+    fn menu_creativo(&mut self, ui: &mut egui::Ui) {
+        let beat = self.engine.beat_frames();
+        let sr = self.engine.sample_rate as f32;
+        ui.menu_button(tr("Herramientas MIDI"), |ui| {
+            widgets::menu_style(ui);
+            let r = &mut self.roll;
+            ui.label(RichText::new(tr("Escala")).strong());
+            ui.checkbox(&mut r.escala_on, tr("Bloquear a la escala")).on_hover_text(tr("Las notas nuevas y las que muevas caen solo en notas de la escala; las demás filas se oscurecen"));
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt("roll-tonica").width(60.0).selected_text(acordes::RAICES[r.tono as usize % 12]).show_ui(ui, |ui| {
+                    for (k, n) in acordes::RAICES.iter().enumerate() {
+                        ui.selectable_value(&mut r.tono, k as u8, *n);
+                    }
+                });
+                egui::ComboBox::from_id_salt("roll-escala").width(200.0).height(420.0).selected_text(tr(creativo::ESCALAS[r.escala].0)).show_ui(ui, |ui| {
+                    for (k, (n, _)) in creativo::ESCALAS.iter().enumerate() {
+                        ui.selectable_value(&mut r.escala, k, tr(n));
+                    }
+                });
+            });
+            ui.separator();
+            ui.label(RichText::new(tr("Arpegiar la selección")).strong());
+            ui.horizontal(|ui| {
+                for (k, n) in creativo::PATRONES_ARPEGIO.iter().enumerate() {
+                    ui.selectable_value(&mut r.arp_patron, k, tr(n));
+                }
+            });
+            ui.horizontal(|ui| {
+                for (d, n) in [(2, "1/8"), (4, "1/16"), (8, "1/32")] {
+                    ui.selectable_value(&mut r.arp_div, d, n);
+                }
+            });
+            let arpegiar = ui.button(tr("Arpegiar")).clicked();
+            ui.separator();
+            ui.label(RichText::new(tr("Rasgueo (strum)")).strong());
+            ui.add(egui::Slider::new(&mut r.strum_ms, 5.0..=150.0).suffix(" ms").text(tr("Separación")));
+            ui.checkbox(&mut r.strum_abajo, tr("Hacia abajo (de la nota más aguda a la más grave)"));
+            let rasguear = ui.button(tr("Rasguear")).clicked();
+            ui.separator();
+            ui.label(RichText::new(tr("Generar melodía en la escala")).strong());
+            ui.horizontal(|ui| {
+                ui.label(tr("Compases"));
+                for c in [1, 2, 4, 8] {
+                    ui.selectable_value(&mut r.mel_compases, c, c.to_string());
+                }
+            });
+            ui.horizontal(|ui| {
+                for (k, n) in creativo::DENSIDADES.iter().enumerate() {
+                    ui.selectable_value(&mut r.mel_densidad, k, tr(n));
+                }
+            });
+            let generar = ui.button(tr("Generar en el cursor")).on_hover_text(tr("Cada clic genera una melodía distinta; Ctrl+Z la quita")).clicked();
+            let (patron, div, ms, abajo) = (r.arp_patron, r.arp_div, r.strum_ms, r.strum_abajo);
+            r.semilla = r.semilla.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let semilla = r.semilla;
+            if arpegiar {
+                self.transformar_seleccion(|n| creativo::arpegiar(n, (beat / div as f64) as u64, patron, semilla));
+            }
+            if rasguear {
+                self.transformar_seleccion(|n| creativo::rasguear(n, (ms * sr / 1000.0) as u64, abajo));
+            }
+            if generar {
+                self.generar_melodia(semilla);
+            }
+        });
+    }
+
+    /// Escribe una melodía nueva desde el cursor en la tonalidad y escala elegidas.
+    fn generar_melodia(&mut self, semilla: u64) {
+        let Some((i, j)) = self.roll_clip() else { return };
+        let beat = self.engine.beat_frames();
+        let compas = (beat * self.engine.beats.load(Relaxed) as f64) as u64;
+        let paso = (beat / self.roll.grid as f64) as u64;
+        let c = &self.s.tracks[i].clips[j];
+        let inicio = (self.pos().max(c.start) as i64 - c.origin()).max(0) as u64;
+        let nuevas = creativo::melodia(inicio, self.roll.mel_compases, compas, paso, (self.roll.tono, self.roll.escala), self.roll.mel_densidad, semilla);
+        let mut notes = c.notes().map(|n| (**n).clone()).unwrap_or_default();
+        self.edit();
+        let primera = notes.len();
+        notes.extend(nuevas);
+        self.roll.sel = (primera..notes.len()).collect();
+        self.set_notes(notes);
     }
 
     /// Los atajos de copiar/pegar van al piano roll si el ratón estuvo sobre él en el último cuadro.
@@ -520,6 +637,7 @@ impl App {
             if ui.add(egui::Button::selectable(self.roll.instrumento, tr("Ver instrumento"))).clicked() {
                 self.roll.instrumento = !self.roll.instrumento;
             }
+            self.menu_creativo(ui);
         });
         let Some((i, j)) = self.roll_clip() else {
             return;
@@ -670,6 +788,7 @@ impl App {
             let mut v = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
             let mut key = None;
             let snap = |f: f64| (f / step).round() * step;
+            let (escala_on, tono, escala) = (self.roll.escala_on, self.roll.tono, self.roll.escala);
             match d {
                 RollDrag::Move(orig, acc) => {
                     *acc += delta;
@@ -678,6 +797,7 @@ impl App {
                     for (k, o) in orig.iter() {
                         if let Some(n) = v.get_mut(*k) {
                             let new_key = (o.key as i32 + dk).clamp(0, 127) as u8;
+                            let new_key = if escala_on { creativo::ajustar(new_key, tono, escala) } else { new_key };
                             if n.key != new_key && orig.len() == 1 {
                                 key = Some(new_key);
                             }
@@ -820,7 +940,11 @@ impl App {
             if y > grid.bottom() || y + kh < grid.top() {
                 continue;
             }
-            if BLACK[key as usize % 12] {
+            if self.roll.escala_on && !creativo::en_escala(key, self.roll.tono, self.roll.escala) {
+                gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, Color32::from_black_alpha(130));
+            } else if self.roll.escala_on && key % 12 == self.roll.tono % 12 {
+                gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, ACCENT.gamma_multiply(0.10));
+            } else if BLACK[key as usize % 12] {
                 gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, Color32::from_black_alpha(60));
             }
             if key % 12 == 0 {

@@ -5,6 +5,7 @@ mod acordes;
 mod analyzer;
 mod audioedit;
 mod chrome;
+mod creativo;
 mod curves;
 mod i18n;
 mod informes;
