@@ -9,14 +9,18 @@ use crate::*;
 use egui::{FontId, Key, Pos2, RichText, Sense, Stroke, pos2, vec2};
 use project::partitura::{Anotacion, NotaP, Partitura, Pentagrama};
 
-/// Figuras de la paleta: (duración en negras, glifo SMuFL de la nota, nombre, tecla).
-const FIGURAS: [(f64, char, &str, Key); 5] = [
-    (4.0, '\u{E1D2}', "Redonda", Key::Num7),
-    (2.0, '\u{E1D3}', "Blanca", Key::Num6),
-    (1.0, '\u{E1D5}', "Negra", Key::Num5),
-    (0.5, '\u{E1D7}', "Corchea", Key::Num4),
-    (0.25, '\u{E1D9}', "Semicorchea", Key::Num3),
+/// Figuras de la caja: (duración en negras, glifo SMuFL de la nota, del silencio, nombre, tecla).
+const FIGURAS: [(f64, char, char, &str, Key); 7] = [
+    (4.0, '\u{E1D2}', '\u{E4E3}', "Redonda", Key::Num7),
+    (2.0, '\u{E1D3}', '\u{E4E4}', "Blanca", Key::Num6),
+    (1.0, '\u{E1D5}', '\u{E4E5}', "Negra", Key::Num5),
+    (0.5, '\u{E1D7}', '\u{E4E6}', "Corchea", Key::Num4),
+    (0.25, '\u{E1D9}', '\u{E4E7}', "Semicorchea", Key::Num3),
+    (0.125, '\u{E1DB}', '\u{E4E8}', "Fusa", Key::Num2),
+    (0.0625, '\u{E1DD}', '\u{E4E9}', "Semifusa", Key::Num1),
 ];
+/// Factor de duración de 0, 1 o 2 puntillos.
+const PUNTOS: [f64; 3] = [1.0, 1.5, 1.75];
 /// Instrumentos: (nombre, transposición escrita, clave habitual).
 const INSTRUMENTOS: [(&str, i32, Clave); 12] = [
     ("Piano", 0, Clave::Sol),
@@ -64,7 +68,12 @@ pub struct EditorPartitura {
     /// Nota seleccionada: (pentagrama, índice).
     sel: Option<(usize, usize)>,
     figura: f64,
-    puntillo: bool,
+    /// Puntillos de la figura elegida (0, 1 o 2).
+    puntos: u8,
+    /// La caja escribe silencios en vez de notas.
+    silencio: bool,
+    /// La nota elegida se eligió con el ratón o las flechas: la caja de figuras la edita.
+    sel_fija: bool,
     /// Posición de escritura con el teclado (en negras).
     cursor: f64,
     sp: f32,
@@ -93,7 +102,7 @@ impl EditorPartitura {
 
 impl Default for EditorPartitura {
     fn default() -> Self {
-        Self { abierto: false, doc: Partitura::default(), deshacer: vec![], rehacer: vec![], pentagrama: 0, sel: None, figura: 1.0, puntillo: false, cursor: 0.0, sp: 8.0, audio: false, detectar: true, grabacion: None, sonando: None, foco: false, anotar: false, editando: None, punto: None, arrastre: None }
+        Self { abierto: false, doc: Partitura::default(), deshacer: vec![], rehacer: vec![], pentagrama: 0, sel: None, figura: 1.0, puntos: 0, silencio: false, sel_fija: false, cursor: 0.0, sp: 8.0, audio: false, detectar: true, grabacion: None, sonando: None, foco: false, anotar: false, editando: None, punto: None, arrastre: None }
     }
 }
 
@@ -182,6 +191,7 @@ impl App {
         }
         p.notas.sort_by(|a, b| a.inicio.total_cmp(&b.inicio).then(a.altura.cmp(&b.altura)));
         self.partitura_app.sel = altura.and_then(|a| p.notas.iter().position(|n| (n.inicio - inicio).abs() < 1e-6 && n.altura == a)).map(|k| (pi, k));
+        self.partitura_app.sel_fija = false;
         self.partitura_app.cursor = fin;
     }
 
@@ -218,7 +228,59 @@ impl App {
 
     /// Duración actual de la paleta (con puntillo).
     fn dur_paleta(&self) -> f64 {
-        self.partitura_app.figura * if self.partitura_app.puntillo { 1.5 } else { 1.0 }
+        self.partitura_app.figura * PUNTOS[self.partitura_app.puntos.min(2) as usize]
+    }
+
+    /// Notas (el acorde) que empiezan con la nota elegida: (pentagrama, inicio, duración).
+    fn acorde_sel(&self) -> Option<(usize, f64, f64)> {
+        let (pi, k) = self.partitura_app.sel.filter(|_| self.partitura_app.sel_fija)?;
+        let n = self.partitura_app.doc.pentagramas.get(pi)?.notas.get(k)?;
+        Some((pi, n.inicio, n.dur))
+    }
+
+    /// Cambia la figura de la nota elegida (y su acorde); lo que quede debajo de la nueva duración se
+    /// sustituye, y si se acorta, el hueco queda como silencio.
+    fn doc_cambiar_figura(&mut self, dur: f64) {
+        let Some((pi, inicio, antes)) = self.acorde_sel() else { return };
+        if (antes - dur).abs() < 1e-9 {
+            return;
+        }
+        let altura = self.partitura_app.doc.pentagramas[pi].notas[self.partitura_app.sel.map_or(0, |s| s.1)].altura;
+        self.doc_editar();
+        let p = &mut self.partitura_app.doc.pentagramas[pi];
+        p.notas.retain(|n| !(n.inicio > inicio + 1e-6 && n.inicio < inicio + dur - 1e-6));
+        p.notas.iter_mut().filter(|n| (n.inicio - inicio).abs() < 1e-6).for_each(|n| n.dur = dur);
+        p.notas.sort_by(|a, b| a.inicio.total_cmp(&b.inicio).then(a.altura.cmp(&b.altura)));
+        self.partitura_app.sel = p.notas.iter().position(|n| (n.inicio - inicio).abs() < 1e-6 && n.altura == altura).map(|k| (pi, k));
+        self.partitura_app.cursor = inicio + dur;
+    }
+
+    /// Elige una figura de la caja (nota o silencio); con una nota elegida, la cambia.
+    fn doc_elegir_figura(&mut self, d: f64, silencio: bool) {
+        (self.partitura_app.figura, self.partitura_app.silencio) = (d, silencio);
+        if self.acorde_sel().is_none() {
+            return;
+        }
+        if silencio {
+            // La nota elegida (con su acorde) pasa a ser silencio.
+            let Some((pi, inicio, _)) = self.acorde_sel() else { return };
+            self.doc_editar();
+            self.partitura_app.doc.pentagramas[pi].notas.retain(|n| (n.inicio - inicio).abs() > 1e-6);
+            self.partitura_app.sel = None;
+        } else {
+            self.doc_cambiar_figura(self.dur_paleta());
+        }
+    }
+
+    /// Pone o quita puntillos; con una nota elegida, se los cambia a ella.
+    fn doc_puntos(&mut self, n: u8) {
+        let e = &mut self.partitura_app;
+        e.puntos = if e.puntos == n { 0 } else { n };
+        let puntos = e.puntos;
+        if let Some((_, _, dur)) = self.acorde_sel() {
+            let base = pt::base_y_puntos(dur).map_or(dur, |b| b.0);
+            self.doc_cambiar_figura(base * PUNTOS[puntos as usize]);
+        }
     }
 
     /// Pentagramas desde las pistas MIDI del proyecto.
@@ -309,18 +371,14 @@ impl App {
     /// Exporta a MusicXML (lo abren MuseScore, Sibelius, Finale, Dorico…).
     fn doc_musicxml(&mut self) -> anyhow::Result<PathBuf> {
         let doc = &self.partitura_app.doc;
-        let div = 4; // divisiones por negra (semicorcheas)
+        let div = 16; // divisiones por negra (semifusas)
         let compas = doc.negras_compas();
         let n_compases = ((doc.fin() / compas).ceil() as usize).max(1);
-        let tipo = |d: f64| match d {
-            d if d >= 4.0 - 1e-6 => ("whole", false),
-            d if d >= 3.0 - 1e-6 => ("half", true),
-            d if d >= 2.0 - 1e-6 => ("half", false),
-            d if d >= 1.5 - 1e-6 => ("quarter", true),
-            d if d >= 1.0 - 1e-6 => ("quarter", false),
-            d if d >= 0.75 - 1e-6 => ("eighth", true),
-            d if d >= 0.5 - 1e-6 => ("eighth", false),
-            _ => ("16th", false),
+        // Figura escrita más larga que cabe en la duración: (tipo, puntillos).
+        let tipo = |d: f64| {
+            let (b, n) = pt::FIGURAS_BASE.iter().flat_map(|&b| PUNTOS.iter().enumerate().rev().map(move |(n, f)| (b, n, b * f))).find(|x| x.2 <= d + 1e-6).map_or((0.0625, 0), |x| (x.0, x.1));
+            const NOMBRES: [&str; 7] = ["whole", "half", "quarter", "eighth", "16th", "32nd", "64th"];
+            (NOMBRES[pt::FIGURAS_BASE.iter().position(|&x| x == b).unwrap_or(6)], "<dot/>".repeat(n))
         };
         let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n<score-partwise version=\"4.0\">\n");
         x += &format!("<work><work-title>{}</work-title></work><identification><creator type=\"composer\">{}</creator><encoding><software>Quantum DAW {}</software></encoding></identification>\n<part-list>", pt::html_escapar(&doc.titulo), pt::html_escapar(&doc.compositor), welcome::VERSION);
@@ -371,7 +429,7 @@ impl App {
                     if ini > t + 1e-6 {
                         for f in pt_figuras(ini - t) {
                             let (ty, dot) = tipo(f);
-                            x += &format!("<note><rest/><duration>{}</duration><type>{ty}</type>{}</note>", (f * div as f64).round(), if dot { "<dot/>" } else { "" });
+                            x += &format!("<note><rest/><duration>{}</duration><type>{ty}</type>{}</note>", (f * div as f64).round(), dot);
                         }
                     }
                     let grupo: Vec<&NotaP> = notas[i..].iter().take_while(|n| (n.inicio - ini).abs() < 1e-6).copied().collect();
@@ -381,7 +439,7 @@ impl App {
                         let escrita = (n.altura as i32 + p.transposicion).clamp(0, 127);
                         let (l, alt) = ortografia[(escrita % 12) as usize];
                         let alter = if alt != 0 { format!("<alter>{alt}</alter>") } else { String::new() };
-                        x += &format!("<note>{}<pitch><step>{}</step>{alter}<octave>{}</octave></pitch><duration>{}</duration><type>{ty}</type>{}</note>", if g > 0 { "<chord/>" } else { "" }, LETRAS[l], escrita / 12 - 1, (dur * div as f64).round(), if dot { "<dot/>" } else { "" });
+                        x += &format!("<note>{}<pitch><step>{}</step>{alter}<octave>{}</octave></pitch><duration>{}</duration><type>{ty}</type>{}</note>", if g > 0 { "<chord/>" } else { "" }, LETRAS[l], escrita / 12 - 1, (dur * div as f64).round(), dot);
                     }
                     t = ini + dur;
                     i += grupo.len();
@@ -389,7 +447,7 @@ impl App {
                 if t < b - 1e-6 {
                     for f in pt_figuras(b - t) {
                         let (ty, dot) = tipo(f);
-                        x += &format!("<note><rest/><duration>{}</duration><type>{ty}</type>{}</note>", (f * div as f64).round(), if dot { "<dot/>" } else { "" });
+                        x += &format!("<note><rest/><duration>{}</duration><type>{ty}</type>{}</note>", (f * div as f64).round(), dot);
                     }
                 }
                 x += "</measure>\n";
@@ -559,8 +617,9 @@ impl App {
     pub fn pie_partitura(&mut self, a: pie::Accion) {
         use pie::Accion;
         match a {
-            Accion::PtFigura(k) => self.partitura_app.figura = FIGURAS[(k as usize).min(4)].0,
-            Accion::PtPuntillo => self.partitura_app.puntillo = !self.partitura_app.puntillo,
+            Accion::PtFigura(k) => self.doc_elegir_figura(FIGURAS[(k as usize).min(6)].0, false),
+            Accion::PtPuntillo => self.doc_puntos(1),
+            Accion::PtSilencio if self.acorde_sel().is_some() => self.doc_elegir_figura(self.partitura_app.figura, true),
             Accion::PtSilencio => self.doc_silencio(),
             Accion::PtSubir => self.doc_mover_sel(1),
             Accion::PtBajar => self.doc_mover_sel(-1),
@@ -752,27 +811,16 @@ impl App {
         });
         // Barra 3: figuras, alteraciones, grabación y reproducción.
         ui.horizontal(|ui| {
-            let musica = |t: f32| FontId::new(t, egui::FontFamily::Name("musica".into()));
-            for (d, glifo, nombre, tecla) in FIGURAS {
-                let on = (self.partitura_app.figura - d).abs() < 1e-6;
-                let b = egui::Button::new(RichText::new(glifo.to_string()).font(musica(24.0)).color(if on { BG() } else { TEXT() })).fill(if on { ACCENT() } else { ELEVATED() }).min_size(vec2(34.0, 40.0));
-                if ui.add(b).on_hover_text(format!("{} ({})", tr(nombre), tecla.name())).clicked() {
-                    self.partitura_app.figura = d;
-                }
-            }
-            let on = self.partitura_app.puntillo;
-            if ui.add(egui::Button::new(RichText::new(tr("Puntillo")).color(if on { BG() } else { TEXT() })).fill(if on { ACCENT() } else { ELEVATED() })).on_hover_text(".").clicked() {
-                self.partitura_app.puntillo = !on;
-            }
-            if ui.button(tr("Silencio")).on_hover_text(tr("Escribe un silencio en el cursor (0)")).clicked() {
-                self.doc_silencio();
-            }
+            self.caja_figuras(ui);
             ui.separator();
-            for (glifo, delta, ayuda) in [('\u{E262}', 1, "Subir un semitono (flecha arriba)"), ('\u{E260}', -1, "Bajar un semitono (flecha abajo)")] {
-                if ui.add(egui::Button::new(RichText::new(glifo.to_string()).font(musica(22.0))).min_size(vec2(30.0, 40.0))).on_hover_text(tr(ayuda)).clicked() {
-                    self.doc_mover_sel(delta);
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 3.0;
+                for (glifo, delta, ayuda) in [('\u{E262}', 1, "Subir un semitono (flecha arriba)"), ('\u{E260}', -1, "Bajar un semitono (flecha abajo)")] {
+                    if boton_glifo(ui, &glifo.to_string(), 3.0, false, vec2(30.0, 34.0)).on_hover_text(tr(ayuda)).clicked() {
+                        self.doc_mover_sel(delta);
+                    }
                 }
-            }
+            });
             if ui.button(tr("Borrar")).on_hover_text(tr("Borra la nota elegida (Supr)")).clicked() {
                 self.doc_borrar_sel();
             }
@@ -809,7 +857,7 @@ impl App {
                 let t = g.tempo.map_or("—".to_string(), |t| format!("{t:.0} BPM"));
                 ui.label(RichText::new(format!("{} {} · {} {}", g.vista.len(), tr("notas"), tr("pulso"), t)).color(METER[2]));
             } else {
-                ui.label(RichText::new(tr("Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, T anotación, flechas mueven, Supr borra")).size(11.0).color(TEXT_DIM()));
+                ui.label(RichText::new(tr("Teclado: A–G notas, 1–7 figuras, «.» puntillo, 0 silencio, T anotación, flechas mueven, Supr borra")).size(11.0).color(TEXT_DIM()));
             }
         });
         self.doc_teclado(ui);
@@ -838,6 +886,70 @@ impl App {
         if self.pie.as_ref().is_some_and(|p| p.en_partitura) {
             self.procesar_pie(ui.ctx());
         }
+    }
+
+    /// Caja de figuras: notas y silencios de redonda a semifusa, puntillo y doble puntillo. Con una
+    /// nota elegida en el pentagrama, cambia su figura.
+    fn caja_figuras(&mut self, ui: &mut egui::Ui) {
+        let musica = |t: f32| FontId::new(t, egui::FontFamily::Name("musica".into()));
+        let editando = self.acorde_sel().is_some();
+        let actual = self.acorde_sel().and_then(|(_, _, d)| pt::base_y_puntos(d));
+        egui::Frame::new().fill(PANEL()).stroke(Stroke::new(1.0, if editando { ACCENT() } else { BORDER() })).corner_radius(widgets::rr(8.0)).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
+            ui.spacing_mut().item_spacing = vec2(3.0, 3.0);
+            ui.vertical(|ui| {
+                let titulo = if editando { tr("FIGURAS · editando la nota elegida") } else { tr("FIGURAS") };
+                ui.label(RichText::new(titulo).size(10.0).strong().color(if editando { ACCENT() } else { TEXT_DIM() }));
+                ui.horizontal(|ui| {
+                    egui::Grid::new("pt-caja-figuras").spacing(vec2(3.0, 3.0)).show(ui, |ui| {
+                        for silencio in [false, true] {
+                            for (d, nota, resto, nombre, tecla) in FIGURAS {
+                                // Resaltada: la de la nota elegida (al editar) o la de la paleta.
+                                let on = match actual {
+                                    Some((b, _)) if !silencio => (b - d).abs() < 1e-9,
+                                    Some(_) => false,
+                                    None => (self.partitura_app.figura - d).abs() < 1e-9 && self.partitura_app.silencio == silencio,
+                                };
+                                // Notas con la plica hacia arriba (la cabeza abajo); los silencios de redonda y
+                                // blanca cuelgan o se apoyan en una línea, que se dibuja con ellos.
+                                let (glifo, dy) = match (silencio, d) {
+                                    (false, _) => (nota, if d >= 4.0 { 3.0 } else { 9.0 }),
+                                    (true, d) if d >= 4.0 => (resto, -3.0),
+                                    (true, d) if d >= 2.0 => (resto, 3.0),
+                                    _ => (resto, 1.0),
+                                };
+                                let resp = boton_glifo(ui, &glifo.to_string(), dy, on, vec2(30.0, 34.0));
+                                if silencio && d >= 2.0 {
+                                    let (c, y) = (resp.rect.center().x, resp.rect.center().y + dy);
+                                    ui.painter().line_segment([pos2(c - 9.0, y), pos2(c + 9.0, y)], Stroke::new(1.0, if on { BG() } else { TEXT_DIM() }));
+                                }
+                                let ayuda = if silencio { format!("{} {}", tr("Silencio de"), tr(nombre).to_lowercase()) } else { format!("{} ({})", tr(nombre), tecla.name()) };
+                                if resp.on_hover_text(ayuda).clicked() {
+                                    self.doc_elegir_figura(d, silencio);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        let puntos = actual.map_or(self.partitura_app.puntos, |a| a.1);
+                        for (n, ayuda) in [(1u8, "Puntillo (.)"), (2, "Doble puntillo")] {
+                            let on = puntos == n;
+                            let resp = boton_glifo(ui, "", 0.0, on, vec2(36.0, 34.0));
+                            // Negra con sus puntillos.
+                            let c = resp.rect.center();
+                            pt::texto_base(ui.painter(), c + vec2(-5.0 - 2.0 * n as f32, 9.0), "\u{E1D5}", musica(22.0), if on { BG() } else { TEXT() }, 1);
+                            for k in 0..n {
+                                ui.painter().circle_filled(c + vec2(3.0 + 5.0 * k as f32 - n as f32, 6.0), 1.8, if on { BG() } else { TEXT() });
+                            }
+                            if resp.on_hover_text(tr(ayuda)).clicked() {
+                                self.doc_puntos(n);
+                            }
+                        }
+                    });
+                });
+            });
+        });
     }
 
     /// Pone una anotación en un punto (pentagrama, tiempo, altura) y abre su cuadro para escribir.
@@ -975,7 +1087,7 @@ impl App {
             }
         }
         let dur = self.dur_paleta();
-        let reja = if dur >= 1.0 { 1.0 } else { dur.max(0.25) };
+        let reja = if dur >= 1.0 { 1.0 } else { pt::base_y_puntos(dur).map_or(dur, |b| b.0).max(0.0625) };
         let rel = ((x_a_tiempo(&puntos, x0, x1, compas, local.x) / reja).round() * reja).clamp(0.0, compas - reja.min(compas));
         let pos = ((base - local.y) / (sp / 2.0)).round() as i32;
         let quintas = doc.armadura;
@@ -985,20 +1097,30 @@ impl App {
         // Nota fantasma donde se escribiría.
         if cabeza.is_none() && anotacion.is_none() && !self.partitura_app.anotar && self.partitura_app.grabacion.is_none() {
             let x = tiempo_a_x(&puntos, x0, x1, compas, rel);
-            let y = base - pos as f32 * sp / 2.0;
-            p.circle_filled(pos2(r.left() + x + sp * 0.6, r.top() + k as f32 * d.alto + y), sp * 0.55, ACCENT().gamma_multiply(0.5));
+            if self.partitura_app.silencio {
+                // Silencio fantasma en el centro del pentagrama.
+                let g = FIGURAS.iter().find(|f| (f.0 - self.partitura_app.figura).abs() < 1e-9).map_or('\u{E4E5}', |f| f.2);
+                pt::texto_base(&p, pos2(r.left() + x, r.top() + k as f32 * d.alto + base - sp * 2.0), &g.to_string(), FontId::new(sp * 4.0, egui::FontFamily::Name("musica".into())), ACCENT().gamma_multiply(0.6), 0);
+            } else {
+                let y = base - pos as f32 * sp / 2.0;
+                p.circle_filled(pos2(r.left() + x + sp * 0.6, r.top() + k as f32 * d.alto + y), sp * 0.55, ACCENT().gamma_multiply(0.5));
+            }
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
         if resp.clicked() && anotacion.is_none() && self.partitura_app.grabacion.is_none() {
             self.partitura_app.pentagrama = pi;
             match cabeza {
                 Some((_, cpi, id)) if id != usize::MAX => {
-                    self.partitura_app.sel = Some((cpi, id));
+                    (self.partitura_app.sel, self.partitura_app.sel_fija) = (Some((cpi, id)), true);
                     if let Some(n) = self.partitura_app.doc.pentagramas.get(cpi).and_then(|p| p.notas.get(id)) {
                         self.partitura_app.cursor = n.inicio;
                         self.engine.send_midi([0x90, n.altura, 90]);
                         self.engine.send_midi([0x80, n.altura, 0]);
                     }
+                }
+                _ if self.partitura_app.silencio => {
+                    self.doc_editar();
+                    self.doc_escribir(pi, m as f64 * compas + rel, dur, None);
                 }
                 _ => {
                     self.doc_editar();
@@ -1011,7 +1133,7 @@ impl App {
         // Clic derecho: menú circular (sobre una nota, primero la elige).
         if resp.secondary_clicked() {
             if let Some((_, cpi, id)) = cabeza.filter(|c| c.2 != usize::MAX) {
-                self.partitura_app.sel = Some((cpi, id));
+                (self.partitura_app.sel, self.partitura_app.sel_fija) = (Some((cpi, id)), true);
             }
             self.partitura_app.pentagrama = pi;
             self.abrir_pie_partitura(q);
@@ -1097,13 +1219,14 @@ impl App {
                     self.engine.send_midi([0x90, altura, 90]);
                     self.engine.send_midi([0x80, altura, 0]);
                 }
-                Key::Num3 | Key::Num4 | Key::Num5 | Key::Num6 | Key::Num7 => {
-                    if let Some(f) = FIGURAS.iter().find(|f| f.3 == key) {
-                        self.partitura_app.figura = f.0;
+                Key::Num1 | Key::Num2 | Key::Num3 | Key::Num4 | Key::Num5 | Key::Num6 | Key::Num7 => {
+                    if let Some(f) = FIGURAS.iter().find(|f| f.4 == key) {
+                        self.doc_elegir_figura(f.0, false);
                     }
                 }
                 Key::T if !modifiers.command => self.partitura_app.anotar = !self.partitura_app.anotar,
-                Key::Period => self.partitura_app.puntillo = !self.partitura_app.puntillo,
+                Key::Period => self.doc_puntos(1),
+                Key::Escape => self.partitura_app.sel = None,
                 Key::Num0 => self.doc_silencio(),
                 Key::ArrowUp => self.doc_mover_sel(if modifiers.command { 12 } else { 1 }),
                 Key::ArrowDown => self.doc_mover_sel(if modifiers.command { -12 } else { -1 }),
@@ -1113,7 +1236,7 @@ impl App {
                     if let Some((pi, k)) = e.sel {
                         let n = e.doc.pentagramas[pi].notas.len();
                         let nuevo = if derecha { (k + 1).min(n.saturating_sub(1)) } else { k.saturating_sub(1) };
-                        e.sel = Some((pi, nuevo));
+                        (e.sel, e.sel_fija) = (Some((pi, nuevo)), true);
                         e.cursor = e.doc.pentagramas[pi].notas.get(nuevo).map_or(e.cursor, |x| x.inicio);
                     } else {
                         let d = e.figura;
@@ -1127,10 +1250,24 @@ impl App {
     }
 }
 
+/// Botón con un símbolo de la fuente musical (su línea base a `dy` del centro).
+fn boton_glifo(ui: &mut egui::Ui, glifo: &str, dy: f32, on: bool, tam: egui::Vec2) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(tam, Sense::click());
+    let fondo = if on { ACCENT() } else if resp.hovered() { BORDER() } else { ELEVATED() };
+    ui.painter().rect_filled(r, widgets::rr(6.0), fondo);
+    if !glifo.is_empty() {
+        pt::texto_base(ui.painter(), r.center() + vec2(0.0, dy), glifo, FontId::new(22.0, egui::FontFamily::Name("musica".into())), if on { BG() } else { TEXT() }, 1);
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
+}
+
 /// Divide una duración en figuras escribibles.
 fn pt_figuras(mut d: f64) -> Vec<f64> {
     let mut v = vec![];
-    for f in [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25] {
+    for f in [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.09375, 0.0625] {
         while d + 1e-6 >= f {
             v.push(f);
             d -= f;

@@ -105,7 +105,7 @@ fn icono(p: &egui::Painter, c: Pos2, a: Accion, color: Color32) {
         }),
         Accion::GenerarAcordes => (0..3).for_each(|k| _ = p.circle_filled(c + vec2(0.0, -6.0 + k as f32 * 6.0), 2.4, color)),
         // Partitura: los símbolos de la fuente musical.
-        Accion::PtFigura(k) => glifo(p, c, ['\u{E1D2}', '\u{E1D3}', '\u{E1D5}', '\u{E1D7}', '\u{E1D9}'][k.min(4) as usize], color),
+        Accion::PtFigura(k) => glifo(p, c, ['\u{E1D2}', '\u{E1D3}', '\u{E1D5}', '\u{E1D7}', '\u{E1D9}', '\u{E1DB}', '\u{E1DD}'][k.min(6) as usize], color),
         Accion::PtPuntillo => _ = p.circle_filled(c, 2.8, color),
         Accion::PtSilencio => glifo(p, c, '\u{E4E5}', color),
         Accion::PtSubir | Accion::PtArmadura(1..) => glifo(p, c, '\u{E262}', color),

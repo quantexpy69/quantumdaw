@@ -25,8 +25,16 @@ const SOSTENIDO: char = '\u{E262}';
 const BEMOL: char = '\u{E260}';
 const BECUADRO: char = '\u{E261}';
 const PUNTILLO: char = '\u{E1E7}';
-const CORCHETE: [[char; 2]; 2] = [['\u{E240}', '\u{E241}'], ['\u{E242}', '\u{E243}']];
-const SILENCIOS: [(f64, char); 5] = [(4.0, '\u{E4E3}'), (2.0, '\u{E4E4}'), (1.0, '\u{E4E5}'), (0.5, '\u{E4E6}'), (0.25, '\u{E4E7}')];
+/// Corchetes (arriba, abajo) de corchea, semicorchea, fusa y semifusa.
+const CORCHETE: [[char; 2]; 4] = [['\u{E240}', '\u{E241}'], ['\u{E242}', '\u{E243}'], ['\u{E244}', '\u{E245}'], ['\u{E246}', '\u{E247}']];
+const SILENCIOS: [(f64, char); 7] = [(4.0, '\u{E4E3}'), (2.0, '\u{E4E4}'), (1.0, '\u{E4E5}'), (0.5, '\u{E4E6}'), (0.25, '\u{E4E7}'), (0.125, '\u{E4E8}'), (0.0625, '\u{E4E9}')];
+/// Figuras simples en negras: redonda, blanca, negra, corchea, semicorchea, fusa y semifusa.
+pub const FIGURAS_BASE: [f64; 7] = [4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 0.0625];
+
+/// Figura simple y puntillos (0, 1 o 2) de una duración escribible de una sola figura.
+pub fn base_y_puntos(d: f64) -> Option<(f64, u8)> {
+    FIGURAS_BASE.iter().find_map(|&b| [(1.0, 0), (1.5, 1), (1.75, 2)].iter().find(|(f, _)| (d - b * f).abs() < 1e-6).map(|&(_, n)| (b, n)))
+}
 const DIGITO_COMPAS: u32 = 0xE080;
 
 /// Elemento de dibujo en píxeles; `Glifo` y `Texto` se ubican por su línea base.
@@ -131,8 +139,12 @@ pub(crate) fn detectar_armadura(partes: &[Parte]) -> i32 {
 
 /// Divide una duración (en negras) en figuras escribibles: redonda, blanca con puntillo, blanca…
 fn figuras(mut d: f64) -> Vec<f64> {
+    // Una figura con doble puntillo elegida a propósito se respeta; si no, se divide con ligaduras.
+    if base_y_puntos(d).is_some() {
+        return vec![d];
+    }
     let mut v = vec![];
-    for f in [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25] {
+    for f in [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.09375, 0.0625] {
         while d + 1e-6 >= f {
             v.push(f);
             d -= f;
@@ -329,7 +341,7 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
             .collect();
 
         // Ancho natural de cada compás: el de la parte con más figuras.
-        let ancho_ev = |d: f64| sp * (2.6 + 1.8 * ((d * 4.0).log2().max(0.0)) as f32);
+        let ancho_ev = |d: f64| sp * (2.6 + 1.8 * ((d * 4.0).log2().max(0.0)) as f32 + if base_y_puntos(d).is_some_and(|b| b.1 > 0) { 0.6 } else { 0.0 });
         let naturales: Vec<f32> = (0..n_compases).map(|m| eventos.iter().map(|p| p[m].iter().map(|e| ancho_ev(e.1)).sum::<f32>()).fold(0.0, f32::max) + sp * 2.0).collect();
         let nombre_w = sp * 13.0;
         let cabecera = sp * (4.0 + 1.2 * quintas.unsigned_abs() as f32 + 3.0);
@@ -432,20 +444,20 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
                         }
                         if alturas.is_empty() {
                             // Silencio (redonda si ocupa el compás entero).
-                            let (valor, glifo) = SILENCIOS.iter().copied().find(|(v, _)| dur + 1e-6 >= *v).unwrap_or(SILENCIOS[4]);
+                            let (valor, glifo) = SILENCIOS.iter().copied().find(|(v, _)| dur + 1e-6 >= *v).unwrap_or(SILENCIOS[6]);
                             let entero = (dur - compas).abs() < 1e-6;
                             let pos = if valor >= 4.0 || entero { 6 } else { 4 };
                             let xr = if entero { xc + w / 2.0 - sp * 0.6 } else { xe };
                             el.push(Elem::Glifo(pos2(xr, y_pos(pos)), if entero { SILENCIOS[0].1 } else { glifo }, sp * 4.0));
-                            if !entero && (dur - valor).abs() > 1e-6 {
-                                el.push(Elem::Glifo(pos2(xr + sp * 1.6, y_pos(5)), PUNTILLO, sp * 4.0));
+                            let puntos = if entero { 0 } else { base_y_puntos(dur).map_or(0, |b| b.1) };
+                            for k in 0..puntos {
+                                el.push(Elem::Glifo(pos2(xr + sp * (1.6 + 0.6 * k as f32), y_pos(5)), PUNTILLO, sp * 4.0));
                             }
                             anterior = None;
                             xe += paso;
                             continue;
                         }
-                        let con_puntillo = [3.0, 1.5, 0.75, 0.375].iter().any(|v| (dur - v).abs() < 1e-6);
-                        let base_dur = if con_puntillo { dur / 1.5 } else { dur };
+                        let (base_dur, puntos) = base_y_puntos(dur).unwrap_or((dur, 0));
                         let cabeza_ch = match base_dur {
                             d if d >= 4.0 - 1e-6 => CABEZA_REDONDA,
                             d if d >= 2.0 - 1e-6 => CABEZA_BLANCA,
@@ -485,9 +497,9 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
                             if let Some(s) = signo {
                                 el.push(Elem::Glifo(pos2(xe - sp * 1.3, y), s, sp * 4.0));
                             }
-                            if con_puntillo {
-                                let yd = if pos % 2 == 0 { y_pos(pos + 1) } else { y };
-                                el.push(Elem::Glifo(pos2(xe + sp * 1.6, yd), PUNTILLO, sp * 4.0));
+                            let yd = if pos % 2 == 0 { y_pos(pos + 1) } else { y };
+                            for k in 0..puntos {
+                                el.push(Elem::Glifo(pos2(xe + sp * (1.6 + 0.6 * k as f32), yd), PUNTILLO, sp * 4.0));
                             }
                             // Líneas adicionales.
                             for l in (pos..=-2).filter(|l| l % 2 == 0).chain((10..=pos).filter(|l| l % 2 == 0)) {
@@ -501,9 +513,11 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
                             let arriba = media < 4.0 || p.clave == Clave::Percusion;
                             let (ymin, ymax) = (ys.iter().copied().fold(f32::MAX, f32::min), ys.iter().copied().fold(f32::MIN, f32::max));
                             let xs = if arriba { xe + sp * 1.18 } else { xe + sp * 0.06 };
-                            let (y1, y2) = if arriba { (ymax, ymin - sp * 3.5) } else { (ymin, ymax + sp * 3.5) };
+                            // Corchete: 0 corchea, 1 semicorchea, 2 fusa, 3 semifusa (la plica se alarga con cada uno).
+                            let corchete = [0.5, 0.25, 0.125, 0.0625].iter().position(|v| (base_dur - v).abs() < 1e-6);
+                            let largo = sp * (3.5 + 0.75 * corchete.unwrap_or(0).saturating_sub(1) as f32);
+                            let (y1, y2) = if arriba { (ymax, ymin - largo) } else { (ymin, ymax + largo) };
                             el.push(Elem::Linea(pos2(xs, y1), pos2(xs, y2), sp * 0.12));
-                            let corchete = if base_dur <= 0.25 + 1e-6 { Some(1) } else if base_dur <= 0.5 + 1e-6 { Some(0) } else { None };
                             if let Some(c) = corchete {
                                 el.push(Elem::Glifo(pos2(xs - sp * 0.06, y2), CORCHETE[c][if arriba { 0 } else { 1 }], sp * 4.0));
                             }
@@ -690,8 +704,14 @@ mod pruebas {
     #[test]
     fn figuras_y_base64() {
         assert_eq!(figuras(4.0), vec![4.0]);
-        assert_eq!(figuras(3.5), vec![3.0, 0.5]);
+        assert_eq!(figuras(3.25), vec![3.0, 0.25]);
+        assert_eq!(figuras(3.5), vec![3.5]);
         assert_eq!(figuras(1.25), vec![1.0, 0.25]);
+        // Doble puntillo y fusas.
+        assert_eq!(figuras(1.75), vec![1.75]);
+        assert_eq!(figuras(0.3125), vec![0.25, 0.0625]);
+        assert_eq!(base_y_puntos(0.1875), Some((0.125, 1)));
+        assert_eq!(base_y_puntos(3.5), Some((2.0, 2)));
         assert_eq!(base64(b"Man"), "TWFu");
         assert_eq!(base64(b"Ma"), "TWE=");
         assert_eq!(base64(b"M"), "TQ==");

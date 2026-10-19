@@ -1083,7 +1083,7 @@ Subir	Up	Subir
 Bajar	Down	Descer
 Clave	Clef	Clave
 Armadura	Key signature	Armadura
-Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, T anotación, flechas mueven, Supr borra	Keys: A–G notes, 3–7 durations, '.' dot, 0 rest, T annotation, arrows move, Del deletes	Teclado: A–G notas, 3–7 figuras, «.» ponto, 0 pausa, T anotação, setas movem, Del apaga
+Teclado: A–G notas, 1–7 figuras, «.» puntillo, 0 silencio, T anotación, flechas mueven, Supr borra	Keys: A–G notes, 1–7 durations, '.' dot, 0 rest, T annotation, arrows move, Del deletes	Teclado: A–G notas, 1–7 figuras, «.» ponto, 0 pausa, T anotação, setas movem, Del apaga
 izq.	LH	esq.
 + Piano	+ Piano	+ Piano
 Anotación	Annotation	Anotação
@@ -1092,3 +1092,10 @@ Agrega un sistema de piano: clave de sol y clave de fa unidas por una llave	Adds
 Escribe el texto (p. ej. dolce, rit., D.C., digitación)…	Type the text (e.g. dolce, rit., D.C., fingering)…	Escreva o texto (ex.: dolce, rit., D.C., dedilhado)…
 Arrastra el texto en la partitura para moverlo	Drag the text on the score to move it	Arraste o texto na partitura para movê-lo
 Con esta herramienta, un clic en la partitura pone un texto en ese punto (T). También con clic derecho → Anotación	With this tool, a click on the score places a text at that point (T). Also with right-click → Annotation	Com esta ferramenta, um clique na partitura coloca um texto nesse ponto (T). Também com clique direito → Anotação
+Fusa	32nd note	Fusa
+Semifusa	64th note	Semifusa
+FIGURAS	NOTE VALUES	FIGURAS
+FIGURAS · editando la nota elegida	NOTE VALUES · editing the selected note	FIGURAS · editando a nota escolhida
+Silencio de	Rest:	Pausa de
+Doble puntillo	Double dot	Ponto duplo
+Puntillo (.)	Dot (.)	Ponto (.)
