@@ -32,10 +32,11 @@ pub enum Cmd {
     ZoomOut,
     Cancel,
     Marker,
+    Capture,
 }
 
 impl Cmd {
-    pub const ALL: [Cmd; 27] = [
+    pub const ALL: [Cmd; 28] = [
         Cmd::Play,
         Cmd::Record,
         Cmd::Home,
@@ -63,6 +64,7 @@ impl Cmd {
         Cmd::ZoomOut,
         Cmd::Cancel,
         Cmd::Marker,
+        Cmd::Capture,
     ];
 
     fn id(self) -> String {
@@ -98,6 +100,7 @@ impl Cmd {
             Cmd::ZoomOut => "Alejar",
             Cmd::Cancel => "Cancelar / quitar selección",
             Cmd::Marker => "Añadir marca en el cursor",
+            Cmd::Capture => "Capturar lo último tocado (grabación retrospectiva)",
         }
     }
 
@@ -130,6 +133,7 @@ impl Cmd {
             Cmd::ZoomOut => "Minus",
             Cmd::Cancel => "Escape",
             Cmd::Marker => "M",
+            Cmd::Capture => "Shift+R",
         }
     }
 }
@@ -252,6 +256,7 @@ impl App {
             Cmd::ZoomOut => self.zoom(0.8),
             Cmd::Cancel => (self.time_sel, self.razor_lanes, self.tool) = (None, None, Tool::Select),
             Cmd::Marker => self.add_marker(self.pos()),
+            Cmd::Capture => self.capturar(),
         }
     }
 

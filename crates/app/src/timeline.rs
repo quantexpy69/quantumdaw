@@ -1215,6 +1215,33 @@ impl App {
                 if midi && ui.button(tr("Abrir en piano roll")).clicked() {
                     self.open_roll(i, j);
                 }
+                if !midi {
+                    ui.menu_button(tr("Edición de audio"), |ui| {
+                        widgets::menu_style(ui);
+                        let mut corte = None;
+                        ui.menu_button(tr("Quitar silencios"), |ui| {
+                            for (n, db) in [("Suave (-50 dB)", -50.0), ("Normal (-40 dB)", -40.0), ("Fuerte (-30 dB)", -30.0)] {
+                                if ui.button(tr(n)).clicked() {
+                                    corte = Some(edicion::Corte::Silencios(db));
+                                }
+                            }
+                        });
+                        if ui.button(tr("Cerrar huecos")).on_hover_text(tr("Junta las regiones seleccionadas de cada pista una detrás de otra")).clicked() {
+                            corte = Some(edicion::Corte::CerrarHuecos);
+                        }
+                        if ui.button(tr("Cortar en los transientes")).on_hover_text(tr("Una región por cada golpe o ataque")).clicked() {
+                            corte = Some(edicion::Corte::Transientes(0.5));
+                        }
+                        if ui.button(tr("Cuantizar audio a la rejilla")).on_hover_text(tr("Corta en los ataques y lleva cada golpe a la semicorchea más cercana")).clicked() {
+                            corte = Some(edicion::Corte::Cuantizar(0.5));
+                        }
+                        if let Some(c) = corte {
+                            ui.close();
+                            let r = self.cortar_audio(c);
+                            self.report(r.as_ref().map_or(String::new(), |n| format!("{n} {}", tr("región(es) resultantes"))), r);
+                        }
+                    });
+                }
                 if midi && ui.button(tr("Exportar región a MIDI…")).clicked() {
                     ui.close();
                     self.exportar_midi(Some((i, j)));

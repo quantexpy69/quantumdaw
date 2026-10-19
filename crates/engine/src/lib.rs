@@ -10,7 +10,7 @@ mod synth;
 mod tempo;
 
 pub use devices::{DeviceInfo, MidiConnections, audio_devices, connect_midi, midi_ports};
-pub use dsp::{detect_bpm, find_peaks, find_silences, peak, pitch_shift, stretch};
+pub use dsp::{detect_bpm, find_onsets, find_peaks, find_silences, peak, pitch_shift, stretch};
 pub use fx::{BANDAS, Fx, FxKind, curves_banda, curves_response, eq_response, frecuencia_banda};
 pub use io::{decode, resample};
 pub use sampler::Sampler;
@@ -380,6 +380,8 @@ pub struct Engine {
     pub master_fx: ArcSwap<Vec<Arc<Fx>>>,
     /// Medidor de loudness de la salida del master.
     pub medidor: loudness::Medidor,
+    /// Últimos 30 s de entrada de audio y MIDI (grabación retrospectiva).
+    pub captura: Mutex<Captura>,
     pub playing: AtomicBool,
     pub pos: AtomicU64,
     pub looping: AtomicBool,
@@ -462,6 +464,60 @@ fn conectados(cfg: &AudioConfig) -> AudioConfig {
     AudioConfig { output: elegir(&cfg.output, false), input: elegir(&cfg.input, true), ..cfg.clone() }
 }
 
+/// Grabación retrospectiva: los últimos 30 s de la entrada de audio y del MIDI tocado, aunque no se
+/// esté grabando, para recuperar lo que se tocó («Capturar lo último tocado»).
+pub struct Captura {
+    /// Audio intercalado de la entrada (anillo) y frames escritos en total.
+    pub audio: Vec<f32>,
+    pub canales: usize,
+    pub escritos: u64,
+    /// MIDI: (reloj en frames, posición de la canción, ¿sonaba el transporte?, evento).
+    pub midi: std::collections::VecDeque<(u64, u64, bool, MidiEvent)>,
+    pub reloj: u64,
+    pub sr: u32,
+}
+
+impl Captura {
+    fn new(sr: u32, canales: usize) -> Self {
+        Self { audio: vec![0.0; sr as usize * 30 * canales], canales, escritos: 0, midi: Default::default(), reloj: 0, sr }
+    }
+
+    fn escribir(&mut self, entrada: &[f32], midi: &[MidiEvent], pos: u64, playing: bool, n: usize) {
+        if self.canales > 0 && !self.audio.is_empty() {
+            let largo = self.audio.len();
+            let w = (self.escritos as usize * self.canales) % largo;
+            for (k, &x) in entrada.iter().enumerate() {
+                self.audio[(w + k) % largo] = x;
+            }
+            self.escritos += (entrada.len() / self.canales) as u64;
+        }
+        for &e in midi {
+            if self.midi.len() < 4096 {
+                self.midi.push_back((self.reloj, pos, playing, e));
+            }
+        }
+        let limite = self.reloj.saturating_sub(self.sr as u64 * 30);
+        while self.midi.front().is_some_and(|m| m.0 < limite) {
+            self.midi.pop_front();
+        }
+        self.reloj += n as u64;
+    }
+
+    /// Los últimos `frames` de audio de la entrada (intercalado), del más viejo al más nuevo.
+    pub fn ultimos(&self, frames: usize) -> Vec<f32> {
+        if self.canales == 0 {
+            return vec![];
+        }
+        let largo = self.audio.len() / self.canales;
+        let n = frames.min(largo).min(self.escritos as usize);
+        let fin = self.escritos as usize % largo;
+        (0..n).flat_map(|k| {
+            let f = (fin + largo - n + k) % largo;
+            self.audio[f * self.canales..(f + 1) * self.canales].iter().copied()
+        }).collect()
+    }
+}
+
 /// Errores que informa el sistema de audio (dispositivo desconectado, xruns…) para el registro de la app.
 static AVISOS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -511,6 +567,7 @@ impl Engine {
             master: Default::default(),
             master_fx: Default::default(),
             medidor: loudness::Medidor::new(config.sample_rate),
+            captura: Mutex::new(Captura::new(config.sample_rate, in_ch)),
             playing: false.into(),
             pos: 0.into(),
             looping: false.into(),
@@ -782,6 +839,9 @@ fn callback(e: Arc<Engine>, ch: usize, mut r: Rings) -> impl FnMut(&mut [f32], &
                 midi[..nm].iter().for_each(|&ev| _ = r.midi_rec_tx.push((pos, ev)));
             }
             was_recording = recording;
+            if let Ok(mut c) = e.captura.try_lock() {
+                c.escribir(inp, &midi[..nm], pos, playing, n);
+            }
             e.render(&mut buf[..n], pos, playing, false, Live { audio: inp, midi: &midi[..nm] }, None);
             if e.scope_on.load(Relaxed) {
                 buf[..n].iter().for_each(|s| _ = r.scope_tx.push((s[0] + s[1]) * 0.5));

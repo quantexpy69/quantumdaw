@@ -790,3 +790,19 @@ Curves, compresor suave y limitador a -1 dBTP	Curves, gentle compressor and limi
 Sin efectos en el master.	No effects on the master.	Sem efeitos no master.
 Activo	Active	Ativo
 Ábrelo en una pista para ver el visor; aquí se ajustan sus perillas.	Open it on a track to see the display; adjust its knobs here.	Abra-o em uma faixa para ver o visor; aqui se ajustam os botões.
+Capturar lo último tocado (grabación retrospectiva)	Capture what you just played (retrospective record)	Capturar o que acabou de tocar (gravação retrospectiva)
+Edición de audio	Audio editing	Edição de áudio
+Quitar silencios	Remove silence	Remover silêncios
+Suave (-50 dB)	Gentle (-50 dB)	Suave (-50 dB)
+Normal (-40 dB)	Normal (-40 dB)	Normal (-40 dB)
+Fuerte (-30 dB)	Strong (-30 dB)	Forte (-30 dB)
+Cerrar huecos	Close gaps	Fechar lacunas
+Junta las regiones seleccionadas de cada pista una detrás de otra	Joins the selected regions of each track one after another	Junta as regiões selecionadas de cada faixa uma após a outra
+Cortar en los transientes	Slice at transients	Cortar nos transientes
+Una región por cada golpe o ataque	One region per hit or attack	Uma região por golpe ou ataque
+Cuantizar audio a la rejilla	Quantize audio to grid	Quantizar áudio na grade
+Corta en los ataques y lleva cada golpe a la semicorchea más cercana	Slices at attacks and moves each hit to the nearest sixteenth	Corta nos ataques e leva cada golpe à semicolcheia mais próxima
+región(es) resultantes	resulting region(s)	região(ões) resultantes
+Arma una pista (botón R) para capturar lo último que tocaste	Arm a track (R button) to capture what you just played	Arme uma faixa (botão R) para capturar o que acabou de tocar
+No hay nada tocado en los últimos 30 segundos	Nothing was played in the last 30 seconds	Nada foi tocado nos últimos 30 segundos
+Capturado lo último que tocaste	Captured what you just played	Capturado o que você acabou de tocar

@@ -84,6 +84,27 @@ pub fn find_peaks(frames: &[[f32; 2]], sr: f32, thresh: f32) -> Vec<usize> {
         .collect()
 }
 
+/// Ataques (transientes): posiciones en frames donde la energía sube de golpe. `sensibilidad` 0–1
+/// (más alta = más cortes). Separación mínima de 60 ms y nada por debajo de -50 dBFS.
+pub fn find_onsets(frames: &[[f32; 2]], sr: f32, sensibilidad: f32) -> Vec<usize> {
+    const HOP: usize = 256;
+    let energia: Vec<f32> = frames.chunks(HOP).map(|c| c.iter().map(|s| s[0] * s[0] + s[1] * s[1]).sum::<f32>() / c.len() as f32).collect();
+    let log: Vec<f32> = energia.iter().map(|e| (e + 1e-10).ln()).collect();
+    let flujo: Vec<f32> = (0..log.len()).map(|k| if k == 0 { 0.0 } else { (log[k] - log[k - 1]).max(0.0) }).collect();
+    let (minimo, piso) = (((sr * 0.06) as usize / HOP).max(1), 10f32.powf(-50.0 / 10.0));
+    let factor = 1.5 + (1.0 - sensibilidad.clamp(0.0, 1.0)) * 3.0;
+    let mut out: Vec<usize> = vec![];
+    for k in 1..flujo.len().saturating_sub(1) {
+        let (a, b) = (k.saturating_sub(8), (k + 9).min(flujo.len()));
+        let media = flujo[a..b].iter().sum::<f32>() / (b - a) as f32;
+        let es_pico = flujo[k] >= flujo[k - 1] && flujo[k] > flujo[k + 1];
+        if es_pico && flujo[k] > media * factor + 0.5 && energia[k] > piso && out.last().is_none_or(|&u| k * HOP >= u + minimo * HOP) {
+            out.push((k * HOP).saturating_sub(HOP / 2));
+        }
+    }
+    out
+}
+
 /// Tramos de silencio (frames inicio–fin) por debajo de `thresh_db` durante al menos `min_ms`.
 pub fn find_silences(frames: &[[f32; 2]], sr: f32, thresh_db: f32, min_ms: f32) -> Vec<(usize, usize)> {
     let win = (sr * 0.01) as usize;
@@ -120,6 +141,10 @@ mod tests {
             assert!((found - bpm).abs() < 1.5, "{bpm} → {found}");
             assert!(find_peaks(&frames, sr, 0.5).len() >= 24);
             assert!(find_silences(&frames, sr, -60.0, 100.0).len() >= 20);
+            let golpes = find_onsets(&frames, sr, 0.5);
+            // 24 golpes; el del instante 0 no tiene nada antes con qué compararse.
+            assert!((23..=24).contains(&golpes.len()), "{} golpes", golpes.len());
+            assert!(golpes.iter().all(|g| g % beat < 400 || g % beat > beat - 400), "golpes fuera de lugar");
         }
     }
 }

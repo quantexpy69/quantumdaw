@@ -6,6 +6,7 @@ mod analyzer;
 mod audioedit;
 mod chrome;
 mod creativo;
+mod edicion;
 mod curves;
 mod i18n;
 mod informes;
@@ -1914,9 +1915,16 @@ impl App {
         }
         self.drain_recording();
         self.edit();
-        let (sr, bits, ich) = (self.engine.sample_rate, self.rec_bits, self.engine.in_channels.max(1));
         let (start, end) = (self.engine.rec_start.load(Relaxed), self.pos());
         let (data, midi) = (std::mem::take(&mut self.rec_data), std::mem::take(&mut self.rec_midi));
+        self.colocar_grabacion(start, end, data, midi);
+    }
+
+    /// Coloca una grabación en las pistas armadas: `data` es el audio intercalado de la entrada desde
+    /// `start` y `midi` los eventos con su posición en la canción. Lo usan la grabación normal y la
+    /// captura retrospectiva.
+    fn colocar_grabacion(&mut self, start: u64, end: u64, data: Vec<f32>, midi: Vec<(u64, MidiEvent)>) {
+        let (sr, bits, ich) = (self.engine.sample_rate, self.rec_bits, self.engine.in_channels.max(1));
         let mut notes = vec![];
         let mut held: HashMap<u8, (u64, u8)> = HashMap::new();
         for &(at, e) in &midi {

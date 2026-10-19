@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.16.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.17.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -18,6 +18,10 @@ Versión actual: **0.16.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   cortar/copiar/pegar, duplicar, normalizar, invertir, cuantizar y deshacer/rehacer ilimitado.
 - **Time-stretch** y **transposición** de regiones, pistas o grupos.
 - **Mapa de tempo** con cambios por tramo, metrónomo que lo sigue y **marcas** en la línea de tiempo (tecla `M`).
+- **Grabación retrospectiva** (`Shift+R`): recupera en las pistas armadas el MIDI y el audio tocados en los
+  últimos 30 s aunque no se estuviera grabando.
+- **Edición de audio por cortes** (menú de la región): quitar silencios, cerrar huecos, cortar en los
+  transientes y cuantizar audio a la rejilla, sin tocar los archivos.
 - **Pista de arreglo** (Intro, Estrofa, Pre coro, Coro, Puente…): clic en una sección para seleccionar su rango o hacer loop.
 - **Pista de acordes** con selector de raíz y tipo (m, 7, maj7, sus4, dim…).
 - **Contador de tempo inteligente**: TAP o detección automática del BPM del audio.
