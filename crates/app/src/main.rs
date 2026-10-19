@@ -6,6 +6,7 @@ mod analyzer;
 mod audioedit;
 mod chrome;
 mod creativo;
+mod generador;
 mod edicion;
 mod curves;
 mod i18n;
@@ -662,6 +663,8 @@ struct App {
     partitura_sp: f32,
     /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
     partitura_todas: bool,
+    /// Generador de progresiones de acordes por estilo.
+    generador: generador::Generador,
     /// Efectos del master y ventana de mastering y loudness.
     master_fx: Vec<Arc<Fx>>,
     mastering: mastering::Mastering,
@@ -788,6 +791,7 @@ impl App {
             mastering: Default::default(),
             partitura_todas: true,
             partitura_sp: 8.0,
+            generador: Default::default(),
             paleta: None,
             informe: informes::pendiente(),
             status: String::new(),
@@ -2223,6 +2227,7 @@ impl eframe::App for App {
         self.ventana_paleta(&ctx);
         self.ventana_recuperar(&ctx);
         self.ventana_mastering(&ctx);
+        self.ventana_generador(&ctx);
         // Autoguardado cada minuto si hay cambios (no mientras se graba).
         if self.cambios && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > Duration::from_secs(60) {
             self.autoguardado = std::time::Instant::now();

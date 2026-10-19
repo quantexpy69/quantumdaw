@@ -383,7 +383,7 @@ impl App {
     }
 
     /// Escribe acordes (inicio absoluto, duración, notas) en la región abierta y los selecciona.
-    fn insertar_acordes(&mut self, acordes: Vec<(u64, u64, Vec<u8>)>) {
+    pub(crate) fn insertar_acordes(&mut self, acordes: Vec<(u64, u64, Vec<u8>)>) {
         let Some((i, j)) = self.roll_clip() else { return };
         let c = &self.s.tracks[i].clips[j];
         let origin = c.origin();
@@ -631,6 +631,9 @@ impl App {
                     ui.selectable_value(&mut self.roll.inversion, k, tr(n));
                 }
             });
+            if ui.add(egui::Button::new(RichText::new(tr("Generar…")).color(BG()).strong()).fill(ACCENT())).on_hover_text(tr("Generar progresión de acordes por estilo")).clicked() {
+                self.generador.abierto = true;
+            }
             if ui.add(egui::Button::selectable(self.roll.circulo, tr("Círculo de quintas"))).on_hover_text(tr("Tonalidad, sus acordes y progresiones automáticas")).clicked() {
                 self.roll.circulo = !self.roll.circulo;
             }
