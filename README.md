@@ -1,11 +1,11 @@
 # QUANTUM DAW
 
-**Estación de audio digital moderna, escrita 100 % en Rust**, con interfaz oscura color pizarra y acentos naranjas,
+**Estación de audio digital moderna, escrita 100 % en Rust**, con interfaz azul marino y acentos cian,
 motor de audio en tiempo real sin bloqueos y herramientas profesionales de grabación, edición y mezcla.
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.18.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.19.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -87,8 +87,8 @@ Versión actual: **0.18.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   separarse como ventanas del sistema (por ejemplo en otro monitor) y volver a acoplarse.
 - Atajos de teclado y de rueda del ratón configurables, analizador de espectro e interfaz escalable.
 - **Paleta de comandos** (Ctrl/Cmd+K): busca cualquier acción por su nombre y la ejecuta con Enter.
-- **Temas de color**: Pizarra (predeterminado: azul grisáceo con acento naranja), Grafito, Medianoche,
-  Carbón, Ciruela, Bosque y Ámbar (Ver → Tema).
+- **Temas de color**: Marino (predeterminado: azul marino con acento cian), Pizarra (azul grisáceo con
+  acento naranja), Grafito, Medianoche, Carbón, Ciruela, Bosque y Ámbar (Ver → Tema).
 - **Autoguardado** cada minuto con cambios y recuperación tras un cierre inesperado.
 - **Importar y exportar MIDI** (.mid): cada pista del archivo se convierte en una pista MIDI; se exporta
   una región o todas las pistas MIDI.

@@ -310,8 +310,8 @@ impl App {
 
     /// Grupos de la barra de control en filas: todo en una línea si cabe; si no, herramientas abajo.
     pub fn bar_rows(&self) -> Vec<&'static [&'static str]> {
-        const ALL: [&str; 4] = ["transport", "lcd", "views", "tools"];
-        if self.bar_two_rows { vec![&ALL[..3], &ALL[3..]] } else { vec![&ALL] }
+        const ALL: [&str; 3] = ["transport", "lcd", "views"];
+        if self.bar_two_rows { vec![&ALL[..2], &ALL[2..]] } else { vec![&ALL] }
     }
 
     /// Barra de control fija: vistas | transporte | tiempo, metrónomo y tempo | herramientas, en una
@@ -325,7 +325,7 @@ impl App {
             let lead = ((width - self.bar_widths[ri]) / 2.0).max(4.0);
             let r = ui.horizontal(|ui| {
                 ui.add_space(lead);
-                let frame = egui::Frame::new().fill(PANEL()).corner_radius(rr(10.0)).inner_margin(egui::Margin::symmetric(10, 5));
+                let frame = egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 3));
                 frame.show(ui, |ui| {
                     ui.allocate_ui_with_layout(vec2(ui.available_width(), BOX_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         ui.set_min_height(BOX_H);
@@ -358,6 +358,20 @@ impl App {
         }
     }
 
+    /// Barra superior del arreglo: título, herramientas, rejilla y paneles.
+    pub fn barra_herramientas(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_centered(|ui| {
+            ui.label(RichText::new(tr("Arreglo")).size(14.0).strong().color(TEXT()));
+            ui.label(RichText::new(format!("{} {}", self.s.tracks.len(), tr("pistas"))).size(11.5).color(TEXT_DIM()));
+            ui.add_space(10.0);
+            self.bar_group(ui, "tools");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.toggle_value(&mut self.show_lib, RichText::new(tr("Biblioteca")).size(12.5)).on_hover_text("Y");
+                ui.toggle_value(&mut self.show_auto, RichText::new(tr("Automatización")).size(12.5)).on_hover_text("A");
+            });
+        });
+    }
+
     /// Contenido de un grupo de la barra de control.
     fn bar_group(&mut self, ui: &mut egui::Ui, id: &str) {
         match id {
@@ -373,9 +387,6 @@ impl App {
                         }
                     }
                 }
-                ui.add_space(4.0);
-                ui.toggle_value(&mut self.show_lib, RichText::new(tr("Biblioteca")).size(12.5)).on_hover_text("Y");
-                ui.toggle_value(&mut self.show_auto, RichText::new(tr("Automatización")).size(12.5)).on_hover_text("A");
             }
             "transport" => self.transport_box(ui),
             "lcd" => self.lcd_box(ui),

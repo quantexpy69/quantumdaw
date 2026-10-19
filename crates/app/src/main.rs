@@ -43,11 +43,13 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-// Tokens de color del tema activo (Ver → Tema). Pizarra es el predeterminado; Grafito, el original
+// Tokens de color del tema activo (Ver → Tema). Marino es el predeterminado; Grafito, el original
 // de grises neutros al estilo de Logic.
 /// Temas: nombre y colores (fondo, panel, elevado, borde, texto, texto tenue, acento).
-const TEMAS: [(&str, [Color32; 7]); 7] = [
-    // Pizarra (predeterminado): azul grisáceo oscuro con acento naranja.
+const TEMAS: [(&str, [Color32; 7]); 8] = [
+    // Marino (predeterminado): azul marino profundo con acento cian.
+    ("Marino", [Color32::from_rgb(0x03, 0x0B, 0x21), Color32::from_rgb(0x07, 0x1A, 0x33), Color32::from_rgb(0x0B, 0x24, 0x40), Color32::from_rgb(0x16, 0x36, 0x5A), Color32::from_rgb(0xDC, 0xE8, 0xF2), Color32::from_rgb(0x7F, 0x98, 0xB0), Color32::from_rgb(0x3F, 0xB6, 0xD3)]),
+    // Pizarra: azul grisáceo oscuro con acento naranja.
     ("Pizarra", [Color32::from_rgb(0x1E, 0x24, 0x28), Color32::from_rgb(0x26, 0x2C, 0x31), Color32::from_rgb(0x2F, 0x37, 0x3D), Color32::from_rgb(0x3B, 0x45, 0x4C), Color32::from_rgb(0xD6, 0xDC, 0xE0), Color32::from_rgb(0x8A, 0x94, 0x9A), Color32::from_rgb(0xEC, 0xA6, 0x49)]),
     ("Grafito", [Color32::from_rgb(0x1A, 0x1A, 0x1C), Color32::from_rgb(0x25, 0x25, 0x28), Color32::from_rgb(0x30, 0x30, 0x34), Color32::from_rgb(0x3E, 0x3E, 0x44), Color32::from_rgb(0xED, 0xED, 0xEF), Color32::from_rgb(0xA3, 0xA3, 0xAB), Color32::from_rgb(0x5B, 0x8C, 0xFF)]),
     ("Medianoche", [Color32::from_rgb(0x12, 0x16, 0x1F), Color32::from_rgb(0x1A, 0x20, 0x30), Color32::from_rgb(0x23, 0x2B, 0x3D), Color32::from_rgb(0x33, 0x40, 0x5A), Color32::from_rgb(0xE6, 0xEC, 0xF5), Color32::from_rgb(0x9A, 0xA6, 0xBC), Color32::from_rgb(0x4F, 0xC3, 0xF7)]),
@@ -2169,9 +2171,11 @@ impl eframe::App for App {
         self.engine.scope_on.store(self.show_mixer && self.bottom_tab == 2, Relaxed);
         // Franja del logo separada del menú; la barra de control crece según sus filas de cajas.
         egui::Panel::top("title").exact_size(42.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 12, right: 12, top: 6, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
-        let bar_h = self.bar_rows().len() as f32 * (chrome::BAR_ROW_H + 6.0) + 10.0;
-        egui::Panel::top("control").exact_size(bar_h).show(ui, |ui| self.control_bar(ui));
+        // Arriba, la barra de herramientas del arreglo; abajo, el transporte (sobre la barra de estado).
+        egui::Panel::top("herramientas").exact_size(42.0).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(12, 5))).show(ui, |ui| self.barra_herramientas(ui));
         egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
+        let bar_h = self.bar_rows().len() as f32 * (chrome::BAR_ROW_H + 6.0) + 6.0;
+        egui::Panel::bottom("control").exact_size(bar_h).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(6, 3))).show(ui, |ui| self.control_bar(ui));
         if self.show_mixer {
             let default = if self.config.bottom_h > 0.0 { self.config.bottom_h } else { 440.0 };
             let panel = egui::Panel::bottom("bottom").default_size(default).min_size(140.0).resizable(true).show(ui, |ui| self.bottom_panel(ui));
