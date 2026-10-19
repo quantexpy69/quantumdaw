@@ -1370,83 +1370,89 @@ impl App {
         p.rect_filled(meter, rr(2.0), BG());
         let fill = ((db + 60.0) / 66.0).clamp(0.0, 1.0);
         p.rect_filled(Rect::from_min_max(pos2(meter.left(), meter.bottom() - fill * meter.height()), meter.max), rr(2.0), METER[(db > -12.0) as usize + (db > -3.0) as usize]);
-        ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(34.0, 7.0), r.max - vec2(12.0, 7.0))), |ui| {
+        // Cabecera compacta: icono en un cuadro del color de la pista, nombre y subtítulo, M S ● arriba a
+        // la derecha, fader horizontal y perilla de panorama. El resto está en el inspector (tecla I).
+        let tile = Rect::from_min_size(r.min + vec2(14.0, 8.0), vec2(40.0, 40.0));
+        p.rect_filled(tile, rr(10.0), self.s.tracks[i].color.lerp_to_gamma(BG(), 0.72));
+        p.text(pos2(r.left() + 9.0, r.bottom() - 9.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(9.5), TEXT_DIM());
+        let proxy = self.usa_proxy(i);
+        let subtitulo = {
+            let t = &self.s.tracks[i];
+            let base = match t.kind {
+                TrackKind::Midi => instruments::find(&t.instrument).map_or_else(|| t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth").to_string(), |e| e.name.to_string()),
+                TrackKind::Click => tr("Metrónomo como audio").to_string(),
+                TrackKind::Video => t.video.as_ref().map_or(tr("sin video").to_string(), |v| format!("Video · {:.1} s", v.duration())),
+                _ => format!("In {} / {} {}", t.input + 1, t.clips.len(), tr("regiones")),
+            };
+            if proxy { format!("{base} · PROXY") } else { base }
+        };
+        ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(14.0, 8.0), r.max - vec2(14.0, 6.0))), |ui| {
             ui.set_clip_rect(clip.intersect(r));
-            ui.spacing_mut().item_spacing = vec2(4.0, 6.0);
-            let proxy = self.usa_proxy(i);
-            let t = &mut self.s.tracks[i];
+            ui.spacing_mut().item_spacing = vec2(4.0, 2.0);
             ui.horizontal(|ui| {
-                icons::picker(ui, t, 22.0);
-                widgets::color_dot(ui, &mut t.color);
-                ui.add(egui::TextEdit::singleline(&mut t.name).desired_width((r.width() - 200.0).max(110.0)).font(FontId::proportional(14.0)));
+                {
+                    let t = &mut self.s.tracks[i];
+                    ui.allocate_ui_with_layout(vec2(40.0, 40.0), egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| icons::picker(ui, t, 26.0));
+                }
+                ui.add_space(6.0);
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        let t = &mut self.s.tracks[i];
+                        let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(14.0)).text_color(TEXT()).desired_width((r.width() - 170.0).max(80.0));
+                        ui.add(nombre).on_hover_text(tr("Nombre de la pista (clic para editar)"));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            // ● grabación, S y M: texto sin fondo; con color cuando están activos.
+                            // ● grabación: círculo dibujado (la fuente no tiene el símbolo).
+                            let armada = flag(&self.s.tracks[i].params, 0).load(Relaxed);
+                            let (rc, rb) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+                            ui.painter().circle(rc.center(), 5.5, if armada { METER[2] } else { Color32::TRANSPARENT }, Stroke::new(1.5, if armada || rb.hovered() { METER[2] } else { METER[2].gamma_multiply(0.6) }));
+                            if rb.on_hover_text(tr("Armar grabación")).clicked() {
+                                for m in self.flag_targets(i, 0) {
+                                    flag(&self.s.tracks[m].params, 0).store(!armada, Relaxed);
+                                }
+                            }
+                            for (k, texto, color, ayuda) in [(2, "S", METER[1], "Solo"), (1, "M", ACCENT(), "Mute")] {
+                                let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
+                                let tinta = if on { color } else if k == 0 { METER[2].gamma_multiply(0.55) } else { TEXT_DIM() };
+                                let b = egui::Button::new(RichText::new(texto).strong().size(if k == 0 { 13.0 } else { 12.5 }).color(if on && k != 0 { BG() } else { tinta })).fill(if on && k != 0 { color } else { Color32::TRANSPARENT }).frame(on && k != 0).min_size(vec2(18.0, 18.0));
+                                if ui.add(b).on_hover_text(tr(ayuda)).clicked() {
+                                    for m in self.flag_targets(i, k) {
+                                        flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
+                                    }
+                                }
+                            }
+                        });
+                    });
+                    ui.label(RichText::new(&subtitulo).size(11.5).color(if proxy { METER[0] } else { TEXT_DIM() }));
+                });
+            });
+            if r.height() < 76.0 {
+                return;
+            }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let params = self.s.tracks[i].params.clone();
+                widgets::fader_h(ui, &params.gain, (r.width() - 90.0).max(60.0));
+                let mut pan = params.pan.get();
+                if widgets::pan_knob(ui, &mut pan).changed() {
+                    params.pan.set(pan);
+                }
+                let t = &mut self.s.tracks[i];
                 if t.takes.len() > 1 {
-                    let label = RichText::new(format!("Tomas {}", t.takes.len())).size(10.0).color(if t.show_takes { ACCENT() } else { TEXT_DIM() });
+                    let label = RichText::new(format!("{} {}", tr("Tomas"), t.takes.len())).size(10.0).color(if t.show_takes { ACCENT() } else { TEXT_DIM() });
                     if ui.add(egui::Button::new(label).small()).on_hover_text(tr("Mostrar u ocultar los carriles de tomas (comping)")).clicked() {
                         t.show_takes = !t.show_takes;
                     }
-                } else {
-                    let kind = match t.kind {
-                        TrackKind::AudioMono => "MONO",
-                        TrackKind::AudioStereo => "STEREO",
-                        TrackKind::Midi => "MIDI",
-                        TrackKind::Click => "CLIC",
-                        TrackKind::Video => "VIDEO",
-                    };
-                    if proxy {
-                        ui.label(RichText::new("PROXY").size(9.0).strong().color(METER[0])).on_hover_text(tr("Suena desde su proxy: el procesador no calcula su instrumento ni sus efectos"));
-                    } else {
-                        ui.label(RichText::new(kind).size(9.0).color(TEXT_DIM()));
-                    }
                 }
             });
-            // Con poca altura solo se muestran las filas que caben.
-            if r.height() < 64.0 {
-                return;
-            }
-            ui.horizontal(|ui| {
-                self.flag_buttons(ui, i);
-                self.polarity_button(ui, i);
-                self.fx_button(ui, i);
-                self.route_button(ui, i);
+            if self.show_auto && r.height() >= 96.0 {
                 let t = &mut self.s.tracks[i];
-                if self.show_auto {
-                    egui::ComboBox::from_id_salt(("auto", i)).width(56.0).selected_text(if t.auto_param == 0 { "Vol" } else { "Pan" }).show_ui(ui, |ui| {
-                        ui.selectable_value(&mut t.auto_param, 0, tr("Volumen"));
-                        ui.selectable_value(&mut t.auto_param, 1, tr("Panorama"));
-                    });
-                }
-            });
-            if r.height() < 90.0 {
-                return;
+                egui::ComboBox::from_id_salt(("auto", i)).width(70.0).selected_text(if t.auto_param == 0 { tr("Volumen") } else { tr("Panorama") }).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut t.auto_param, 0, tr("Volumen"));
+                    ui.selectable_value(&mut t.auto_param, 1, tr("Panorama"));
+                });
             }
-            ui.horizontal(|ui| {
-                let t = &self.s.tracks[i];
-                match t.kind {
-                    TrackKind::Midi => {
-                        let state = if t.params.monitor.load(Relaxed) || t.params.arm.load(Relaxed) { "teclado MIDI conectado a esta pista" } else { "activa I para tocar con tu teclado MIDI" };
-                        ui.label(RichText::new(format!("QUANTUM Synth · {state}")).size(11.0).color(TEXT_DIM()));
-                    }
-                    TrackKind::Click => _ = ui.label(RichText::new(tr("Metrónomo como audio")).size(11.0).color(TEXT_DIM())),
-                    TrackKind::Video => {
-                        let info = t.video.as_ref().map_or("sin video".to_string(), |v| format!("{:.1} s · doble clic: abrir el visor", v.duration()));
-                        ui.label(RichText::new(info).size(11.0).color(TEXT_DIM()));
-                    }
-                    _ => {
-                        let listening = t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed);
-                        widgets::meter_h(ui, if listening { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, (r.width() - 230.0).clamp(80.0, 260.0));
-                        // Ganancia de entrada como perilla.
-                        let p = t.params.clone();
-                        let mut d = widgets::db(p.in_gain.get());
-                        let k = widgets::mini_knob(ui, &mut d, -24.0, 24.0, 0.0, METER[0]);
-                        if k.changed() {
-                            p.in_gain.set(10f32.powf(d / 20.0));
-                        }
-                        k.on_hover_text(format!("{} {d:+.1} dB · {}", tr("Ganancia de entrada"), tr("arrastra arriba/abajo · doble clic: 0 dB")));
-                        ui.label(RichText::new(format!("{d:+.1} dB")).monospace().size(11.0).color(TEXT()));
-                        self.input_combo(ui, i);
-                    }
-                }
-            });
         });
     }
 

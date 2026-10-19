@@ -12,6 +12,7 @@ mod curves;
 mod i18n;
 mod informes;
 mod icons;
+mod inspector;
 mod instruments;
 mod keys;
 mod library;
@@ -663,6 +664,8 @@ struct App {
     partitura_sp: f32,
     /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
     partitura_todas: bool,
+    /// Inspector de la pista seleccionada (panel izquierdo).
+    show_inspector: bool,
     /// Texto buscado en la biblioteca.
     lib_buscar: String,
     /// Generador de progresiones de acordes por estilo.
@@ -793,6 +796,7 @@ impl App {
             mastering: Default::default(),
             partitura_todas: true,
             partitura_sp: 8.0,
+            show_inspector: false,
             lib_buscar: String::new(),
             generador: Default::default(),
             paleta: None,
@@ -2214,6 +2218,9 @@ impl eframe::App for App {
                 self.config.bottom_h = h;
                 self.config.save();
             }
+        }
+        if self.show_inspector {
+            egui::Panel::left("inspector").default_size(300.0).min_size(240.0).resizable(true).frame(egui::Frame::new().fill(PANEL()).inner_margin(12.0)).show(ui, |ui| self.inspector(ui));
         }
         if self.show_lib && !self.lib_float {
             egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));

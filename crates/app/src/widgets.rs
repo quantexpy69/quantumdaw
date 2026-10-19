@@ -136,6 +136,28 @@ pub fn pestana(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
     resp
 }
 
+/// Fader horizontal fino (cabeceras de pista): -60 a +6 dB; doble clic vuelve a 0 dB.
+pub fn fader_h(ui: &mut egui::Ui, g: &AtomicF32, ancho: f32) -> Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(ancho, 16.0), Sense::click_and_drag());
+    let a_pos = |gain: f32| ((db(gain) + 60.0) / 66.0).clamp(0.0, 1.0);
+    if resp.dragged()
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        let t = ((p.x - r.left()) / r.width()).clamp(0.0, 1.0);
+        g.set(if t <= 0.0 { 0.0 } else { 10f32.powf((t * 66.0 - 60.0) / 20.0) });
+    }
+    if resp.double_clicked() {
+        g.set(1.0);
+    }
+    let p = ui.painter();
+    let carril = Rect::from_center_size(r.center(), vec2(r.width(), 6.0));
+    p.rect_filled(carril, rr(3.0), BG());
+    let x = r.left() + a_pos(g.get()) * r.width();
+    p.rect_filled(Rect::from_min_max(carril.min, pos2(x, carril.bottom())), rr(3.0), BORDER());
+    p.rect_filled(Rect::from_center_size(pos2(x, r.center().y), vec2(3.0, 14.0)), 1.0, if resp.hovered() || resp.dragged() { ACCENT() } else { TEXT() });
+    resp.on_hover_text(format!("{} {}", tr("Volumen"), db_text(g.get())))
+}
+
 /// Pestaña de texto (biblioteca): clara y subrayada con el acento cuando está activa; se puede arrastrar.
 pub fn pestana_texto(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
     let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.0), TEXT());

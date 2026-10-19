@@ -33,10 +33,11 @@ pub enum Cmd {
     Cancel,
     Marker,
     Capture,
+    Inspector,
 }
 
 impl Cmd {
-    pub const ALL: [Cmd; 28] = [
+    pub const ALL: [Cmd; 29] = [
         Cmd::Play,
         Cmd::Record,
         Cmd::Home,
@@ -65,6 +66,7 @@ impl Cmd {
         Cmd::Cancel,
         Cmd::Marker,
         Cmd::Capture,
+        Cmd::Inspector,
     ];
 
     fn id(self) -> String {
@@ -101,6 +103,7 @@ impl Cmd {
             Cmd::Cancel => "Cancelar / quitar selección",
             Cmd::Marker => "Añadir marca en el cursor",
             Cmd::Capture => "Capturar lo último tocado (grabación retrospectiva)",
+            Cmd::Inspector => "Mostrar el inspector",
         }
     }
 
@@ -134,6 +137,7 @@ impl Cmd {
             Cmd::Cancel => "Escape",
             Cmd::Marker => "M",
             Cmd::Capture => "Shift+R",
+            Cmd::Inspector => "I",
         }
     }
 }
@@ -257,6 +261,7 @@ impl App {
             Cmd::Cancel => (self.time_sel, self.razor_lanes, self.tool) = (None, None, Tool::Select),
             Cmd::Marker => self.add_marker(self.pos()),
             Cmd::Capture => self.capturar(),
+            Cmd::Inspector => self.show_inspector = !self.show_inspector,
         }
     }
 
