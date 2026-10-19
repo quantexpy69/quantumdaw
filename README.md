@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.29.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.30.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -67,6 +67,12 @@ Versión actual: **0.29.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   (mayor, menor, 7, maj7, sus, dim… con inversiones); **círculo de quintas** con los acordes de la
   tonalidad y **progresiones automáticas** (pop, años 50, jazz, Canon…) en bloque, negras o arpegio.
 - Al elegir un instrumento se abre su ventana (QUANTUM Synth con sus perillas o instrumento real).
+- **QUANTUM Partitura** (Ver o Ctrl+K): editor de partituras propio en su ventana (separable a otra pantalla).
+  Escribe con el ratón o el teclado (A–G, figuras 3–7, puntillo, silencios), sube y baja alturas, borra y
+  deshace; claves de sol, fa, do en 3.ª y 4.ª, sol octava baja y percusión; armadura, compás, tempo e
+  instrumentos transpositores. **Escribir tocando**: con un teclado MIDI o con audio (una nota a la vez)
+  detecta el pulso y el tempo, cuantiza a figuras y escribe la partitura mientras tocas. Imprimir o PDF,
+  MusicXML (MuseScore, Sibelius, Finale, Dorico) e intercambio con pistas MIDI.
 - **Partitura** (pestaña PARTITURA): las pistas MIDI en pentagramas alineados con llave, clave de sol o
   de fa según el registro, pentagrama de percusión para la batería, instrumentos transpositores escritos
   como los leen sus intérpretes (clarinete, trompeta, saxos, trompa), armadura detectada, cifrado de

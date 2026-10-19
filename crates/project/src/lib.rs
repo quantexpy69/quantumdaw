@@ -1,6 +1,7 @@
 //! Formato de proyecto `.qproj` (JSON), proyecto demo y exportación de audio.
 mod export;
 
+pub mod partitura;
 pub use export::{Format, export, write_wav};
 
 use serde::{Deserialize, Serialize};
@@ -54,6 +55,8 @@ pub struct Project {
     pub sections: Vec<(f64, f64, String)>,
     /// Efectos del master (cadena de mastering).
     pub master_fx: Vec<FxState>,
+    /// Documento de QUANTUM Partitura (si se creó uno).
+    pub partitura: Option<partitura::Partitura>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -120,6 +123,7 @@ impl Default for Project {
             chords: vec![],
             sections: vec![],
             master_fx: vec![],
+            partitura: None,
         }
     }
 }

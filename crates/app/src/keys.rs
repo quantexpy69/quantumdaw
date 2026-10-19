@@ -271,6 +271,10 @@ impl App {
         }
         let typing = self.roll.typing && self.show_mixer && self.bottom_tab == 1;
         let en_roll = self.roll_tomar_foco();
+        // Con el ratón sobre QUANTUM Partitura, el teclado es para la partitura.
+        if self.partitura_app.foco {
+            return;
+        }
         for e in ctx.input(|i| i.events.clone()) {
             match e {
                 // Con el ratón sobre el piano roll, copiar/cortar/pegar actúan sobre las notas.

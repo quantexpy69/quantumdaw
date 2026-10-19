@@ -17,6 +17,7 @@ enum Accion {
     Mastering,
     Espacio(usize),
     Generador,
+    PartituraApp,
     Panel,
 }
 
@@ -48,6 +49,7 @@ fn acciones() -> Vec<(String, &'static str, Accion)> {
         (tr("Círculo de quintas y acordes").to_string(), tr("Piano roll"), Accion::Circulo),
         (tr("Ver instrumento").to_string(), tr("Piano roll"), Accion::Instrumento),
         (tr("Generar progresión de acordes").to_string(), tr("Acordes"), Accion::Generador),
+        ("QUANTUM Partitura".to_string(), tr("Partitura"), Accion::PartituraApp),
         (tr("Piano roll").to_string(), tr("Ver"), Accion::PianoRoll),
         (tr("Abrir carpeta de registros").to_string(), tr("Herramientas"), Accion::Registros),
         (tr("Mastering y loudness…").to_string(), tr("Ver"), Accion::Mastering),
@@ -114,6 +116,7 @@ impl App {
             Some(Accion::Circulo) => self.roll.circulo = true,
             Some(Accion::Instrumento) => self.roll.instrumento = true,
             Some(Accion::PianoRoll) => (self.show_mixer, self.bottom_tab) = (true, 1),
+            Some(Accion::PartituraApp) => self.partitura_app.abierto = true,
             Some(Accion::Generador) => self.generador.abierto = true,
             Some(Accion::Espacio(k)) => self.aplicar_espacio(k),
             Some(Accion::Panel) => self.open_main_menu(0),

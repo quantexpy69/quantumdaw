@@ -8,6 +8,7 @@ mod chrome;
 mod creativo;
 mod generador;
 mod edicion;
+mod editor_partitura;
 mod escenario;
 mod curves;
 mod i18n;
@@ -29,6 +30,7 @@ mod plugins;
 mod proxies;
 mod routing;
 mod timeline;
+mod transcripcion;
 mod video;
 mod web;
 mod welcome;
@@ -674,6 +676,8 @@ struct App {
     partitura_todas: bool,
     /// Vista del escenario de clips en lugar del arreglo.
     ver_escenario: bool,
+    /// QUANTUM Partitura (editor de partituras).
+    partitura_app: editor_partitura::EditorPartitura,
     /// Secuenciador de patrones.
     patron: patron::Patron,
     /// Menú circular abierto y menú clásico de la región («Más opciones»).
@@ -812,6 +816,7 @@ impl App {
             partitura_todas: true,
             partitura_sp: 8.0,
             ver_escenario: false,
+            partitura_app: Default::default(),
             patron: Default::default(),
             pie: None,
             menu_region: None,
@@ -863,6 +868,7 @@ impl App {
 
     fn apply_project(&mut self, p: Project) {
         let (e, sr) = (self.engine.clone(), self.sr());
+        self.partitura_app.doc = p.partitura.clone().unwrap_or_default();
         self.master_fx = p
             .master_fx
             .iter()
@@ -1041,6 +1047,7 @@ impl App {
             markers: self.s.markers.iter().map(|(f, n)| (*f as f64 / sr, n.clone())).collect(),
             chords: self.s.chords.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
+            partitura: (self.partitura_app.doc != project::partitura::Partitura::default()).then(|| self.partitura_app.doc.clone()),
             master_fx: self.master_fx.iter().map(|f| FxState { kind: f.kind.name().into(), params: f.params.iter().map(|p| p.get()).collect(), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
             ..Default::default()
         }
@@ -2270,6 +2277,7 @@ impl eframe::App for App {
         self.ventana_mastering(&ctx);
         self.ventana_generador(&ctx);
         self.ventana_pie(&ctx);
+        self.ventana_partitura(&ctx);
         // Autoguardado cada minuto si hay cambios (no mientras se graba).
         if self.cambios && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > Duration::from_secs(60) {
             self.autoguardado = std::time::Instant::now();

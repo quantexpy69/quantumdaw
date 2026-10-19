@@ -169,6 +169,9 @@ impl App {
                         }
                     }
                 });
+                if item(ui, "QUANTUM Partitura…", "") {
+                    self.partitura_app.abierto = true;
+                }
                 if item(ui, tr("Mastering y loudness…"), "") {
                     self.mastering.abierta = true;
                 }

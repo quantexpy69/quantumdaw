@@ -7,6 +7,7 @@
 //! Los símbolos usan la fuente Bravura (SMuFL, licencia SIL OFL).
 use crate::*;
 use egui::{Pos2, pos2, vec2};
+pub use project::partitura::Clave;
 
 pub const FUENTE: &[u8] = include_bytes!("../../../assets/fuentes/Bravura.otf");
 
@@ -14,6 +15,8 @@ pub const FUENTE: &[u8] = include_bytes!("../../../assets/fuentes/Bravura.otf");
 const CLAVE_SOL: char = '\u{E050}';
 const CLAVE_FA: char = '\u{E062}';
 const CLAVE_PERC: char = '\u{E069}';
+const CLAVE_DO: char = '\u{E05C}';
+const CLAVE_SOL_8VB: char = '\u{E052}';
 const CABEZA_REDONDA: char = '\u{E0A2}';
 const CABEZA_BLANCA: char = '\u{E0A3}';
 const CABEZA_NEGRA: char = '\u{E0A4}';
@@ -34,24 +37,47 @@ pub enum Elem {
     Curva([Pos2; 4], f32),
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum Clave {
-    Sol,
-    Fa,
-    Percusion,
+/// Una parte (pentagrama): nombre completo y abreviado, clave y notas escritas en negras.
+pub struct Parte {
+    pub nombre: String,
+    pub abrev: String,
+    pub clave: Clave,
+    /// (inicio, duración, nota escrita, cabeza en x, identificador de la nota en su documento).
+    pub notas: Vec<(f64, f64, u8, bool, usize)>,
 }
 
-/// Una parte (pentagrama): nombre completo y abreviado, clave y notas escritas en negras.
-struct Parte {
-    nombre: String,
-    abrev: String,
-    clave: Clave,
-    /// (inicio, duración, nota escrita, cabeza en x).
-    notas: Vec<(f64, f64, u8, bool)>,
+/// Ajustes del diseño: compás, armadura, cifrado de acordes y compases mínimos (para editar).
+pub struct Conf {
+    pub num: u32,
+    pub den: u32,
+    pub quintas: i32,
+    pub acordes: Vec<(f64, String)>,
+    pub compases_min: usize,
+}
+
+/// Compás dibujado: (número, x inicial y final de la música, puntos (tiempo relativo, x) de cada figura).
+pub type MapaCompas = (usize, f32, f32, Vec<(f64, f32)>);
+
+/// Dónde quedó cada cosa en un sistema, para editar con el ratón.
+#[derive(Default, Clone)]
+pub struct MapaSistema {
+    /// Por parte: y de la primera línea (abajo) y clave.
+    pub partes: Vec<(f32, Clave)>,
+    /// Por compás: (número, x inicial y final de la música, puntos (tiempo relativo, x) de cada figura).
+    pub compases: Vec<MapaCompas>,
+    /// Cabezas de nota: (posición, parte, identificador).
+    pub cabezas: Vec<(Pos2, usize, usize)>,
+}
+
+/// Partitura diseñada: elementos de cada sistema, alto de cada uno y sus mapas.
+pub struct Diseno {
+    pub sistemas: Vec<Vec<Elem>>,
+    pub alto: f32,
+    pub mapas: Vec<MapaSistema>,
 }
 
 /// Instrumentos transpositores: (palabras del nombre, semitonos escritos sobre el sonido, abreviatura).
-const TRANSPOSITORES: [(&[&str], i32, &str); 6] = [
+pub(crate) const TRANSPOSITORES: [(&[&str], i32, &str); 6] = [
     (&["clarinete", "clarinet"], 2, "Cl. (Sib)"),
     (&["trompeta", "trumpet"], 2, "Tpt. (Sib)"),
     (&["saxo alto", "alto sax"], 9, "Sax. A. (Mib)"),
@@ -62,7 +88,7 @@ const TRANSPOSITORES: [(&[&str], i32, &str); 6] = [
 
 /// Batería (General MIDI) en el pentagrama de percusión: (notas, posición en medios espacios desde la
 /// primera línea, cabeza en x).
-const BATERIA: [(&[u8], i32, bool); 9] = [
+pub(crate) const BATERIA: [(&[u8], i32, bool); 9] = [
     (&[35, 36], 1, false),
     (&[37, 38, 39, 40], 5, false),
     (&[41, 43], 2, false),
@@ -82,7 +108,7 @@ const ORDEN_SOST: [(i32, i32); 7] = [(3, 8), (0, 5), (4, 9), (1, 6), (5, 3), (2,
 const ORDEN_BEM: [(i32, i32); 7] = [(6, 4), (2, 7), (5, 3), (1, 6), (4, 2), (0, 5), (3, 1)];
 
 /// Armadura más probable (quintas: -6 a 6) según cuánto tiempo suena cada clase de nota.
-fn detectar_armadura(partes: &[Parte]) -> i32 {
+pub(crate) fn detectar_armadura(partes: &[Parte]) -> i32 {
     let mut peso = [0f64; 12];
     for p in partes.iter().filter(|p| p.clave != Clave::Percusion) {
         for n in &p.notas {
@@ -135,7 +161,7 @@ impl App {
                         let q = |f: i64| (self.beats(f as f64) * a_negras * 4.0).round() / 4.0;
                         let (a, b) = (q(ini), q(fin).max(q(ini) + 0.25));
                         let escrita = (n.key as i32 + transp.map_or(0, |x| x.1)).clamp(0, 127) as u8;
-                        notas.push((a, b - a, escrita, false));
+                        notas.push((a, b - a, escrita, false, usize::MAX));
                     }
                 }
                 notas.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.2.cmp(&b.2)));
@@ -154,38 +180,107 @@ impl App {
             .collect()
     }
 
-    /// Diseña la partitura en sistemas de `ancho` píxeles con espacio de pentagrama `sp`.
-    /// Devuelve los elementos y el alto de cada sistema (para paginar).
+    /// Diseña las pistas MIDI como partitura (vista PARTITURA e impresión).
     pub fn disenar_partitura(&self, ancho: f32, sp: f32) -> (Vec<Vec<Elem>>, f32) {
         let partes = self.partes();
         if partes.is_empty() {
             return (vec![], 0.0);
         }
-        let (num, den) = (self.engine.beats.load(Relaxed).max(1), self.engine.unit.load(Relaxed).max(1));
-        let compas = num as f64 * 4.0 / den as f64;
-        let quintas = detectar_armadura(&partes);
-        let fin = partes.iter().flat_map(|p| p.notas.iter().map(|n| n.0 + n.1)).fold(0.0, f64::max);
-        let n_compases = (fin / compas).ceil().max(1.0) as usize;
+        let den = self.engine.unit.load(Relaxed).max(1);
         let a_negras = 4.0 / den as f64;
-        let acordes: Vec<(f64, String)> = self.s.chords.iter().map(|(a, _, n)| ((self.beats(*a as f64) * a_negras * 4.0).round() / 4.0, n.clone())).collect();
+        let conf = Conf {
+            num: self.engine.beats.load(Relaxed).max(1),
+            den,
+            quintas: detectar_armadura(&partes),
+            acordes: self.s.chords.iter().map(|(a, _, n)| ((self.beats(*a as f64) * a_negras * 4.0).round() / 4.0, n.clone())).collect(),
+            compases_min: 1,
+        };
+        let d = disenar(&partes, &conf, ancho, sp);
+        (d.sistemas, d.alto)
+    }
 
+    /// Vista de la partitura (pestaña del panel inferior).
+    pub fn vista_partitura(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(tr("Partitura")).strong());
+            ui.selectable_value(&mut self.partitura_todas, true, tr("Todas las pistas MIDI"));
+            ui.selectable_value(&mut self.partitura_todas, false, tr("Solo las seleccionadas"));
+            ui.add(egui::Slider::new(&mut self.partitura_sp, 5.0..=14.0).show_value(false).text(tr("Tamaño")));
+            if ui.add(egui::Button::new(egui::RichText::new(tr("Abrir QUANTUM Partitura")).strong())).on_hover_text(tr("Editor de partituras: escribe, edita, cambia claves y transcribe lo que tocas")).clicked() {
+                self.partitura_app.abierto = true;
+            }
+            if ui.add(egui::Button::new(egui::RichText::new(tr("Imprimir o guardar PDF…")).color(BG()).strong()).fill(ACCENT())).on_hover_text("Ctrl+P").clicked() || ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
+                let r = self.imprimir_partitura();
+                self.report(tr("Partitura abierta en el navegador: imprímela o guárdala como PDF"), r);
+            }
+        });
+        let sp = self.partitura_sp;
+        egui::Frame::new().fill(Color32::from_rgb(0xFA, 0xF8, 0xF2)).corner_radius(widgets::rr(6.0)).inner_margin(sp * 2.0).show(ui, |ui| {
+            egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+                let ancho = ui.available_width().max(400.0);
+                let (sistemas, alto) = self.disenar_partitura(ancho, sp);
+                if sistemas.is_empty() {
+                    ui.label(egui::RichText::new(tr("No hay notas MIDI para escribir. Selecciona pistas MIDI con notas.")).color(Color32::from_gray(90)));
+                    return;
+                }
+                let (r, _) = ui.allocate_exact_size(vec2(ancho, alto * sistemas.len() as f32), egui::Sense::hover());
+                let p = ui.painter_at(r);
+                for (k, s) in sistemas.iter().enumerate() {
+                    pintar(&p, s, r.min.to_vec2() + vec2(0.0, k as f32 * alto), Color32::from_gray(20));
+                }
+            });
+        });
+    }
+
+    /// Partitura de las pistas en páginas A4 para imprimir o guardar como PDF.
+    fn imprimir_partitura(&mut self) -> anyhow::Result<()> {
+        let titulo = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
+        let compositor = self.meta.composer.clone();
+        let html = pagina_html(&titulo, &compositor, |ancho, sp| {
+            let (sistemas, alto) = self.disenar_partitura(ancho, sp);
+            Diseno { sistemas, alto, mapas: vec![] }
+        })?;
+        self.abrir_html_partitura(&titulo, html)
+    }
+
+    /// Guarda el HTML de una partitura en Rendered/ y lo abre en el navegador.
+    pub(crate) fn abrir_html_partitura(&self, titulo: &str, html: String) -> anyhow::Result<()> {
+        let ruta = self.dir.join(project::RENDER_DIR).join(format!("{} - partitura.html", safe(titulo)));
+        fs::create_dir_all(ruta.parent().unwrap_or(&self.dir))?;
+        fs::write(&ruta, html)?;
+        informes::abrir_carpeta(&ruta);
+        Ok(())
+    }
+}
+
+/// Diseña una partitura (de las pistas o de un documento de QUANTUM Partitura) en sistemas de
+/// `ancho` píxeles con espacio de pentagrama `sp`.
+pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
+        if partes.is_empty() {
+            return Diseno { sistemas: vec![], alto: 0.0, mapas: vec![] };
+        }
+        let (num, den, quintas) = (conf.num, conf.den, conf.quintas);
+        let compas = num as f64 * 4.0 / den as f64;
+        let fin = partes.iter().flat_map(|p| p.notas.iter().map(|n| n.0 + n.1)).fold(0.0, f64::max);
+        let n_compases = ((fin / compas - 1e-9).ceil().max(1.0) as usize).max(conf.compases_min);
+        let acordes = &conf.acordes;
         // Eventos por parte y compás: (inicio en el compás, duración, notas (altura, x), ¿ligada a la siguiente?).
-        type Evento = (f64, f64, Vec<(u8, bool)>, bool);
+        type Evento = (f64, f64, Vec<(u8, bool, usize)>, bool);
         // Notas que empiezan juntas: (inicio, duración, alturas).
-        type Grupo = (f64, f64, Vec<(u8, bool)>);
+        type Grupo = (f64, f64, Vec<(u8, bool, usize)>);
         let eventos: Vec<Vec<Vec<Evento>>> = partes
             .iter()
             .map(|p| {
                 let mut por_compas: Vec<Vec<Evento>> = vec![vec![]; n_compases];
                 // Una voz: las notas que empiezan juntas forman un acorde y duran hasta la siguiente.
                 let mut grupos: Vec<Grupo> = vec![];
-                for &(a, d, k, x) in &p.notas {
+                for &(a, d, k, x, id) in &p.notas {
                     match grupos.last_mut() {
                         Some(g) if (g.0 - a).abs() < 1e-6 => {
                             g.1 = g.1.max(d);
-                            g.2.push((k, x));
+                            g.2.push((k, x, id));
                         }
-                        _ => grupos.push((a, d, vec![(k, x)])),
+                        _ => grupos.push((a, d, vec![(k, x, id)])),
                     }
                 }
                 for k in 0..grupos.len() {
@@ -194,7 +289,7 @@ impl App {
                     }
                 }
                 let mut t = 0.0;
-                let agregar = |desde: f64, hasta: f64, alturas: Vec<(u8, bool)>, por_compas: &mut Vec<Vec<Evento>>| {
+                let agregar = |desde: f64, hasta: f64, alturas: Vec<(u8, bool, usize)>, por_compas: &mut Vec<Vec<Evento>>| {
                     let mut a = desde;
                     while a + 1e-6 < hasta {
                         let m = (a / compas).floor() as usize;
@@ -235,6 +330,7 @@ impl App {
         let separacion = sp * 9.0;
         let alto_sistema = partes.len() as f32 * alto_parte + (partes.len() as f32 - 1.0) * separacion;
         let mut sistemas = vec![];
+        let mut mapas = vec![];
         let mut m0 = 0;
         while m0 < n_compases {
             let disponible = ancho - nombre_w - cabecera - sp;
@@ -246,6 +342,7 @@ impl App {
             }
             let estirar = if m1 < n_compases { disponible / usado } else { 1.0f32.max((disponible / usado).min(1.4)) };
             let mut el = vec![];
+            let mut mapa = MapaSistema::default();
             let top = sp * 5.0;
             let x_ini = nombre_w;
             // Llave que une los pentagramas y línea inicial.
@@ -258,6 +355,7 @@ impl App {
                 let y0 = top + pi as f32 * (alto_parte + separacion);
                 let base = y0 + alto_parte; // primera línea (abajo)
                 let y_pos = |pos: i32| base - pos as f32 * sp / 2.0;
+                mapa.partes.push((base, p.clave));
                 let ultimo_x = x_ini + cabecera + usado * estirar;
                 for l in 0..5 {
                     el.push(Elem::Linea(pos2(x_ini, y_pos(l * 2)), pos2(ultimo_x, y_pos(l * 2)), sp * 0.11));
@@ -265,11 +363,17 @@ impl App {
                 let nombre = if m0 == 0 { p.nombre.clone() } else { p.abrev.clone() };
                 el.push(Elem::Texto(pos2(x_ini - sp * 1.6, y_pos(4) + sp * 0.4), nombre, sp * 1.25, false, 2));
                 // Clave, armadura y compás (este solo en el primer sistema).
-                let (glifo, pos_clave, desplaza) = match p.clave {
-                    Clave::Sol => (CLAVE_SOL, 2, 0),
-                    Clave::Fa => (CLAVE_FA, 6, -2),
-                    Clave::Percusion => (CLAVE_PERC, 4, 0),
+                let (glifo, pos_clave) = match p.clave {
+                    Clave::Sol => (CLAVE_SOL, 2),
+                    Clave::Sol8vb => (CLAVE_SOL_8VB, 2),
+                    Clave::Fa => (CLAVE_FA, 6),
+                    Clave::Alto => (CLAVE_DO, 4),
+                    Clave::Tenor => (CLAVE_DO, 6),
+                    Clave::Percusion => (CLAVE_PERC, 4),
                 };
+                // La armadura se escribe en la misma letra que en clave de sol, dentro del pentagrama.
+                let d = 30 - p.clave.paso_primera_linea();
+                let desplaza = d - 7 * (d as f32 / 7.0).round() as i32;
                 el.push(Elem::Glifo(pos2(x_ini + sp * 0.8, y_pos(pos_clave)), glifo, sp * 4.0));
                 let mut x = x_ini + sp * 4.0;
                 if p.clave != Clave::Percusion {
@@ -299,8 +403,15 @@ impl App {
                     let mut anterior: Option<(f32, Vec<f32>)> = None;
                     let total: f32 = eventos[pi][m].iter().map(|e| ancho_ev(e.1)).sum::<f32>().max(1.0);
                     let mut xe = xc + sp;
-                    for &(_, dur, ref alturas, ligada) in &eventos[pi][m] {
+                    if pi == 0 {
+                        mapa.compases.push((m, xc + sp, xc + w - sp, vec![]));
+                    }
+                    let k_compas = mapa.compases.iter().position(|c| c.0 == m);
+                    for &(t_rel, dur, ref alturas, ligada) in &eventos[pi][m] {
                         let paso = ancho_ev(dur) / total * (w - sp * 2.0);
+                        if let Some(c) = k_compas.and_then(|k| mapa.compases.get_mut(k)) {
+                            c.3.push((t_rel, xe));
+                        }
                         if alturas.is_empty() {
                             // Silencio (redonda si ocupa el compás entero).
                             let (valor, glifo) = SILENCIOS.iter().copied().find(|(v, _)| dur + 1e-6 >= *v).unwrap_or(SILENCIOS[4]);
@@ -325,14 +436,14 @@ impl App {
                         // Posición de cada nota en el pentagrama y su alteración.
                         let posiciones: Vec<(i32, Option<char>, bool)> = alturas
                             .iter()
-                            .map(|&(k, _)| {
+                            .map(|&(k, _, _)| {
                                 if p.clave == Clave::Percusion {
                                     let (pos, x) = BATERIA.iter().find(|b| b.0.contains(&k)).map_or((4, false), |b| (b.1, b.2));
                                     return (pos, None, x);
                                 }
                                 let (letra, alt) = if quintas >= 0 { CON_SOSTENIDOS } else { CON_BEMOLES }[(k % 12) as usize];
                                 let paso = (k as i32 / 12 - 1) * 7 + letra;
-                                let pos = paso - if p.clave == Clave::Sol { 30 } else { 18 };
+                                let pos = paso - p.clave.paso_primera_linea();
                                 let en_armadura = {
                                     let orden = if quintas >= 0 { &ORDEN_SOST } else { &ORDEN_BEM };
                                     if orden.iter().take(quintas.unsigned_abs() as usize).any(|o| o.0 == letra) { quintas.signum() } else { 0 }
@@ -348,9 +459,10 @@ impl App {
                             })
                             .collect();
                         let mut ys = vec![];
-                        for &(pos, signo, x_cab) in &posiciones {
+                        for (n_alt, &(pos, signo, x_cab)) in posiciones.iter().enumerate() {
                             let y = y_pos(pos);
                             ys.push(y);
+                            mapa.cabezas.push((pos2(xe + sp * 0.6, y), pi, alturas[n_alt].2));
                             el.push(Elem::Glifo(pos2(xe, y), if x_cab { CABEZA_X } else { cabeza_ch }, sp * 4.0));
                             if let Some(s) = signo {
                                 el.push(Elem::Glifo(pos2(xe - sp * 1.3, y), s, sp * 4.0));
@@ -399,76 +511,40 @@ impl App {
                 }
             }
             sistemas.push(el);
+            mapas.push(mapa);
             m0 = m1;
         }
-        (sistemas, top_alto(alto_sistema, sp))
+        Diseno { sistemas, alto: top_alto(alto_sistema, sp), mapas }
     }
 
-    /// Vista de la partitura (pestaña del panel inferior).
-    pub fn vista_partitura(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(tr("Partitura")).strong());
-            ui.selectable_value(&mut self.partitura_todas, true, tr("Todas las pistas MIDI"));
-            ui.selectable_value(&mut self.partitura_todas, false, tr("Solo las seleccionadas"));
-            ui.add(egui::Slider::new(&mut self.partitura_sp, 5.0..=14.0).show_value(false).text(tr("Tamaño")));
-            if ui.add(egui::Button::new(egui::RichText::new(tr("Imprimir o guardar PDF…")).color(BG()).strong()).fill(ACCENT())).on_hover_text("Ctrl+P").clicked() || ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::P)) {
-                let r = self.imprimir_partitura();
-                self.report(tr("Partitura abierta en el navegador: imprímela o guárdala como PDF"), r);
-            }
-        });
-        let sp = self.partitura_sp;
-        egui::Frame::new().fill(Color32::from_rgb(0xFA, 0xF8, 0xF2)).corner_radius(widgets::rr(6.0)).inner_margin(sp * 2.0).show(ui, |ui| {
-            egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                let ancho = ui.available_width().max(400.0);
-                let (sistemas, alto) = self.disenar_partitura(ancho, sp);
-                if sistemas.is_empty() {
-                    ui.label(egui::RichText::new(tr("No hay notas MIDI para escribir. Selecciona pistas MIDI con notas.")).color(Color32::from_gray(90)));
-                    return;
-                }
-                let (r, _) = ui.allocate_exact_size(vec2(ancho, alto * sistemas.len() as f32), egui::Sense::hover());
-                let p = ui.painter_at(r);
-                for (k, s) in sistemas.iter().enumerate() {
-                    pintar(&p, s, r.min.to_vec2() + vec2(0.0, k as f32 * alto), Color32::from_gray(20));
-                }
-            });
-        });
-    }
-
-    /// Partitura en páginas A4 (HTML con la fuente incluida) abierta en el navegador para imprimir o
-    /// guardar como PDF.
-    fn imprimir_partitura(&mut self) -> anyhow::Result<()> {
-        // A4 a 96 ppp: 794 × 1123 px con márgenes de 15 mm.
-        let (ancho, alto_pag, margen) = (794.0f32, 1123.0f32, 57.0f32);
-        let sp = 6.0;
-        let (sistemas, alto) = self.disenar_partitura(ancho - margen * 2.0, sp);
-        anyhow::ensure!(!sistemas.is_empty(), "no hay notas MIDI para escribir");
-        let titulo = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
-        let por_pagina = (((alto_pag - margen * 2.0 - 60.0) / alto).floor() as usize).max(1);
-        let mut html = format!(
-            "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><title>{t}</title><style>@font-face{{font-family:Bravura;src:url(data:font/otf;base64,{f})}}@page{{size:A4;margin:0}}body{{margin:0;background:#888}}.pagina{{width:{ancho}px;height:{alto_pag}px;background:#fff;margin:12px auto;page-break-after:always;position:relative}}@media print{{body{{background:#fff}}.pagina{{margin:0}}}}svg{{position:absolute;left:{margen}px}}h1{{font:600 22px sans-serif;text-align:center;margin:0;padding-top:{margen}px}}h2{{font:13px sans-serif;text-align:right;margin:4px {margen}px 0}}</style></head><body>",
-            t = html_escapar(&titulo),
-            f = base64(FUENTE)
-        );
-        for (n, pagina) in sistemas.chunks(por_pagina).enumerate() {
-            html += "<div class=\"pagina\">";
-            if n == 0 {
-                html += &format!("<h1>{}</h1><h2>{}</h2>", html_escapar(&titulo), html_escapar(&self.meta.composer));
-            }
-            let y0 = if n == 0 { margen + 60.0 } else { margen };
-            for (k, s) in pagina.iter().enumerate() {
-                html += &format!("<svg style=\"top:{}px\" width=\"{}\" height=\"{alto}\" viewBox=\"0 0 {} {alto}\">", y0 + k as f32 * alto, ancho - margen * 2.0, ancho - margen * 2.0);
-                html += &svg(s);
-                html += "</svg>";
-            }
-            html += "</div>";
+/// Páginas A4 (HTML con la fuente musical incluida) de una partitura diseñada por `disenar`.
+pub(crate) fn pagina_html(titulo: &str, compositor: &str, disenar: impl FnOnce(f32, f32) -> Diseno) -> anyhow::Result<String> {
+    // A4 a 96 ppp: 794 × 1123 px con márgenes de 15 mm.
+    let (ancho, alto_pag, margen) = (794.0f32, 1123.0f32, 57.0f32);
+    let d = disenar(ancho - margen * 2.0, 6.0);
+    anyhow::ensure!(!d.sistemas.is_empty(), "no hay notas para escribir");
+    let (sistemas, alto) = (d.sistemas, d.alto);
+    let por_pagina = (((alto_pag - margen * 2.0 - 60.0) / alto).floor() as usize).max(1);
+    let mut html = format!(
+        "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><title>{t}</title><style>@font-face{{font-family:Bravura;src:url(data:font/otf;base64,{f})}}@page{{size:A4;margin:0}}body{{margin:0;background:#888}}.pagina{{width:{ancho}px;height:{alto_pag}px;background:#fff;margin:12px auto;page-break-after:always;position:relative}}@media print{{body{{background:#fff}}.pagina{{margin:0}}}}svg{{position:absolute;left:{margen}px}}h1{{font:600 22px sans-serif;text-align:center;margin:0;padding-top:{margen}px}}h2{{font:13px sans-serif;text-align:right;margin:4px {margen}px 0}}</style></head><body>",
+        t = html_escapar(titulo),
+        f = base64(FUENTE)
+    );
+    for (n, pagina) in sistemas.chunks(por_pagina).enumerate() {
+        html += "<div class=\"pagina\">";
+        if n == 0 {
+            html += &format!("<h1>{}</h1><h2>{}</h2>", html_escapar(titulo), html_escapar(compositor));
         }
-        html += "</body></html>";
-        let ruta = self.dir.join(project::RENDER_DIR).join(format!("{} - partitura.html", safe(&titulo)));
-        fs::create_dir_all(ruta.parent().unwrap_or(&self.dir))?;
-        fs::write(&ruta, html)?;
-        informes::abrir_carpeta(&ruta);
-        Ok(())
+        let y0 = if n == 0 { margen + 60.0 } else { margen };
+        for (k, s) in pagina.iter().enumerate() {
+            html += &format!("<svg style=\"top:{}px\" width=\"{}\" height=\"{alto}\" viewBox=\"0 0 {} {alto}\">", y0 + k as f32 * alto, ancho - margen * 2.0, ancho - margen * 2.0);
+            html += &svg(s);
+            html += "</svg>";
+        }
+        html += "</div>";
     }
+    html += "</body></html>";
+    Ok(html)
 }
 
 /// Alto de un sistema con su margen arriba (acordes y números de compás) y abajo.
@@ -507,7 +583,7 @@ fn texto_base(p: &egui::Painter, q: Pos2, s: &str, fuente: egui::FontId, color: 
 }
 
 /// Una lista de dibujo como SVG (la fuente musical se llama Bravura en la página).
-fn svg(el: &[Elem]) -> String {
+pub(crate) fn svg(el: &[Elem]) -> String {
     let mut s = String::new();
     for e in el {
         match e {
@@ -529,11 +605,11 @@ fn svg(el: &[Elem]) -> String {
     s
 }
 
-fn html_escapar(s: &str) -> String {
+pub(crate) fn html_escapar(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
-fn base64(datos: &[u8]) -> String {
+pub(crate) fn base64(datos: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(datos.len().div_ceil(3) * 4);
     for c in datos.chunks(3) {
@@ -561,7 +637,7 @@ mod pruebas {
 
     #[test]
     fn armadura() {
-        let parte = |notas: &[u8]| Parte { nombre: String::new(), abrev: String::new(), clave: Clave::Sol, notas: notas.iter().map(|&k| (0.0, 1.0, k, false)).collect() };
+        let parte = |notas: &[u8]| Parte { nombre: String::new(), abrev: String::new(), clave: Clave::Sol, notas: notas.iter().map(|&k| (0.0, 1.0, k, false, 0)).collect() };
         // Sol mayor (con Fa#): un sostenido. Fa mayor (con Sib): un bemol.
         assert_eq!(detectar_armadura(&[parte(&[67, 69, 71, 72, 74, 76, 78, 67])]), 1);
         assert_eq!(detectar_armadura(&[parte(&[65, 67, 69, 70, 72, 74, 76, 65])]), -1);

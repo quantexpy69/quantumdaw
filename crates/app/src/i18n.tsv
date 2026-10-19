@@ -1014,3 +1014,64 @@ Pasar al arreglo (en el cursor)	Move to the arrangement (at cursor)	Passar ao ar
 Vaciar la celda	Clear the slot	Esvaziar a célula
 Detener todo el escenario	Stop the whole stage	Parar todo o palco
 Clic derecho en una escena: capturar lo que suena en el cursor o pasarla al arreglo. Clic derecho en una celda: copiar la región seleccionada.	Right-click a scene: capture what plays at the cursor or move it to the arrangement. Right-click a slot: copy the selected region.	Clique direito numa cena: capturar o que toca no cursor ou passá-la ao arranjo. Clique direito numa célula: copiar a região selecionada.
+Redonda	Whole note	Semibreve
+Blanca	Half note	Mínima
+Negra	Quarter note	Semínima
+Corchea	Eighth note	Colcheia
+Semicorchea	Sixteenth note	Semicolcheia
+Piano / sonido real	Piano / concert pitch	Piano / som real
+Voz	Voice	Voz
+Violín	Violin	Violino
+Viola	Viola	Viola
+Violonchelo	Cello	Violoncelo
+Flauta	Flute	Flauta
+Clarinete en Sib	Clarinet in Bb	Clarinete em Sib
+Trompeta en Sib	Trumpet in Bb	Trompete em Sib
+Saxo alto en Mib	Alto sax in Eb	Sax alto em Mib
+Saxo tenor en Sib	Tenor sax in Bb	Sax tenor em Sib
+Trompa en Fa	Horn in F	Trompa em Fá
+Guitarra (octava baja)	Guitar (octave down)	Violão (oitava abaixo)
+Sol	Treble	Sol
+Fa	Bass	Fá
+Do en 3.ª (alto)	Alto (C 3rd line)	Dó na 3.ª (contralto)
+Do en 4.ª (tenor)	Tenor (C 4th line)	Dó na 4.ª (tenor)
+Sol octava baja	Treble 8vb	Sol oitava abaixo
+Percusión	Percussion	Percussão
+Clave de	Clef:	Clave de
+Título	Title	Título
+Nueva	New	Nova
+Desde pistas MIDI	From MIDI tracks	Das faixas MIDI
+Escribe en la partitura las pistas MIDI del proyecto	Writes the project's MIDI tracks into the score	Escreve na partitura as faixas MIDI do projeto
+A pistas MIDI	To MIDI tracks	Para faixas MIDI
+Crea una pista MIDI por pentagrama con esta música	Creates one MIDI track per staff with this music	Cria uma faixa MIDI por pauta com esta música
+Para abrirla en MuseScore, Sibelius, Finale o Dorico	To open it in MuseScore, Sibelius, Finale or Dorico	Para abri-la no MuseScore, Sibelius, Finale ou Dorico
+MusicXML guardado en	MusicXML saved to	MusicXML salvo em
+Imprimir / PDF…	Print / PDF…	Imprimir / PDF…
+Pentagrama	Staff	Pauta
++ Pentagrama	+ Staff	+ Pauta
+− Quitar	− Remove	− Remover
+Puntillo	Dot	Ponto
+Escribe un silencio en el cursor (0)	Writes a rest at the cursor (0)	Escreve uma pausa no cursor (0)
+Subir un semitono (flecha arriba)	Up a semitone (up arrow)	Subir um semitom (seta para cima)
+Bajar un semitono (flecha abajo)	Down a semitone (down arrow)	Descer um semitom (seta para baixo)
+Borra la nota elegida (Supr)	Deletes the selected note (Del)	Apaga a nota escolhida (Del)
+Escribir tocando:	Write by playing:	Escrever tocando:
+Teclado MIDI	MIDI keyboard	Teclado MIDI
+Audio (una nota a la vez)	Audio (one note at a time)	Áudio (uma nota por vez)
+Detectar el pulso	Detect the beat	Detectar o pulso
+Pulso fijo (metrónomo)	Fixed beat (metronome)	Pulso fixo (metrônomo)
+Terminar	Finish	Terminar
+Grabar tocando	Record by playing	Gravar tocando
+Toca y la partitura se escribe sola; al terminar se agrega al pentagrama elegido	Play and the score writes itself; when you finish it is added to the selected staff	Toque e a partitura se escreve sozinha; ao terminar é adicionada à pauta escolhida
+notas	notes	notas
+pulso	beat	pulso
+Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, flechas mueven, Supr borra	Keys: A–G notes, 3–7 durations, '.' dot, 0 rest, arrows move, Del deletes	Teclado: A–G notas, 3–7 figuras, «.» ponto, 0 pausa, setas movem, Del apaga
+No hay pistas MIDI con notas para pasar a la partitura	There are no MIDI tracks with notes to bring into the score	Não há faixas MIDI com notas para passar à partitura
+partitura	score	partitura
+Partitura pasada a pistas MIDI	Score turned into MIDI tracks	Partitura passada para faixas MIDI
+Crea una pista MIDI para escuchar la partitura	Create a MIDI track to hear the score	Crie uma faixa MIDI para ouvir a partitura
+No se detectaron notas	No notes were detected	Nenhuma nota foi detectada
+notas escritas en la partitura	notes written into the score	notas escritas na partitura
+No hay entrada de audio: elígela en la configuración de audio	There is no audio input: choose it in the audio settings	Não há entrada de áudio: escolha-a nas configurações de áudio
+Abrir QUANTUM Partitura	Open QUANTUM Score	Abrir QUANTUM Partitura
+Editor de partituras: escribe, edita, cambia claves y transcribe lo que tocas	Score editor: write, edit, change clefs and transcribe what you play	Editor de partituras: escreva, edite, troque claves e transcreva o que você toca
