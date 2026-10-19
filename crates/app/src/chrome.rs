@@ -9,7 +9,6 @@ const SIGNATURES: [(u32, u32); 8] = [(2, 4), (3, 4), (4, 4), (5, 4), (6, 8), (7,
 const BOX_H: f32 = 40.0;
 /// Altura total de una fila de la barra de control (contenido, márgenes y borde).
 pub const BAR_ROW_H: f32 = BOX_H + 12.0;
-const LCD: Color32 = Color32::from_rgb(0x10, 0x10, 0x12);
 
 fn item(ui: &mut egui::Ui, label: &str, shortcut: &str) -> bool {
     ui.add(egui::Button::new(tr(label)).shortcut_text(shortcut)).clicked()
@@ -32,7 +31,7 @@ fn lcd_cell(ui: &mut egui::Ui, caption: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         add(ui);
-        ui.label(RichText::new(tr(caption)).size(8.5).color(TEXT_DIM()));
+        ui.label(RichText::new(tr(caption)).size(10.0).color(TEXT_DIM()));
     });
 }
 
@@ -40,7 +39,7 @@ impl App {
     pub fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 14.0;
-            ui.menu_button(RichText::new(tr("Archivo")).size(16.0), |ui| {
+            ui.menu_button(RichText::new(tr("Archivo")).size(14.5), |ui| {
                 widgets::menu_style(ui);
                 if item(ui, tr("Nuevo proyecto…"), "") {
                     let r = self.open_dialog(true);
@@ -103,7 +102,7 @@ impl App {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
-            ui.menu_button(RichText::new(tr("Editar")).size(16.0), |ui| {
+            ui.menu_button(RichText::new(tr("Editar")).size(14.5), |ui| {
                 widgets::menu_style(ui);
                 if ui.add_enabled(!self.undo.is_empty(), egui::Button::new(tr("Deshacer")).shortcut_text("Ctrl+Z")).clicked() {
                     self.undo();
@@ -139,7 +138,7 @@ impl App {
                     self.loop_all();
                 }
             });
-            ui.menu_button(RichText::new(tr("Ver")).size(16.0), |ui| {
+            ui.menu_button(RichText::new(tr("Ver")).size(14.5), |ui| {
                 widgets::menu_style(ui);
                 ui.checkbox(&mut self.show_lib, tr("Biblioteca (Y)"));
                 ui.checkbox(&mut self.show_mixer, tr("Panel inferior (X)"));
@@ -217,7 +216,7 @@ impl App {
                     self.go(self.project_end());
                 }
             });
-            ui.menu_button(RichText::new(tr("Pista")).size(16.0), |ui| {
+            ui.menu_button(RichText::new(tr("Pista")).size(14.5), |ui| {
                 widgets::menu_style(ui);
                 if item(ui, tr("Nueva pista…"), tr("Ctrl+T")) {
                     self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
@@ -245,7 +244,7 @@ impl App {
                     self.delete_tracks(|_, t| t.selected);
                 }
             });
-            ui.menu_button(RichText::new(tr("Herramientas")).size(16.0), |ui| {
+            ui.menu_button(RichText::new(tr("Herramientas")).size(14.5), |ui| {
                 widgets::menu_style(ui);
                 for (tool, label) in [(Tool::Select, "Selección (V)"), (Tool::Pencil, "Lápiz de automatización (P)"), (Tool::Blade, "Cuchilla (B)")] {
                     if ui.radio(self.tool == tool, tr(label)).clicked() {
@@ -298,13 +297,20 @@ impl App {
                 if resp.on_hover_text(tr("Volver a Pantalla Inicial")).clicked() {
                     self.open_main_menu(0);
                 }
+                // Canción abierta (y artista), como en la barra de título.
+                ui.add_space(12.0);
+                let song = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
+                if !self.meta.artist.is_empty() {
+                    ui.label(RichText::new(format!("· {}", self.meta.artist)).size(12.5).color(TEXT_DIM()));
+                }
+                ui.label(RichText::new(song).size(13.5).strong().color(TEXT()));
             });
         });
     }
 
     /// Grupos de la barra de control en filas: todo en una línea si cabe; si no, herramientas abajo.
     pub fn bar_rows(&self) -> Vec<&'static [&'static str]> {
-        const ALL: [&str; 4] = ["views", "transport", "lcd", "tools"];
+        const ALL: [&str; 4] = ["transport", "lcd", "views", "tools"];
         if self.bar_two_rows { vec![&ALL[..3], &ALL[3..]] } else { vec![&ALL] }
     }
 
@@ -319,7 +325,7 @@ impl App {
             let lead = ((width - self.bar_widths[ri]) / 2.0).max(4.0);
             let r = ui.horizontal(|ui| {
                 ui.add_space(lead);
-                let frame = egui::Frame::new().fill(LCD).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(egui::Margin::symmetric(10, 5));
+                let frame = egui::Frame::new().fill(PANEL()).corner_radius(rr(10.0)).inner_margin(egui::Margin::symmetric(10, 5));
                 frame.show(ui, |ui| {
                     ui.allocate_ui_with_layout(vec2(ui.available_width(), BOX_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         ui.set_min_height(BOX_H);
@@ -355,10 +361,21 @@ impl App {
     /// Contenido de un grupo de la barra de control.
     fn bar_group(&mut self, ui: &mut egui::Ui, id: &str) {
         match id {
+            // Vistas en mayúsculas: el arreglo solo, o con el piano roll, el mixer, el analizador o el
+            // editor de audio abajo.
             "views" => {
-                ui.toggle_value(&mut self.show_lib, RichText::new(tr("Biblioteca")).size(13.5)).on_hover_text("Y");
-                ui.toggle_value(&mut self.show_mixer, RichText::new(tr("Mixer")).size(13.5)).on_hover_text("X");
-                ui.toggle_value(&mut self.show_auto, RichText::new(tr("Automatización")).size(13.5)).on_hover_text("A");
+                let actual = if self.show_mixer { Some(self.bottom_tab) } else { None };
+                for (vista, nombre, tecla) in [(None, "Arreglo", ""), (Some(1), "Piano", ""), (Some(0), "Mix", "X"), (Some(2), "Análisis", ""), (Some(3), "Audio", "")] {
+                    if widgets::pestana(ui, actual == vista, tr(nombre)).on_hover_text(tecla).clicked() {
+                        match vista {
+                            None => self.show_mixer = false,
+                            Some(k) => (self.show_mixer, self.bottom_tab) = (true, k),
+                        }
+                    }
+                }
+                ui.add_space(4.0);
+                ui.toggle_value(&mut self.show_lib, RichText::new(tr("Biblioteca")).size(12.5)).on_hover_text("Y");
+                ui.toggle_value(&mut self.show_auto, RichText::new(tr("Automatización")).size(12.5)).on_hover_text("A");
             }
             "transport" => self.transport_box(ui),
             "lcd" => self.lcd_box(ui),
@@ -389,7 +406,7 @@ impl App {
             self.go(0);
         }
         let playing = self.playing();
-        if widgets::icon_button(ui, playing, if playing { widgets::draw_pause } else { widgets::draw_play }).on_hover_text(tr("Reproducir / pausa (Espacio)")).clicked() {
+        if widgets::icon_button_color(ui, playing, if playing { widgets::draw_pause } else { widgets::draw_play }, VERDE_PLAY).on_hover_text(tr("Reproducir / pausa (Espacio)")).clicked() {
             self.toggle_play();
         }
         if widgets::record_button(ui, self.recording()).on_hover_text(tr("Grabar en pistas armadas (Ctrl+R)")).clicked() {
@@ -398,7 +415,7 @@ impl App {
         if widgets::icon_button(ui, false, widgets::draw_next).on_hover_text(tr("Ir al final (Fin)")).clicked() {
             self.go(self.project_end());
         }
-        if widgets::icon_button(ui, self.engine.looping.load(Relaxed), widgets::draw_loop).on_hover_text(tr("Loop (L) · arrastra en la regla para definir el rango")).clicked() {
+        if widgets::icon_button_color(ui, self.engine.looping.load(Relaxed), widgets::draw_loop, ACCENT()).on_hover_text(tr("Loop (L) · arrastra en la regla para definir el rango")).clicked() {
             self.toggle_loop();
         }
     }
@@ -409,26 +426,27 @@ impl App {
         let beats = self.engine.beats.load(Relaxed).max(1) as u64;
         let b = self.beats(pos);
         let s = pos / self.sr();
-        let (fill, stroke, ink) = match (self.recording(), self.playing()) {
-            (true, _) => (Color32::from_rgb(0x3A, 0x10, 0x14), METER[2], Color32::from_rgb(0xFF, 0xC4, 0xC6)),
-            (false, true) => (Color32::from_rgb(0x0E, 0x2A, 0x1A), METER[0], Color32::from_rgb(0xC8, 0xFF, 0xDD)),
-            _ => (Color32::from_rgb(0x0C, 0x0C, 0x0E), BORDER(), TEXT()),
+        // Cifras grandes sobre el fondo de la barra: verdes al reproducir, rojas al grabar.
+        let ink = match (self.recording(), self.playing()) {
+            (true, _) => METER[2],
+            (false, true) => VERDE_PLAY,
+            _ => TEXT(),
         };
-        let lcd = egui::Frame::new().fill(fill).corner_radius(rr(9.0)).stroke(Stroke::new(1.0, stroke)).inner_margin(egui::Margin::symmetric(14, 2));
+        let lcd = egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 0));
         lcd.show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 20.0;
-                let big = |t: String| RichText::new(t).monospace().size(19.0).color(ink);
-                lcd_cell(ui, "COMPÁS", |ui| _ = ui.label(big(format!("{:>3} {} {:02}", b as u64 / beats + 1, b as u64 % beats + 1, (b.fract() * 100.0) as u32))));
-                lcd_cell(ui, "TIEMPO", |ui| _ = ui.label(big(format!("{:02}:{:06.3}", (s / 60.0) as u32, s % 60.0))));
-                lcd_cell(ui, "TEMPO", |ui| {
+                let big = |t: String| RichText::new(t).size(22.0).strong().color(ink);
+                lcd_cell(ui, "Tiempo", |ui| _ = ui.label(big(format!("{:02}:{:02}:{:05.2}", (s / 3600.0) as u32, (s / 60.0) as u32 % 60, s % 60.0))));
+                lcd_cell(ui, "Compases", |ui| _ = ui.label(big(format!("{}.{}.{}", b as u64 / beats + 1, b as u64 % beats + 1, (b.fract() * 4.0) as u32 + 1))));
+                lcd_cell(ui, "BPM", |ui| {
                     let mut bpm = engine::bpm_at(&self.s.tempo, pos);
                     let drag = egui::DragValue::new(&mut bpm).range(20.0..=300.0).speed(0.5).fixed_decimals(1);
                     if ui.add(drag).on_hover_text(tr("Tempo en la posición del cursor · arrastra o doble clic para escribir")).changed() {
                         self.set_tempo_here(bpm);
                     }
                 });
-                lcd_cell(ui, "MÉTRICA", |ui| {
+                lcd_cell(ui, "Métrica", |ui| {
                     let sig = (self.engine.beats.load(Relaxed), self.engine.unit.load(Relaxed));
                     egui::ComboBox::from_id_salt("sig").width(50.0).selected_text(format!("{}/{}", sig.0, sig.1)).show_ui(ui, |ui| {
                         for (n, d) in SIGNATURES {
@@ -505,20 +523,22 @@ impl App {
     pub fn title_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
-            ui.add(welcome::logo(24.0));
-            ui.label(RichText::new(tr("QUANTUM DAW")).size(15.0).strong().color(TEXT()));
-            ui.label(RichText::new(format!("v{}", welcome::VERSION)).size(11.0).color(TEXT_DIM()));
-            let song = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
-            ui.separator();
-            ui.label(RichText::new(song).size(13.0).color(TEXT()));
-            if !self.meta.artist.is_empty() {
-                ui.label(RichText::new(format!("· {}", self.meta.artist)).size(12.5).color(TEXT_DIM()));
-            }
+            ui.add(welcome::logo(22.0)).on_hover_text(format!("QUANTUM DAW v{}", welcome::VERSION));
+            // Menús en la misma fila que el logo (más espacio para el arreglo).
+            self.menu_bar(ui);
         });
     }
 
     pub fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
+            // Punto verde (audio en marcha), atajos clave y el último mensaje.
+            let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
+            ui.painter().circle_filled(r.center(), 4.0, if self.streams.is_empty() { METER[2] } else { VERDE_PLAY });
+            for (tecla, accion) in [("Espacio", "reproducir"), ("Ctrl+K", "comandos"), ("Shift+R", "capturar"), ("X", "mixer"), ("Y", "biblioteca")] {
+                ui.label(RichText::new(tecla).size(11.5).color(TEXT()));
+                ui.label(RichText::new(tr(accion)).size(11.5).color(TEXT_DIM()));
+            }
+            ui.separator();
             ui.label(RichText::new(&self.status).size(12.0).color(TEXT_DIM()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let e = &self.engine;

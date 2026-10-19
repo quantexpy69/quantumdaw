@@ -9,7 +9,7 @@ pub const HEADER_W: f32 = 340.0;
 pub const HEADER_MIN: f32 = 280.0;
 pub const HEADER_MAX: f32 = 720.0;
 const RULER_H: f32 = 30.0;
-const TITLE_H: f32 = 16.0;
+const TITLE_H: f32 = 20.0;
 const TEMPO_H: f32 = 22.0;
 const MARK_H: f32 = 22.0;
 const SPAN_H: f32 = 24.0;
@@ -688,16 +688,17 @@ impl App {
                 if r.right() < x0 || r.left() > full.right() || r.bottom() < lanes_top || r.top() > full.bottom() {
                     continue;
                 }
-                lp.rect_filled(r, rr(6.0), color.gamma_multiply((if c.selected { 0.42 } else { 0.22 }) * dim));
+                // Cuerpo: el color de la pista oscurecido; barra de título con el color pleno y el nombre
+                // en blanco; la forma de onda y las notas en un tono claro del mismo color.
+                let cuerpo = color.lerp_to_gamma(BG(), if c.selected { 0.45 } else { 0.62 });
+                lp.rect_filled(r, rr(6.0), cuerpo.gamma_multiply(dim));
                 let title = Rect::from_min_max(r.min, pos2(r.right(), r.top() + TITLE_H));
-                lp.rect_filled(title, CornerRadius { nw: k6, ne: k6, sw: 0, se: 0 }, color.gamma_multiply(0.85 * dim));
+                lp.rect_filled(title, CornerRadius { nw: k6, ne: k6, sw: 0, se: 0 }, color.gamma_multiply(dim));
                 let label = format!("{} · {:.0} BPM", t.name, engine::bpm_at(&self.s.tempo, c.start as f64));
-                lp.with_clip_rect(title.intersect(body)).text(title.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(11.0), BG());
-                if c.selected {
-                    lp.rect_stroke(r, rr(6.0), Stroke::new(1.5, TEXT()), StrokeKind::Inside);
-                }
+                lp.with_clip_rect(title.intersect(body)).text(title.left_center() + vec2(7.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(12.0), Color32::WHITE);
+                lp.rect_stroke(r, rr(6.0), Stroke::new(if c.selected { 2.0 } else { 1.0 }, if c.selected { Color32::WHITE } else { color.gamma_multiply(0.9) }), StrokeKind::Inside);
                 let inner = Rect::from_min_max(pos2(r.left(), title.bottom() + 3.0), pos2(r.right(), r.bottom() - 3.0));
-                let wave = color.gamma_multiply(dim);
+                let wave = color.lerp_to_gamma(Color32::WHITE, 0.35).gamma_multiply(dim);
                 // Estirando con el asa inferior derecha: el contenido se dibuja ya escalado al nuevo largo
                 // (k = largo original / largo actual), así se ve en tiempo real cómo se estira o comprime.
                 let estirando = match &self.drag {
@@ -1343,15 +1344,14 @@ impl App {
         }
         let t = &self.s.tracks[i];
         let p = ui.painter().with_clip_rect(clip);
-        p.rect_filled(r, rr(8.0), if t.selected { BORDER() } else { ELEVATED() });
+        p.rect_filled(r, rr(4.0), if t.selected { t.color.lerp_to_gamma(ELEVATED(), 0.82) } else { ELEVATED() });
         if t.selected || resp.dnd_hover_payload::<LibItem>().is_some() {
-            p.rect_stroke(r, rr(8.0), Stroke::new(1.0, ACCENT()), StrokeKind::Inside);
+            p.rect_stroke(r, rr(4.0), Stroke::new(1.0, ACCENT()), StrokeKind::Inside);
         }
-        // Franja de color con el número de pista.
-        let k8 = rr(8.0) as u8;
-        p.rect_filled(Rect::from_min_size(r.min, vec2(26.0, r.height())), CornerRadius { nw: k8, sw: k8, ne: 0, se: 0 }, t.color);
-        let light = t.color.r() as u32 * 3 + t.color.g() as u32 * 6 + t.color.b() as u32 > 1300;
-        p.text(pos2(r.left() + 13.0, r.top() + 15.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(17.0), if light { BG() } else { TEXT() });
+        // Franja fina de color a la izquierda y número de pista pequeño.
+        let k4 = rr(4.0) as u8;
+        p.rect_filled(Rect::from_min_size(r.min, vec2(5.0, r.height())), CornerRadius { nw: k4, sw: k4, ne: 0, se: 0 }, t.color);
+        p.text(pos2(r.left() + 18.0, r.top() + 15.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(12.0), TEXT_DIM());
 
         // Medidor de salida de la pista (vertical, en el borde derecho).
         let meter = Rect::from_x_y_ranges(r.right() - 9.0..=r.right() - 4.0, r.top() + 6.0..=r.bottom() - 6.0);

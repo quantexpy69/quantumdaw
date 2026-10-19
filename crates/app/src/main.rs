@@ -43,10 +43,12 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-// Tokens de color del tema activo (Herramientas → Tema). Grafito es el original: grises neutros
-// oscuros al estilo de Logic, con buen contraste.
+// Tokens de color del tema activo (Ver → Tema). Pizarra es el predeterminado; Grafito, el original
+// de grises neutros al estilo de Logic.
 /// Temas: nombre y colores (fondo, panel, elevado, borde, texto, texto tenue, acento).
-const TEMAS: [(&str, [Color32; 7]); 6] = [
+const TEMAS: [(&str, [Color32; 7]); 7] = [
+    // Pizarra (predeterminado): azul grisáceo oscuro con acento naranja.
+    ("Pizarra", [Color32::from_rgb(0x1E, 0x24, 0x28), Color32::from_rgb(0x26, 0x2C, 0x31), Color32::from_rgb(0x2F, 0x37, 0x3D), Color32::from_rgb(0x3B, 0x45, 0x4C), Color32::from_rgb(0xD6, 0xDC, 0xE0), Color32::from_rgb(0x8A, 0x94, 0x9A), Color32::from_rgb(0xEC, 0xA6, 0x49)]),
     ("Grafito", [Color32::from_rgb(0x1A, 0x1A, 0x1C), Color32::from_rgb(0x25, 0x25, 0x28), Color32::from_rgb(0x30, 0x30, 0x34), Color32::from_rgb(0x3E, 0x3E, 0x44), Color32::from_rgb(0xED, 0xED, 0xEF), Color32::from_rgb(0xA3, 0xA3, 0xAB), Color32::from_rgb(0x5B, 0x8C, 0xFF)]),
     ("Medianoche", [Color32::from_rgb(0x12, 0x16, 0x1F), Color32::from_rgb(0x1A, 0x20, 0x30), Color32::from_rgb(0x23, 0x2B, 0x3D), Color32::from_rgb(0x33, 0x40, 0x5A), Color32::from_rgb(0xE6, 0xEC, 0xF5), Color32::from_rgb(0x9A, 0xA6, 0xBC), Color32::from_rgb(0x4F, 0xC3, 0xF7)]),
     ("Carbón", [Color32::from_rgb(0x0B, 0x0B, 0x0C), Color32::from_rgb(0x15, 0x15, 0x17), Color32::from_rgb(0x1E, 0x1E, 0x21), Color32::from_rgb(0x2C, 0x2C, 0x31), Color32::from_rgb(0xF2, 0xF2, 0xF2), Color32::from_rgb(0x9C, 0x9C, 0xA3), Color32::from_rgb(0xFF, 0x7A, 0x45)]),
@@ -87,6 +89,8 @@ fn TEXT_DIM() -> Color32 {
 fn ACCENT() -> Color32 {
     color_tema(6)
 }
+/// Verde de reproducir (botón de play y cifras del transporte sonando).
+const VERDE_PLAY: Color32 = Color32::from_rgb(0x99, 0xD0, 0x44);
 const METER: [Color32; 3] = [Color32::from_rgb(0x3D, 0xDC, 0x84), Color32::from_rgb(0xFF, 0xB0, 0x20), Color32::from_rgb(0xFF, 0x4D, 0x4F)];
 const AUDIO_EXT: [&str; 7] = ["wav", "flac", "ogg", "mp3", "m4a", "aac", "caf"];
 const NOTE_NAMES: [&str; 12] = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
@@ -2033,7 +2037,9 @@ impl App {
     fn bottom_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio")] {
-                ui.selectable_value(&mut self.bottom_tab, k, egui::RichText::new(tr(label)).strong());
+                if widgets::pildora(ui, self.bottom_tab == k, tr(label)).clicked() {
+                    self.bottom_tab = k;
+                }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("×").on_hover_text(tr("Ocultar panel (X)")).clicked() {
@@ -2162,8 +2168,7 @@ impl eframe::App for App {
         }
         self.engine.scope_on.store(self.show_mixer && self.bottom_tab == 2, Relaxed);
         // Franja del logo separada del menú; la barra de control crece según sus filas de cajas.
-        egui::Panel::top("title").exact_size(40.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 14, right: 14, top: 8, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
-        egui::Panel::top("menu").frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(10, 4))).show(ui, |ui| self.menu_bar(ui));
+        egui::Panel::top("title").exact_size(42.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 12, right: 12, top: 6, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
         let bar_h = self.bar_rows().len() as f32 * (chrome::BAR_ROW_H + 6.0) + 10.0;
         egui::Panel::top("control").exact_size(bar_h).show(ui, |ui| self.control_bar(ui));
         egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));

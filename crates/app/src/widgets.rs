@@ -114,6 +114,38 @@ pub fn icon_button(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32
     resp
 }
 
+/// Botón de icono con color propio cuando está activo (play verde, loop naranja).
+pub fn icon_button_color(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), color: Color32) -> Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(38.0, 30.0), Sense::click());
+    let p = ui.painter();
+    p.rect_filled(r, rr(8.0), if on { color } else if resp.hovered() { BORDER() } else { ELEVATED() });
+    draw(p, r.shrink2(vec2(11.0, 6.0)), if on { BG() } else { color });
+    resp
+}
+
+/// Pestaña de vista en mayúsculas con subrayado del color de acento cuando está activa.
+pub fn pestana(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
+    let galley = ui.painter().layout_no_wrap(texto.to_uppercase(), egui::FontId::proportional(13.5), if activa { TEXT() } else { TEXT_DIM() });
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 18.0, 30.0), Sense::click());
+    let color = if activa || resp.hovered() { TEXT() } else { TEXT_DIM() };
+    let p = ui.painter();
+    p.galley_with_override_text_color(pos2(r.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0 - 2.0), galley, color);
+    if activa {
+        p.rect_filled(Rect::from_center_size(pos2(r.center().x, r.bottom() - 2.0), vec2(18.0, 3.0)), rr(1.5), ACCENT());
+    }
+    resp
+}
+
+/// Pestaña tipo píldora (panel inferior): rellena de acento cuando está activa.
+pub fn pildora(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
+    let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.5), if activa { BG() } else { TEXT() });
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 26.0, 28.0), Sense::click());
+    let p = ui.painter();
+    p.rect_filled(r, rr(7.0), if activa { ACCENT() } else if resp.hovered() { BORDER() } else { ELEVATED() });
+    p.galley(r.center() - galley.size() / 2.0, galley, TEXT());
+    resp
+}
+
 /// Botón de grabar: círculo rojo; fondo rojo mientras graba.
 pub fn record_button(ui: &mut egui::Ui, on: bool) -> Response {
     let (r, resp) = ui.allocate_exact_size(vec2(38.0, 30.0), Sense::click());
