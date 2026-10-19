@@ -10,6 +10,8 @@ pub const FILE: &str = "project.qproj";
 pub const AUDIO_DIR: &str = "Audio Files";
 pub const RENDER_DIR: &str = "Rendered";
 pub const BACKUP_DIR: &str = "Backups";
+/// Autoguardado periódico del trabajo sin guardar (dentro de Backups/).
+pub const AUTOSAVE: &str = "autoguardado.qproj";
 /// Proxys: pistas pre-renderizadas (instrumento + efectos) para aliviar el procesador.
 pub const PROXY_DIR: &str = "Proxies";
 pub const VIDEO_DIR: &str = "Video";
@@ -259,7 +261,36 @@ impl Project {
         }
         let temporal = dir.join(format!("{FILE}.tmp"));
         fs::write(&temporal, serde_json::to_string_pretty(self)?)?;
-        Ok(fs::rename(temporal, actual)?)
+        fs::rename(temporal, actual)?;
+        // Guardado a mano: el autoguardado ya no hace falta.
+        let _ = fs::remove_file(dir.join(BACKUP_DIR).join(AUTOSAVE));
+        Ok(())
+    }
+
+    /// Autoguardado del trabajo sin guardar en Backups/autoguardado.qproj (no toca project.qproj).
+    pub fn autoguardar(&self, dir: &Path) -> anyhow::Result<()> {
+        let carpeta = dir.join(BACKUP_DIR);
+        fs::create_dir_all(&carpeta)?;
+        let temporal = carpeta.join(format!("{AUTOSAVE}.tmp"));
+        fs::write(&temporal, serde_json::to_string(self)?)?;
+        Ok(fs::rename(temporal, carpeta.join(AUTOSAVE))?)
+    }
+
+    /// Autoguardado más nuevo que el proyecto guardado (cambios que quedaron sin guardar tras un cierre).
+    pub fn autoguardado_pendiente(dir: &Path) -> Option<std::time::SystemTime> {
+        let auto = fs::metadata(dir.join(BACKUP_DIR).join(AUTOSAVE)).and_then(|m| m.modified()).ok()?;
+        let guardado = fs::metadata(dir.join(FILE)).and_then(|m| m.modified()).ok();
+        guardado.is_none_or(|g| auto > g).then_some(auto)
+    }
+
+    pub fn cargar_autoguardado(dir: &Path) -> anyhow::Result<Self> {
+        let mut p: Self = serde_json::from_str(&fs::read_to_string(dir.join(BACKUP_DIR).join(AUTOSAVE))?)?;
+        p.version = VERSION;
+        Ok(p)
+    }
+
+    pub fn borrar_autoguardado(dir: &Path) {
+        let _ = fs::remove_file(dir.join(BACKUP_DIR).join(AUTOSAVE));
     }
 
     /// Carga el proyecto o, si no existe, genera uno de demostración.

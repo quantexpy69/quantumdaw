@@ -59,7 +59,7 @@ impl App {
             ui.vertical(|ui| {
                 ui.set_width(190.0);
                 let a = &mut self.analyzer;
-                ui.label(RichText::new(tr("ANALIZADOR")).size(10.0).strong().color(ACCENT));
+                ui.label(RichText::new(tr("ANALIZADOR")).size(10.0).strong().color(ACCENT()));
                 egui::ComboBox::from_label(tr("Resolución")).selected_text(format!("{}", a.size)).show_ui(ui, |ui| {
                     for s in [2048, 4096, 8192, 16384] {
                         ui.selectable_value(&mut a.size, s, format!("{s} puntos"));
@@ -79,27 +79,27 @@ impl App {
                 let master = self.levels.last().copied().unwrap_or(0.0);
                 let peak = self.peaks.last().copied().unwrap_or(0.0);
                 ui.label(RichText::new(format!("Nivel master: {} dB", widgets::db_text(master))).monospace().size(11.0));
-                ui.label(RichText::new(format!("Pico máximo: {} dB", widgets::db_text(peak))).monospace().size(11.0).color(if widgets::db(peak) > 0.0 { METER[2] } else { TEXT }));
+                ui.label(RichText::new(format!("Pico máximo: {} dB", widgets::db_text(peak))).monospace().size(11.0).color(if widgets::db(peak) > 0.0 { METER[2] } else { TEXT() }));
             });
             let rect = ui.available_rect_before_wrap();
             ui.allocate_rect(rect, Sense::hover());
             let p = ui.painter_at(rect);
-            p.rect_filled(rect, rr(8.0), BG);
+            p.rect_filled(rect, rr(8.0), BG());
             let r = rect.shrink2(egui::vec2(30.0, 12.0));
             let x_of = |f: f32| r.left() + (f / 20.0).log10() / 3.0 * r.width();
             let y_of = |db: f32| r.top() + (CEIL - db.clamp(FLOOR, CEIL)) / (CEIL - FLOOR) * r.height();
             for f in [50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0] {
-                p.vline(x_of(f), r.y_range(), Stroke::new(1.0, PANEL));
+                p.vline(x_of(f), r.y_range(), Stroke::new(1.0, PANEL()));
                 let text = if f >= 1000.0 { format!("{}k", f / 1000.0) } else { format!("{f}") };
-                p.text(pos2(x_of(f), r.bottom() + 1.0), Align2::CENTER_TOP, text, FontId::monospace(9.0), TEXT_DIM);
+                p.text(pos2(x_of(f), r.bottom() + 1.0), Align2::CENTER_TOP, text, FontId::monospace(9.0), TEXT_DIM());
             }
             for db in (-84..=0).step_by(12) {
-                p.hline(r.x_range(), y_of(db as f32), Stroke::new(1.0, PANEL));
-                p.text(pos2(r.left() - 4.0, y_of(db as f32)), Align2::RIGHT_CENTER, db.to_string(), FontId::monospace(9.0), TEXT_DIM);
+                p.hline(r.x_range(), y_of(db as f32), Stroke::new(1.0, PANEL()));
+                p.text(pos2(r.left() - 4.0, y_of(db as f32)), Align2::RIGHT_CENTER, db.to_string(), FontId::monospace(9.0), TEXT_DIM());
             }
             let a = &self.analyzer;
             if a.spec.is_empty() {
-                p.text(r.center(), Align2::CENTER_CENTER, tr("Reproduce el proyecto para ver el espectro"), FontId::proportional(13.0), TEXT_DIM);
+                p.text(r.center(), Align2::CENTER_CENTER, tr("Reproduce el proyecto para ver el espectro"), FontId::proportional(13.0), TEXT_DIM());
                 return;
             }
             let bins = a.spec.len();
@@ -113,11 +113,11 @@ impl App {
             let mut line: Vec<Pos2> = vec![];
             for c in 0..cols {
                 let (x, y) = (r.left() + c as f32, y_of(value(&a.spec, freq(c))));
-                mesh.add_colored_rect(Rect::from_x_y_ranges(x..=x + 1.0, y..=r.bottom()), ACCENT.gamma_multiply(0.25));
+                mesh.add_colored_rect(Rect::from_x_y_ranges(x..=x + 1.0, y..=r.bottom()), ACCENT().gamma_multiply(0.25));
                 line.push(pos2(x, y));
             }
             p.add(mesh);
-            p.add(egui::Shape::line(line, Stroke::new(1.5, ACCENT)));
+            p.add(egui::Shape::line(line, Stroke::new(1.5, ACCENT())));
             if a.hold {
                 let peaks: Vec<Pos2> = (0..cols).map(|c| pos2(r.left() + c as f32, y_of(value(&a.peak, freq(c))))).collect();
                 p.add(egui::Shape::line(peaks, Stroke::new(1.0, METER[1].gamma_multiply(0.8))));

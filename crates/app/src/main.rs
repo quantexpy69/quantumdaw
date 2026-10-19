@@ -13,7 +13,9 @@ mod icons;
 mod instruments;
 mod keys;
 mod library;
+mod midi_archivo;
 mod mixer;
+mod paleta;
 mod pianoroll;
 mod plugins;
 mod proxies;
@@ -39,14 +41,50 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-// Tokens de color: grises neutros oscuros al estilo de Logic, con buen contraste.
-const BG: Color32 = Color32::from_rgb(0x1A, 0x1A, 0x1C);
-const PANEL: Color32 = Color32::from_rgb(0x25, 0x25, 0x28);
-const ELEVATED: Color32 = Color32::from_rgb(0x30, 0x30, 0x34);
-const BORDER: Color32 = Color32::from_rgb(0x3E, 0x3E, 0x44);
-const TEXT: Color32 = Color32::from_rgb(0xED, 0xED, 0xEF);
-const TEXT_DIM: Color32 = Color32::from_rgb(0xA3, 0xA3, 0xAB);
-const ACCENT: Color32 = Color32::from_rgb(0x5B, 0x8C, 0xFF);
+// Tokens de color del tema activo (Herramientas → Tema). Grafito es el original: grises neutros
+// oscuros al estilo de Logic, con buen contraste.
+/// Temas: nombre y colores (fondo, panel, elevado, borde, texto, texto tenue, acento).
+const TEMAS: [(&str, [Color32; 7]); 6] = [
+    ("Grafito", [Color32::from_rgb(0x1A, 0x1A, 0x1C), Color32::from_rgb(0x25, 0x25, 0x28), Color32::from_rgb(0x30, 0x30, 0x34), Color32::from_rgb(0x3E, 0x3E, 0x44), Color32::from_rgb(0xED, 0xED, 0xEF), Color32::from_rgb(0xA3, 0xA3, 0xAB), Color32::from_rgb(0x5B, 0x8C, 0xFF)]),
+    ("Medianoche", [Color32::from_rgb(0x12, 0x16, 0x1F), Color32::from_rgb(0x1A, 0x20, 0x30), Color32::from_rgb(0x23, 0x2B, 0x3D), Color32::from_rgb(0x33, 0x40, 0x5A), Color32::from_rgb(0xE6, 0xEC, 0xF5), Color32::from_rgb(0x9A, 0xA6, 0xBC), Color32::from_rgb(0x4F, 0xC3, 0xF7)]),
+    ("Carbón", [Color32::from_rgb(0x0B, 0x0B, 0x0C), Color32::from_rgb(0x15, 0x15, 0x17), Color32::from_rgb(0x1E, 0x1E, 0x21), Color32::from_rgb(0x2C, 0x2C, 0x31), Color32::from_rgb(0xF2, 0xF2, 0xF2), Color32::from_rgb(0x9C, 0x9C, 0xA3), Color32::from_rgb(0xFF, 0x7A, 0x45)]),
+    ("Ciruela", [Color32::from_rgb(0x18, 0x14, 0x1D), Color32::from_rgb(0x22, 0x1C, 0x29), Color32::from_rgb(0x2D, 0x25, 0x36), Color32::from_rgb(0x41, 0x36, 0x4F), Color32::from_rgb(0xEE, 0xE8, 0xF4), Color32::from_rgb(0xA7, 0x9D, 0xB5), Color32::from_rgb(0xC7, 0x7D, 0xFF)]),
+    ("Bosque", [Color32::from_rgb(0x12, 0x18, 0x15), Color32::from_rgb(0x1A, 0x22, 0x1D), Color32::from_rgb(0x23, 0x30, 0x29), Color32::from_rgb(0x34, 0x45, 0x39), Color32::from_rgb(0xE7, 0xF0, 0xEA), Color32::from_rgb(0x9D, 0xB0, 0xA3), Color32::from_rgb(0x4A, 0xDE, 0x80)]),
+    ("Ámbar", [Color32::from_rgb(0x1B, 0x17, 0x12), Color32::from_rgb(0x25, 0x20, 0x1A), Color32::from_rgb(0x31, 0x2A, 0x21), Color32::from_rgb(0x46, 0x3C, 0x2F), Color32::from_rgb(0xF3, 0xEC, 0xE2), Color32::from_rgb(0xB3, 0xA6, 0x91), Color32::from_rgb(0xFF, 0xB0, 0x20)]),
+];
+static TEMA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn color_tema(k: usize) -> Color32 {
+    TEMAS[TEMA.load(Relaxed).min(TEMAS.len() - 1)].1[k]
+}
+#[allow(non_snake_case)]
+fn BG() -> Color32 {
+    color_tema(0)
+}
+#[allow(non_snake_case)]
+fn PANEL() -> Color32 {
+    color_tema(1)
+}
+#[allow(non_snake_case)]
+fn ELEVATED() -> Color32 {
+    color_tema(2)
+}
+#[allow(non_snake_case)]
+fn BORDER() -> Color32 {
+    color_tema(3)
+}
+#[allow(non_snake_case)]
+fn TEXT() -> Color32 {
+    color_tema(4)
+}
+#[allow(non_snake_case)]
+fn TEXT_DIM() -> Color32 {
+    color_tema(5)
+}
+#[allow(non_snake_case)]
+fn ACCENT() -> Color32 {
+    color_tema(6)
+}
 const METER: [Color32; 3] = [Color32::from_rgb(0x3D, 0xDC, 0x84), Color32::from_rgb(0xFF, 0xB0, 0x20), Color32::from_rgb(0xFF, 0x4D, 0x4F)];
 const AUDIO_EXT: [&str; 7] = ["wav", "flac", "ogg", "mp3", "m4a", "aac", "caf"];
 const NOTE_NAMES: [&str; 12] = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
@@ -147,6 +185,8 @@ struct Config {
     author: String,
     /// Ventanas flotantes que se muestran separadas del programa (ventanas del sistema).
     separadas: Vec<String>,
+    /// Tema de color (índice en `TEMAS`).
+    tema: usize,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
     /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
@@ -601,6 +641,12 @@ struct App {
     fx_window: Option<usize>,
     /// Informe de error pendiente de enviar o descartar.
     informe: Option<informes::Pendiente>,
+    /// Cambios sin guardar, último autoguardado y autoguardado pendiente de recuperar (su fecha).
+    cambios: bool,
+    autoguardado: std::time::Instant,
+    recuperar: Option<SystemTime>,
+    /// Paleta de comandos abierta (Ctrl/Cmd+K).
+    paleta: Option<paleta::Paleta>,
     audio: AudioConfig,
     /// Dispositivos de audio conocidos (para mostrar nombres legibles).
     devices: Vec<DeviceInfo>,
@@ -610,9 +656,11 @@ struct App {
 
 impl App {
     fn new(dir: PathBuf, config: Config, ctx: &egui::Context) -> anyhow::Result<Self> {
+        TEMA.store(config.tema, Relaxed);
         theme(ctx);
         ctx.set_zoom_factor(if config.ui_scale > 0.0 { config.ui_scale } else { 1.0 });
         let p = Project::open_or_demo(&dir)?;
+        let autoguardado_inicio = Project::autoguardado_pendiente(&dir);
         // El mixer y la biblioteca que quedaron en otra ventana (por ejemplo en otro monitor) vuelven a abrirse así.
         let separadas_inicio = (config.separadas.iter().any(|s| s == "mixer-win"), config.separadas.iter().any(|s| s == "lib-win"));
         let cfg = audio_config(&p);
@@ -705,6 +753,10 @@ impl App {
             audio: AudioConfig::default(),
             devices: engine::audio_devices(),
             rec_bits: 24,
+            cambios: false,
+            autoguardado: std::time::Instant::now(),
+            recuperar: autoguardado_inicio,
+            paleta: None,
             informe: informes::pendiente(),
             status: String::new(),
         };
@@ -948,6 +1000,7 @@ impl App {
     fn save(&mut self) {
         self.meta.saved_at = now_text();
         let r = self.to_project().save(&self.dir);
+        self.cambios &= r.is_err();
         self.report(format!("Proyecto guardado en {}", self.dir.display()), r);
     }
 
@@ -971,7 +1024,12 @@ impl App {
 
     fn open_dir(&mut self, dir: PathBuf) -> anyhow::Result<()> {
         let p = if dir.join(project::FILE).exists() { Project::load(&dir)? } else { Project::default() };
-        p.save(&dir)?;
+        // Si quedaron cambios sin guardar (cierre inesperado), se ofrece recuperarlos.
+        self.recuperar = Project::autoguardado_pendiente(&dir);
+        if self.recuperar.is_none() {
+            p.save(&dir)?;
+        }
+        self.cambios = false;
         self.reload(dir, p)
     }
 
@@ -994,6 +1052,9 @@ impl App {
 
     /// Copia el archivo a "Audio Files/" (sin sobrescribir) y lo coloca en `into` o en una pista nueva.
     fn import_one(&mut self, src: &Path, at: u64, into: Option<usize>) -> anyhow::Result<()> {
+        if src.extension().is_some_and(|e| e.eq_ignore_ascii_case("mid") || e.eq_ignore_ascii_case("midi")) {
+            return self.importar_midi(src, at);
+        }
         let frames = engine::decode(src, self.engine.sample_rate)?;
         let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let audio_dir = self.dir.join(AUDIO_DIR);
@@ -1086,6 +1147,7 @@ impl App {
 
     /// Guarda un punto de deshacer antes de un cambio estructural.
     fn edit(&mut self) {
+        self.cambios = true;
         self.undo.push(self.s.clone());
         if self.undo.len() > 200 {
             self.undo.remove(0);
@@ -1493,6 +1555,57 @@ impl App {
     }
 
     /// Crea una región MIDI vacía de 4 compases y la abre en el piano roll.
+    /// Importa un archivo .mid: una pista MIDI nueva por cada pista con notas, desde `at`.
+    fn importar_midi(&mut self, src: &Path, at: u64) -> anyhow::Result<()> {
+        let (pistas, bpm) = midi_archivo::leer(&fs::read(src)?)?;
+        anyhow::ensure!(!pistas.is_empty(), "el archivo MIDI no tiene notas");
+        self.edit();
+        let sr = self.sr();
+        let f = |s: f64| (s * sr) as u64;
+        for p in &pistas {
+            self.add_track(p.nombre.clone(), TrackKind::Midi);
+            let notas: Vec<Note> = p.notas.iter().map(|&(s, l, key, vel)| Note::new(f(s), f(l).max(1), key, vel)).collect();
+            let fin = notas.iter().map(|n| n.start + n.len).max().unwrap_or(0);
+            let compas = self.bar_frames().max(1);
+            let largo = (fin.div_ceil(compas) * compas).max(compas);
+            let i = self.s.tracks.len() - 1;
+            self.s.tracks[i].clips.push(Clip::new(Source::Midi(Arc::new(notas)), at, largo));
+        }
+        self.dirty = true;
+        self.status = format!("{} {} ({} BPM)", pistas.len(), tr("pista(s) MIDI importada(s)"), bpm.round());
+        Ok(())
+    }
+
+    /// Exporta a .mid una región MIDI o, sin región, todas las pistas MIDI del proyecto.
+    fn exportar_midi(&mut self, region: Option<(usize, usize)>) {
+        let sr = self.sr();
+        let pista = |t: &Track, clips: &[&Clip]| midi_archivo::PistaMidi {
+            nombre: t.name.clone(),
+            notas: clips
+                .iter()
+                .flat_map(|c| {
+                    let (o, a, b) = (c.origin(), c.start as i64, c.end() as i64);
+                    c.notes().into_iter().flat_map(move |n| n.iter().map(move |n| (o + n.start as i64, n.len as i64, n.key, n.vel)).collect::<Vec<_>>()).filter(move |n| n.0 >= a && n.0 < b).map(move |(s, l, k, v)| (s as f64 / sr, l.min(b - s) as f64 / sr, k, v))
+                })
+                .collect(),
+        };
+        let pistas: Vec<_> = match region {
+            Some((i, j)) => vec![pista(&self.s.tracks[i], &[&self.s.tracks[i].clips[j]])],
+            None => self.s.tracks.iter().filter(|t| t.clips.iter().any(|c| c.notes().is_some())).map(|t| pista(t, &t.clips.iter().filter(|c| c.notes().is_some()).collect::<Vec<_>>())).collect(),
+        };
+        if pistas.iter().all(|p| p.notas.is_empty()) {
+            self.status = tr("No hay notas MIDI para exportar").into();
+            return;
+        }
+        let nombre = region.map_or_else(|| self.meta.title.clone(), |(i, _)| self.s.tracks[i].name.clone());
+        let Some(ruta) = rfd::FileDialog::new().add_filter("MIDI", &["mid"]).set_directory(self.dir.join(RENDER_DIR)).set_file_name(format!("{}.mid", safe(&nombre))).save_file() else {
+            return;
+        };
+        let bpm = self.s.tempo.first().map_or(120.0, |t| t.1 as f64);
+        let r = fs::write(&ruta, midi_archivo::escribir(&pistas, bpm)).map_err(anyhow::Error::from);
+        self.report(format!("MIDI exportado: {}", ruta.display()), r);
+    }
+
     fn new_midi_region(&mut self, i: usize, at: u64) {
         self.edit();
         let clip = Clip::new(Source::Midi(Arc::new(vec![])), at, self.bar_frames() * 4);
@@ -1914,7 +2027,7 @@ impl App {
             });
         });
         match self.bottom_tab {
-            0 if self.mixer_float => _ = ui.label(egui::RichText::new(tr("El mixer está en una ventana flotante.")).color(TEXT_DIM)),
+            0 if self.mixer_float => _ = ui.label(egui::RichText::new(tr("El mixer está en una ventana flotante.")).color(TEXT_DIM())),
             0 => self.mixer(ui),
             1 => self.piano_roll(ui),
             2 => self.analyzer(ui),
@@ -1936,13 +2049,13 @@ fn describir_audio(c: &AudioConfig) -> String {
 fn theme(ctx: &egui::Context) {
     ctx.set_theme(egui::Theme::Dark);
     let mut v = egui::Visuals::dark();
-    (v.panel_fill, v.window_fill, v.extreme_bg_color, v.faint_bg_color) = (PANEL, PANEL, BG, ELEVATED);
-    v.override_text_color = Some(TEXT);
-    v.selection.bg_fill = ACCENT;
-    v.widgets.inactive.weak_bg_fill = ELEVATED;
-    v.widgets.inactive.bg_fill = BORDER;
-    v.widgets.hovered.weak_bg_fill = BORDER;
-    v.window_stroke.color = BORDER;
+    (v.panel_fill, v.window_fill, v.extreme_bg_color, v.faint_bg_color) = (PANEL(), PANEL(), BG(), ELEVATED());
+    v.override_text_color = Some(TEXT());
+    v.selection.bg_fill = ACCENT();
+    v.widgets.inactive.weak_bg_fill = ELEVATED();
+    v.widgets.inactive.bg_fill = BORDER();
+    v.widgets.hovered.weak_bg_fill = BORDER();
+    v.window_stroke.color = BORDER();
     ctx.set_visuals(v);
     let r = widgets::rr(8.0) as u8;
     ctx.all_styles_mut(|s| {
@@ -1961,6 +2074,40 @@ fn theme(ctx: &egui::Context) {
             s.text_styles.insert(style, FontId::new(size, family));
         }
     });
+}
+
+impl App {
+    /// Ofrece recuperar el autoguardado cuando es más nuevo que el proyecto guardado.
+    fn ventana_recuperar(&mut self, ctx: &egui::Context) {
+        let Some(cuando) = self.recuperar else { return };
+        let hora = chrono::DateTime::<chrono::Local>::from(cuando).format("%d/%m/%Y %H:%M").to_string();
+        let mut accion = None;
+        egui::Window::new(egui::RichText::new(tr("Recuperar cambios sin guardar")).strong()).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            ui.label(format!("{} ({hora}).", tr("Este proyecto tiene cambios que no se guardaron, por ejemplo por un cierre inesperado")));
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.add(egui::Button::new(egui::RichText::new(tr("Recuperar")).color(BG()).strong()).fill(ACCENT())).clicked() {
+                    accion = Some(true);
+                }
+                if ui.button(tr("Descartar")).clicked() {
+                    accion = Some(false);
+                }
+            });
+        });
+        match accion {
+            Some(true) => {
+                self.recuperar = None;
+                let r = Project::cargar_autoguardado(&self.dir).and_then(|p| self.reload(self.dir.clone(), p));
+                self.cambios = r.is_ok();
+                self.report(tr("Cambios recuperados: guarda el proyecto para conservarlos"), r);
+            }
+            Some(false) => {
+                self.recuperar = None;
+                Project::borrar_autoguardado(&self.dir);
+            }
+            None => {}
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -1989,8 +2136,8 @@ impl eframe::App for App {
         }
         self.engine.scope_on.store(self.show_mixer && self.bottom_tab == 2, Relaxed);
         // Franja del logo separada del menú; la barra de control crece según sus filas de cajas.
-        egui::Panel::top("title").exact_size(40.0).frame(egui::Frame::new().fill(BG).inner_margin(egui::Margin { left: 14, right: 14, top: 8, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
-        egui::Panel::top("menu").frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::symmetric(10, 4))).show(ui, |ui| self.menu_bar(ui));
+        egui::Panel::top("title").exact_size(40.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 14, right: 14, top: 8, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
+        egui::Panel::top("menu").frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(10, 4))).show(ui, |ui| self.menu_bar(ui));
         let bar_h = self.bar_rows().len() as f32 * (chrome::BAR_ROW_H + 6.0) + 10.0;
         egui::Panel::top("control").exact_size(bar_h).show(ui, |ui| self.control_bar(ui));
         egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
@@ -2007,7 +2154,7 @@ impl eframe::App for App {
         if self.show_lib && !self.lib_float {
             egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));
         }
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG)).show(ui, |ui| self.timeline(ui));
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG())).show(ui, |ui| self.timeline(ui));
         self.floating_windows(&ctx);
         self.fx_window(&ctx);
         self.route_window(&ctx);
@@ -2016,6 +2163,15 @@ impl eframe::App for App {
         self.video_window(&ctx);
         self.welcome_window(&ctx);
         self.ventana_informe(&ctx);
+        self.ventana_paleta(&ctx);
+        self.ventana_recuperar(&ctx);
+        // Autoguardado cada minuto si hay cambios (no mientras se graba).
+        if self.cambios && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > Duration::from_secs(60) {
+            self.autoguardado = std::time::Instant::now();
+            if let Err(e) = self.to_project().autoguardar(&self.dir) {
+                informes::registrar("ERROR", &format!("Autoguardado: {e:#}"));
+            }
+        }
         self.ventana_acordes(&ctx);
         self.ventana_instrumento(&ctx);
         self.apply_deletes();

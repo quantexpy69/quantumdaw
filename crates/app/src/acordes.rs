@@ -141,8 +141,8 @@ pub fn circulo(ui: &mut egui::Ui, tono: &mut u8, menor: &mut bool) -> Option<(u8
             let elegido = raiz == *tono && es_menor == *menor;
             // Las casillas vecinas (IV, V y relativas) son los acordes de la tonalidad.
             let color = match (elegido, distancia) {
-                (true, _) => ACCENT,
-                (_, 0 | 1) => ACCENT.gamma_multiply(0.35),
+                (true, _) => ACCENT(),
+                (_, 0 | 1) => ACCENT().gamma_multiply(0.35),
                 _ => Color32::from_white_alpha(if es_menor { 10 } else { 16 }),
             };
             // Sector de anillo en trozos convexos.
@@ -151,10 +151,10 @@ pub fn circulo(ui: &mut egui::Ui, tono: &mut u8, menor: &mut bool) -> Option<(u8
                 let (b0, b1) = (a0 + (a1 - a0) * s as f32 / 6.0, a0 + (a1 - a0) * (s + 1) as f32 / 6.0);
                 p.add(Shape::convex_polygon(vec![punto(b0, r0), punto(b0, r1), punto(b1, r1), punto(b1, r0)], color, Stroke::NONE));
             }
-            p.line_segment([punto(a0, r0), punto(a0, r1)], Stroke::new(1.5, PANEL));
+            p.line_segment([punto(a0, r0), punto(a0, r1)], Stroke::new(1.5, PANEL()));
             let txt = nombre(raiz, if es_menor { MENOR } else { MAYOR });
             let centro = punto((a0 + a1) / 2.0, (r0 + r1) / 2.0);
-            p.text(centro, Align2::CENTER_CENTER, txt, FontId::proportional(if es_menor { 11.0 } else { 14.0 }), if elegido { BG } else { TEXT });
+            p.text(centro, Align2::CENTER_CENTER, txt, FontId::proportional(if es_menor { 11.0 } else { 14.0 }), if elegido { BG() } else { TEXT() });
             if resp.clicked()
                 && let Some(m) = resp.interact_pointer_pos()
             {
@@ -167,8 +167,8 @@ pub fn circulo(ui: &mut egui::Ui, tono: &mut u8, menor: &mut bool) -> Option<(u8
             }
         }
     }
-    p.circle_stroke(c, r_ext, Stroke::new(1.0, BORDER));
-    p.text(c, Align2::CENTER_CENTER, tonalidad(*tono, *menor), FontId::proportional(18.0), ACCENT);
+    p.circle_stroke(c, r_ext, Stroke::new(1.0, BORDER()));
+    p.text(c, Align2::CENTER_CENTER, tonalidad(*tono, *menor), FontId::proportional(18.0), ACCENT());
     clic
 }
 

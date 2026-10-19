@@ -189,7 +189,7 @@ impl App {
                 None => {
                     let (r, _) = ui.allocate_exact_size(egui::vec2(w, w * 9.0 / 16.0), egui::Sense::hover());
                     ui.painter().rect_filled(r, widgets::rr(6.0), Color32::BLACK);
-                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("El cursor está fuera del video"), egui::FontId::proportional(14.0), TEXT_DIM);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("El cursor está fuera del video"), egui::FontId::proportional(14.0), TEXT_DIM());
                 }
             }
             // Barra de posición dentro del video.

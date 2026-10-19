@@ -247,7 +247,7 @@ impl App {
     pub fn audio_editor(&mut self, ui: &mut egui::Ui) {
         let Some((i, j, b)) = self.aedit_target() else {
             self.aedit = None;
-            ui.label(RichText::new(tr("Haz doble clic en una región de audio para editarla aquí.")).color(TEXT_DIM));
+            ui.label(RichText::new(tr("Haz doble clic en una región de audio para editarla aquí.")).color(TEXT_DIM()));
             return;
         };
         let sr = self.sr();
@@ -264,7 +264,7 @@ impl App {
         let tp = Process::TimePitch(e.length_pct / 100.0, e.semis + e.cents / 100.0);
 
         // Menú superior del editor.
-        egui::Frame::new().fill(ELEVATED).corner_radius(rr(8.0)).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+        egui::Frame::new().fill(ELEVATED()).corner_radius(rr(8.0)).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 widgets::menu_style(ui);
                 ui.menu_button(RichText::new(tr("Editar")).strong(), |ui| {
@@ -360,7 +360,7 @@ impl App {
                     ui.label(RichText::new(format!("{} {}", e.peaks.len(), tr("picos"))).color(METER[2]));
                 }
                 if !e.silences.is_empty() {
-                    ui.label(RichText::new(format!("{} {}", e.silences.len(), tr("silencios"))).color(TEXT_DIM));
+                    ui.label(RichText::new(format!("{} {}", e.silences.len(), tr("silencios"))).color(TEXT_DIM()));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(tr("Cerrar editor")).clicked() {
@@ -372,9 +372,9 @@ impl App {
         // Duraciones de la región y de la selección.
         let info = |len: u64, from: u64| format!("{len} {} · SMPTE {} · {:.2} {}", tr("muestras"), smpte(len, sr), bars_of(self, from, len), tr("compases"));
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("{}: {}", tr("Región"), info(c.len, c.start))).size(12.0).color(TEXT_DIM));
+            ui.label(RichText::new(format!("{}: {}", tr("Región"), info(c.len, c.start))).size(12.0).color(TEXT_DIM()));
             if e.sel.is_some() {
-                ui.label(RichText::new(format!("{}: {}", tr("Selección"), info(sel_len, c.start + sa))).size(12.0).color(ACCENT));
+                ui.label(RichText::new(format!("{}: {}", tr("Selección"), info(sel_len, c.start + sa))).size(12.0).color(ACCENT()));
             }
         });
 
@@ -384,7 +384,7 @@ impl App {
         // Id fijo: si dependiera del orden de los widgets, el arrastre se cortaría al aparecer la selección.
         let resp = ui.interact(wave, egui::Id::new("aedit-wave"), Sense::click_and_drag());
         let p = ui.painter_at(wave);
-        p.rect_filled(wave, rr(8.0), BG);
+        p.rect_filled(wave, rr(8.0), BG());
         let len = c.len.max(1);
         // Zoom con la rueda (alrededor del ratón) y desplazamiento con Shift+rueda.
         let mut vlen = if e.view.1 <= 0.0 { len as f64 } else { e.view.1.clamp(64.0, len as f64) };
@@ -405,7 +405,7 @@ impl App {
         let x_of = |f: u64| wave.left() + ((f as f64 - v0) / vlen) as f32 * wave.width();
         let f_at = |x: f32| (v0 + ((x - wave.left()) / wave.width()).clamp(0.0, 1.0) as f64 * vlen) as u64;
         if let Some((a, z)) = e.sel {
-            p.rect_filled(Rect::from_x_y_ranges(x_of(a)..=x_of(z), wave.y_range()), 0.0, ACCENT.gamma_multiply(0.22));
+            p.rect_filled(Rect::from_x_y_ranges(x_of(a)..=x_of(z), wave.y_range()), 0.0, ACCENT().gamma_multiply(0.22));
         }
         for &(a, z) in &e.silences {
             p.rect_filled(Rect::from_x_y_ranges(x_of(a)..=x_of(z), wave.y_range()), 0.0, Color32::from_white_alpha(10));
@@ -415,7 +415,7 @@ impl App {
         for ch in 0..2 {
             let h = wave.height() / 2.0;
             let mid = wave.top() + h * (ch as f32 + 0.5);
-            p.hline(wave.x_range(), mid, Stroke::new(1.0, BORDER));
+            p.hline(wave.x_range(), mid, Stroke::new(1.0, BORDER()));
             let mut mesh = egui::Mesh::default();
             for x in 0..wave.width() as usize {
                 let (f0, f1) = (c.offset as f64 + v0 + x as f64 * fpp, c.offset as f64 + v0 + (x + 1) as f64 * fpp);
@@ -435,12 +435,12 @@ impl App {
         if let Some((a, z)) = e.sel {
             p.rect_filled(Rect::from_x_y_ranges(x_of(a)..=x_of(z), wave.y_range()), 0.0, Color32::from_white_alpha(24));
             for f in [a, z] {
-                p.vline(x_of(f), wave.y_range(), Stroke::new(1.5, ACCENT));
+                p.vline(x_of(f), wave.y_range(), Stroke::new(1.5, ACCENT()));
             }
         }
         let pos = self.pos();
         if pos >= c.start && pos <= c.end() {
-            p.vline(x_of(pos - c.start), wave.y_range(), Stroke::new(1.5, TEXT));
+            p.vline(x_of(pos - c.start), wave.y_range(), Stroke::new(1.5, TEXT()));
         }
         if let Some(k) = e.cursor {
             p.vline(x_of(k), wave.y_range(), Stroke::new(1.0, METER[1]));
@@ -450,7 +450,7 @@ impl App {
             Align2::LEFT_TOP,
             tr("Arrastra para seleccionar · clic: cursor · rueda: zoom · Shift+rueda: desplazar · Supr, Ctrl+X/C/V"),
             FontId::proportional(11.0),
-            TEXT_DIM,
+            TEXT_DIM(),
         );
         if let Some(pp) = resp.interact_pointer_pos() {
             let f = f_at(pp.x);
@@ -474,7 +474,7 @@ impl App {
         if e.tpm {
             let panel = Rect::from_min_max(pos2(wave.right() + 8.0, wave.top()), pos2(wave.right() + 8.0 + side, wave.bottom()));
             ui.scope_builder(egui::UiBuilder::new().max_rect(panel), |ui| {
-                egui::Frame::new().fill(ELEVATED).corner_radius(rr(10.0)).inner_margin(10.0).show(ui, |ui| {
+                egui::Frame::new().fill(ELEVATED()).corner_radius(rr(10.0)).inner_margin(10.0).show(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.set_width(side - 24.0);
                         ui.label(RichText::new("Time & Pitch Machine").size(16.0).strong().color(METER[1]));
@@ -532,12 +532,12 @@ impl App {
                             if ui.button("■").on_hover_text(tr("Detener")).clicked() {
                                 self.engine.preview.store(None);
                             }
-                            let go = egui::Button::new(RichText::new(tr("Procesar y pegar")).strong().color(BG)).fill(METER[1]);
+                            let go = egui::Button::new(RichText::new(tr("Procesar y pegar")).strong().color(BG())).fill(METER[1]);
                             if ui.add(go).clicked() {
                                 run = Some(tp);
                             }
                         });
-                        ui.label(RichText::new(tr("Se aplica a la selección o, si no hay, a toda la región.")).size(11.0).color(TEXT_DIM));
+                        ui.label(RichText::new(tr("Se aplica a la selección o, si no hay, a toda la región.")).size(11.0).color(TEXT_DIM()));
                     });
                 });
             });

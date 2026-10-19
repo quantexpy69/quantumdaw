@@ -61,18 +61,18 @@ impl App {
                 builder = builder.with_icon(icono);
             }
             ctx.show_viewport_immediate(egui::ViewportId::from_hash_of(("ventana", id)), builder, |ui, _| {
-                egui::Panel::top(egui::Id::new(("barra-ventana", id))).frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {
+                egui::Panel::top(egui::Id::new(("barra-ventana", id))).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&titulo).strong().size(14.0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let b = egui::Button::new(RichText::new(tr("Acoplar al programa")).color(BG).strong()).fill(ACCENT);
+                            let b = egui::Button::new(RichText::new(tr("Acoplar al programa")).color(BG()).strong()).fill(ACCENT());
                             if ui.add(b).on_hover_text(tr("Vuelve a mostrar esta ventana dentro de Quantum DAW")).clicked() {
                                 alternar = true;
                             }
                         });
                     });
                 });
-                egui::CentralPanel::default().frame(egui::Frame::new().fill(PANEL).inner_margin(10.0)).show(ui, |ui| {
+                egui::CentralPanel::default().frame(egui::Frame::new().fill(PANEL()).inner_margin(10.0)).show(ui, |ui| {
                     if let Some(f) = contenido.take() {
                         if scroll {
                             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| f(self, ui));
@@ -98,7 +98,7 @@ impl App {
             ventana.show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let b = egui::Button::new(RichText::new(tr("Sacar a otra pantalla")).color(BG).strong()).fill(ACCENT);
+                        let b = egui::Button::new(RichText::new(tr("Sacar a otra pantalla")).color(BG()).strong()).fill(ACCENT());
                         if ui.add(b).on_hover_text(tr("Abre esta ventana como ventana propia del sistema: puedes llevarla a otro monitor y volver a acoplarla")).clicked() {
                             alternar = true;
                         }

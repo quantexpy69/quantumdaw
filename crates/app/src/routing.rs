@@ -57,8 +57,8 @@ impl App {
     pub fn route_button(&mut self, ui: &mut egui::Ui, i: usize) {
         let t = &self.s.tracks[i];
         let routed = !t.sends.is_empty() || !t.to_master;
-        let text = RichText::new(tr("ROUTE")).size(10.5).strong().color(if routed { ACCENT } else { TEXT_DIM });
-        if ui.add(egui::Button::new(text).fill(BG).min_size(egui::vec2(46.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Ruteo: salida, envíos y buses")).clicked() {
+        let text = RichText::new(tr("ROUTE")).size(10.5).strong().color(if routed { ACCENT() } else { TEXT_DIM() });
+        if ui.add(egui::Button::new(text).fill(BG()).min_size(egui::vec2(46.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Ruteo: salida, envíos y buses")).clicked() {
             self.route_window = Some(i);
         }
     }
@@ -92,9 +92,9 @@ impl App {
                 app.dirty = true;
             }
             ui.separator();
-            ui.label(RichText::new(tr("ENVÍOS (post-fader)")).size(10.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("ENVÍOS (post-fader)")).size(10.0).color(TEXT_DIM()));
             if app.s.tracks[i].sends.is_empty() {
-                ui.label(RichText::new(tr("Sin envíos. Envía a un bus para compartir efectos (reverb, delay…).")).color(TEXT_DIM));
+                ui.label(RichText::new(tr("Sin envíos. Envía a un bus para compartir efectos (reverb, delay…).")).color(TEXT_DIM()));
             }
             for k in 0..app.s.tracks[i].sends.len() {
                 let (id, mut g) = app.s.tracks[i].sends[k];
@@ -129,7 +129,7 @@ impl App {
             let receives: Vec<String> = app.s.tracks.iter().enumerate().filter(|(_, t)| t.sends.iter().any(|s| s.0 == id)).map(|(j, t)| format!("{} {}", j + 1, t.name)).collect();
             if !receives.is_empty() {
                 ui.separator();
-                ui.label(RichText::new(format!("RECIBE DE: {}", receives.join(", "))).size(11.0).color(TEXT_DIM));
+                ui.label(RichText::new(format!("RECIBE DE: {}", receives.join(", "))).size(11.0).color(TEXT_DIM()));
             }
         });
         match act {

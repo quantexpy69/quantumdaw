@@ -47,7 +47,7 @@ pub fn preview(ui: &mut egui::Ui, k: FxKind, sr: f32) {
     let defaults: Vec<f32> = k.params().iter().map(|p| p.3).collect();
     display(ui, Some(k), &defaults, [0.0; 2], kind_color(Some(k)), sr);
     ui.label(RichText::new(tr(summary(k))).size(12.5));
-    ui.label(RichText::new(format!("{} {}", k.params().len(), tr("parámetros"))).size(11.0).color(TEXT_DIM));
+    ui.label(RichText::new(format!("{} {}", k.params().len(), tr("parámetros"))).size(11.0).color(TEXT_DIM()));
 }
 
 /// Texto del valor de un parámetro con su unidad (o su nombre, en los discretos).
@@ -103,7 +103,7 @@ pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (
                 a.set(if DISCRETE.contains(&name) { v.round() } else { v });
             }
             ui.label(RichText::new(value_text(kind, name, a.get())).monospace().size(11.0).strong().color(color));
-            ui.label(RichText::new(tr(name.trim_end_matches(" dB").trim_end_matches(" ms"))).size(10.5).color(TEXT));
+            ui.label(RichText::new(tr(name.trim_end_matches(" dB").trim_end_matches(" ms"))).size(10.5).color(TEXT()));
         });
     });
 }
@@ -112,25 +112,25 @@ pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (
 fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2], color: Color32, sr: f32) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 96.0), Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, rr(8.0), BG);
+    painter.rect_filled(rect, rr(8.0), BG());
     let r = rect.shrink(8.0);
     let line = |pts: Vec<Pos2>| painter.add(egui::Shape::line(pts, Stroke::new(2.0, color)));
     let curve = |f: &dyn Fn(f32) -> f32| line((0..=120).map(|k| k as f32 / 120.0).map(|t| pos2(r.left() + t * r.width(), r.bottom() - f(t).clamp(0.0, 1.0) * r.height())).collect());
     let label = |pos: Pos2, align: Align2, text: String, size: f32, c: Color32| painter.text(pos, align, text, FontId::proportional(size), c);
-    painter.hline(r.x_range(), r.center().y, Stroke::new(1.0, PANEL));
+    painter.hline(r.x_range(), r.center().y, Stroke::new(1.0, PANEL()));
     match kind {
         Some(FxKind::Eq) => {
             curve(&|t| 0.5 + eq_response(p, 20.0 * 1000f32.powf(t), sr) / 36.0);
             for (f, text) in [(100.0, "100"), (1000.0, "1k"), (10000.0, "10k")] {
                 let x = r.left() + (f / 20.0f32).log10() / 3.0 * r.width();
-                painter.vline(x, r.y_range(), Stroke::new(1.0, PANEL));
-                label(pos2(x + 3.0, r.bottom()), Align2::LEFT_BOTTOM, text.into(), 9.0, TEXT_DIM);
+                painter.vline(x, r.y_range(), Stroke::new(1.0, PANEL()));
+                label(pos2(x + 3.0, r.bottom()), Align2::LEFT_BOTTOM, text.into(), 9.0, TEXT_DIM());
             }
         }
         // Vista previa de Curves (en la biblioteca): curva del EQ; el visor completo está en la ventana del plugin.
         Some(FxKind::Curves) => {
             curve(&|t| 0.5 + engine::curves_response(p, 20.0 * 1000f32.powf(t), sr) / 48.0);
-            label(pos2(r.right(), r.top()), Align2::RIGHT_TOP, tr("espectro, nodos y resonancias en el plugin").into(), 10.0, TEXT_DIM);
+            label(pos2(r.right(), r.top()), Align2::RIGHT_TOP, tr("espectro, nodos y resonancias en el plugin").into(), 10.0, TEXT_DIM());
         }
         Some(FxKind::Compressor) => {
             curve(&|t| {
@@ -163,12 +163,12 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
             let name = |n: f32| format!("{}{}", NOTE_NAMES[(n.round() as i32).rem_euclid(12) as usize], (n.round() as i32) / 12 - 1);
             if readout[0] > 0.0 {
                 let cents = ((readout[0] - readout[1]) * 100.0).round();
-                label(pos2(r.center().x - 60.0, r.center().y), Align2::CENTER_CENTER, name(readout[0]), 30.0, TEXT_DIM);
-                label(r.center(), Align2::CENTER_CENTER, "→".into(), 22.0, TEXT_DIM);
+                label(pos2(r.center().x - 60.0, r.center().y), Align2::CENTER_CENTER, name(readout[0]), 30.0, TEXT_DIM());
+                label(r.center(), Align2::CENTER_CENTER, "→".into(), 22.0, TEXT_DIM());
                 label(pos2(r.center().x + 60.0, r.center().y), Align2::CENTER_CENTER, name(readout[1]), 30.0, color);
-                label(pos2(r.center().x, r.bottom()), Align2::CENTER_BOTTOM, format!("{cents:+} cents corregidos"), 11.0, TEXT_DIM);
+                label(pos2(r.center().x, r.bottom()), Align2::CENTER_BOTTOM, format!("{cents:+} cents corregidos"), 11.0, TEXT_DIM());
             } else {
-                label(r.center(), Align2::CENTER_CENTER, "Canta o toca una nota para ver la corrección".into(), 13.0, TEXT_DIM);
+                label(r.center(), Align2::CENTER_CENTER, "Canta o toca una nota para ver la corrección".into(), 13.0, TEXT_DIM());
             }
         }
         None => {
@@ -221,15 +221,15 @@ impl App {
                     ui.horizontal(|ui| {
                         if let Some(b) = bypass {
                             let on = !b.load(Relaxed);
-                            let power = egui::Button::new(RichText::new(if on { "ON" } else { "OFF" }).size(10.0).strong().color(if on { BG } else { TEXT_DIM }))
-                                .fill(if on { METER[0] } else { BG })
+                            let power = egui::Button::new(RichText::new(if on { "ON" } else { "OFF" }).size(10.0).strong().color(if on { BG() } else { TEXT_DIM() }))
+                                .fill(if on { METER[0] } else { BG() })
                                 .corner_radius(rr(10.0));
                             if ui.add(power).on_hover_text(if on { "Activo · clic para bypass" } else { "En bypass · clic para activar" }).clicked() {
                                 b.store(on, Relaxed);
                             }
                         }
                         ui.label(RichText::new(tr("QUANTUM")).size(10.0).strong().color(accent));
-                        ui.label(RichText::new(tr(name).trim_start_matches("QUANTUM ")).size(17.0).strong().color(TEXT));
+                        ui.label(RichText::new(tr(name).trim_start_matches("QUANTUM ")).size(17.0).strong().color(TEXT()));
                         if let Some(j) = j {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.small_button(tr("Quitar")).clicked() {
@@ -269,18 +269,18 @@ impl App {
                             }
                         });
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM())));
                 });
                 ui.add_space(6.0);
             };
             if let Some(s) = &t.sampler {
                 // Instrumento real (sampler): volumen y créditos de la biblioteca.
-                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM));
-                egui::Frame::new().fill(PLUGIN_BG).corner_radius(rr(12.0)).stroke(Stroke::new(1.0, BORDER)).inner_margin(10.0).show(ui, |ui| {
+                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                egui::Frame::new().fill(PLUGIN_BG).corner_radius(rr(12.0)).stroke(Stroke::new(1.0, BORDER())).inner_margin(10.0).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     let e = instruments::find(&t.instrument);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr("QUANTUM")).size(10.0).strong().color(ACCENT));
+                        ui.label(RichText::new(tr("QUANTUM")).size(10.0).strong().color(ACCENT()));
                         ui.label(RichText::new(e.map_or(s.name.as_str(), |e| e.name)).size(16.0).strong());
                     });
                     let mut db = widgets::db(s.gain.get());
@@ -288,18 +288,18 @@ impl App {
                         s.gain.set(10f32.powf(db / 20.0));
                     }
                     if let Some(e) = e {
-                        ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM));
+                        ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM()));
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM())));
                 });
                 ui.add_space(6.0);
             } else if let Some(s) = &t.synth {
-                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM));
+                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
                 plugin(ui, "Synth", None, &s.params, &SYNTH_PARAMS, None, [0.0; 2], None, None, &mut act);
             }
-            ui.label(RichText::new(tr("EFECTOS DE AUDIO")).size(10.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("EFECTOS DE AUDIO")).size(10.0).color(TEXT_DIM()));
             if t.fx.is_empty() {
-                ui.label(RichText::new(tr("Sin efectos. Añade uno abajo o arrástralo desde la Biblioteca.")).color(TEXT_DIM));
+                ui.label(RichText::new(tr("Sin efectos. Añade uno abajo o arrástralo desde la Biblioteca.")).color(TEXT_DIM()));
             }
             for (j, fx) in t.fx.iter().enumerate() {
                 let readout = [fx.readout[0].get(), fx.readout[1].get()];

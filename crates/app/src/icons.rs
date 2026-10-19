@@ -65,9 +65,9 @@ pub fn picker(ui: &mut egui::Ui, t: &mut Track, size: f32) {
             for (k, (id, label)) in ICONS.iter().enumerate() {
                 let on = of(t) == *id;
                 // El elegido: silueta en color de acento sobre fondo oscuro con anillo (no relleno sólido).
-                let img = image(id).tint(if on { ACCENT } else { TEXT }).fit_to_exact_size(egui::vec2(28.0, 28.0));
-                let fill = if on { ACCENT.gamma_multiply(0.15) } else { Color32::TRANSPARENT };
-                let b = ui.add(egui::Button::image(img).fill(fill).stroke(egui::Stroke::new(if on { 2.0 } else { 0.0 }, ACCENT))).on_hover_text(tr(label));
+                let img = image(id).tint(if on { ACCENT() } else { TEXT() }).fit_to_exact_size(egui::vec2(28.0, 28.0));
+                let fill = if on { ACCENT().gamma_multiply(0.15) } else { Color32::TRANSPARENT };
+                let b = ui.add(egui::Button::image(img).fill(fill).stroke(egui::Stroke::new(if on { 2.0 } else { 0.0 }, ACCENT()))).on_hover_text(tr(label));
                 if b.clicked() {
                     t.icon = id.to_string();
                 }

@@ -56,15 +56,15 @@ fn row(ui: &mut egui::Ui, h: f32, indent: f32, selected: bool, paint: impl FnOnc
         rect,
         rr(8.0),
         if selected {
-            ACCENT.gamma_multiply(0.35)
+            ACCENT().gamma_multiply(0.35)
         } else if hov {
-            BORDER
+            BORDER()
         } else {
-            ELEVATED
+            ELEVATED()
         },
     );
     if hov {
-        p.rect_stroke(rect, rr(8.0), Stroke::new(1.0, ACCENT.gamma_multiply(0.8)), StrokeKind::Inside);
+        p.rect_stroke(rect, rr(8.0), Stroke::new(1.0, ACCENT().gamma_multiply(0.8)), StrokeKind::Inside);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     paint(&p, rect);
@@ -163,13 +163,13 @@ impl App {
                 // Asa para reordenar la sección.
                 for k in 0..3 {
                     for c in 0..2 {
-                        p.circle_filled(r.left_center() + vec2(8.0 + c as f32 * 4.0, -4.0 + k as f32 * 4.0), 1.2, TEXT_DIM);
+                        p.circle_filled(r.left_center() + vec2(8.0 + c as f32 * 4.0, -4.0 + k as f32 * 4.0), 1.2, TEXT_DIM());
                     }
                 }
             }
-            arrow(p, r.left_center() + vec2(if big { 26.0 } else { 14.0 }, 0.0), open, if big { ACCENT } else { TEXT });
-            title(p, r.left_center() + vec2(if big { 38.0 } else { 26.0 }, 0.0), text, if big { 16.0 } else { 14.0 }, TEXT);
-            p.text(r.right_center() - vec2(10.0, 0.0), Align2::RIGHT_CENTER, count.to_string(), FontId::proportional(12.0), TEXT_DIM);
+            arrow(p, r.left_center() + vec2(if big { 26.0 } else { 14.0 }, 0.0), open, if big { ACCENT() } else { TEXT() });
+            title(p, r.left_center() + vec2(if big { 38.0 } else { 26.0 }, 0.0), text, if big { 16.0 } else { 14.0 }, TEXT());
+            p.text(r.right_center() - vec2(10.0, 0.0), Align2::RIGHT_CENTER, count.to_string(), FontId::proportional(12.0), TEXT_DIM());
         });
         if resp.clicked() {
             self.toggle(key);
@@ -210,7 +210,7 @@ impl App {
                 let r = ui.add(egui::Button::selectable(on, RichText::new(tr(SECTIONS[k].1)).size(14.0).strong()).min_size(vec2(0.0, 30.0)).sense(Sense::click_and_drag()));
                 r.dnd_set_drag_payload(LibSection(pos));
                 if r.dnd_hover_payload::<LibSection>().is_some() {
-                    ui.painter().vline(r.rect.left() - 2.0, r.rect.y_range(), Stroke::new(3.0, ACCENT));
+                    ui.painter().vline(r.rect.left() - 2.0, r.rect.y_range(), Stroke::new(3.0, ACCENT()));
                 }
                 if let Some(from) = r.dnd_release_payload::<LibSection>() {
                     moved = Some((from.0, pos));
@@ -255,7 +255,7 @@ impl App {
         for (label, path) in self.places.clone() {
             self.tree_node(ui, &label, &path, 0);
         }
-        ui.label(RichText::new(tr("Clic: escuchar · doble clic: importar · arrastrar: a una pista o al espacio vacío")).size(11.0).color(TEXT_DIM));
+        ui.label(RichText::new(tr("Clic: escuchar · doble clic: importar · arrastrar: a una pista o al espacio vacío")).size(11.0).color(TEXT_DIM()));
     }
 
     /// Nodo del árbol de carpetas: se lee del disco solo al desplegarlo.
@@ -266,10 +266,10 @@ impl App {
         let selected = self.preview_file.as_deref() == Some(path);
         let resp = row(ui, 28.0, indent, selected, |p, r| {
             if is_dir {
-                arrow(p, r.left_center() + vec2(12.0, 0.0), open, TEXT_DIM);
+                arrow(p, r.left_center() + vec2(12.0, 0.0), open, TEXT_DIM());
             }
-            file_icon(p, r.left_center() + vec2(30.0, 0.0), is_dir, if is_dir { METER[1] } else { ACCENT });
-            title(p, r.left_center() + vec2(44.0, 0.0), label, 14.0, TEXT);
+            file_icon(p, r.left_center() + vec2(30.0, 0.0), is_dir, if is_dir { METER[1] } else { ACCENT() });
+            title(p, r.left_center() + vec2(44.0, 0.0), label, 14.0, TEXT());
         });
         if !is_dir {
             resp.dnd_set_drag_payload(LibItem::File(path.to_path_buf()));
@@ -316,7 +316,7 @@ impl App {
         if is_dir && open {
             let children = self.tree_cache.entry(path.to_path_buf()).or_insert_with(|| list_dir(path)).clone();
             if children.is_empty() {
-                ui.label(RichText::new(tr("   (vacía)")).size(11.0).color(TEXT_DIM));
+                ui.label(RichText::new(tr("   (vacía)")).size(11.0).color(TEXT_DIM()));
             }
             for c in children {
                 let name = c.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -353,7 +353,7 @@ impl App {
         let Some(file) = self.preview_file.clone() else {
             return;
         };
-        egui::Frame::new().fill(PANEL).stroke(Stroke::new(1.0, BORDER)).corner_radius(rr(10.0)).inner_margin(8.0).show(ui, |ui| {
+        egui::Frame::new().fill(PANEL()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(10.0)).inner_margin(8.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(file.file_name().unwrap_or_default().to_string_lossy()).strong().size(14.0));
             ui.horizontal(|ui| {
@@ -361,12 +361,12 @@ impl App {
                 let icon = |ui: &mut egui::Ui, play: bool| {
                     let (r, resp) = ui.allocate_exact_size(vec2(34.0, 28.0), Sense::click());
                     let p = ui.painter();
-                    p.rect_filled(r, rr(14.0), if resp.hovered() { BORDER } else { ELEVATED });
+                    p.rect_filled(r, rr(14.0), if resp.hovered() { BORDER() } else { ELEVATED() });
                     let c = r.center();
                     if play {
                         p.add(egui::Shape::convex_polygon(vec![c + vec2(-4.0, -7.0), c + vec2(-4.0, 7.0), c + vec2(7.0, 0.0)], METER[0], Stroke::NONE));
                     } else {
-                        p.rect_filled(Rect::from_center_size(c, vec2(11.0, 11.0)), rr(2.0), TEXT);
+                        p.rect_filled(Rect::from_center_size(c, vec2(11.0, 11.0)), rr(2.0), TEXT());
                     }
                     resp
                 };
@@ -388,10 +388,10 @@ impl App {
             });
             let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 6.0), Sense::hover());
             let frac = if self.preview_len > 0 { (self.engine.preview_pos.load(Relaxed) as f32 / self.preview_len as f32).min(1.0) } else { 0.0 };
-            ui.painter().rect_filled(r, rr(3.0), BG);
-            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width() * frac, r.height())), rr(3.0), ACCENT);
+            ui.painter().rect_filled(r, rr(3.0), BG());
+            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width() * frac, r.height())), rr(3.0), ACCENT());
             if self.preview_rx.is_some() {
-                ui.label(RichText::new(tr("Cargando…")).size(11.0).color(TEXT_DIM));
+                ui.label(RichText::new(tr("Cargando…")).size(11.0).color(TEXT_DIM()));
             }
         });
         if self.engine.preview.load().is_some() {
@@ -416,8 +416,8 @@ impl App {
             for &k in kinds {
                 let r = row(ui, 44.0, 20.0, false, |p, r| {
                     p.rect_filled(Rect::from_min_size(r.left_top() + vec2(2.0, 8.0), vec2(4.0, r.height() - 16.0)), 2.0, plugins::kind_color(Some(k)));
-                    title(p, r.left_center() + vec2(14.0, -8.0), k.name(), 14.5, TEXT);
-                    title(p, r.left_center() + vec2(14.0, 10.0), describe(k), 12.0, TEXT_DIM);
+                    title(p, r.left_center() + vec2(14.0, -8.0), k.name(), 14.5, TEXT());
+                    title(p, r.left_center() + vec2(14.0, 10.0), describe(k), 12.0, TEXT_DIM());
                 });
                 r.dnd_set_drag_payload(LibItem::Fx(k));
                 r.context_menu(|ui| {
@@ -436,7 +436,7 @@ impl App {
                 let sr = self.sr() as f32;
                 r.on_hover_ui(|ui| {
                     plugins::preview(ui, k, sr);
-                    ui.label(egui::RichText::new(tr("Arrastra a una pista o canal · doble clic: añadir a la pista seleccionada")).size(11.0).color(TEXT_DIM));
+                    ui.label(egui::RichText::new(tr("Arrastra a una pista o canal · doble clic: añadir a la pista seleccionada")).size(11.0).color(TEXT_DIM()));
                 });
             }
         }
@@ -459,12 +459,12 @@ impl App {
             let installed = instruments::installed(e.id);
             let (right, color) = match (installed, st.as_str()) {
                 (true, _) => ("Instalado".to_string(), METER[0]),
-                (false, "") | (false, "Listo") => (format!("Descargar · {} MB", e.mb), ACCENT),
+                (false, "") | (false, "Listo") => (format!("Descargar · {} MB", e.mb), ACCENT()),
                 (false, s) => (s.to_string(), METER[1]),
             };
             let r = row(ui, 46.0, 20.0, target.is_some_and(|i| self.s.tracks[i].instrument == e.id), |p, r| {
-                title(p, r.left_center() + vec2(12.0, -9.0), e.name, 14.5, TEXT);
-                title(p, r.left_center() + vec2(12.0, 10.0), &format!("{} · {}", e.credit, e.license), 11.5, TEXT_DIM);
+                title(p, r.left_center() + vec2(12.0, -9.0), e.name, 14.5, TEXT());
+                title(p, r.left_center() + vec2(12.0, 10.0), &format!("{} · {}", e.credit, e.license), 11.5, TEXT_DIM());
                 p.text(r.right_center() - vec2(10.0, 0.0), Align2::RIGHT_CENTER, &right, FontId::proportional(12.0), color);
             });
             r.dnd_set_drag_payload(LibItem::Instrument(e.id));
@@ -488,7 +488,7 @@ impl App {
                         self.uninstall = Some((e.name.to_string(), instruments::dir(e.id), Some(e.id)));
                     }
                 }
-                ui.label(RichText::new(format!("{} · {} {}", e.credit, tr("licencia"), e.license)).size(11.0).color(TEXT_DIM));
+                ui.label(RichText::new(format!("{} · {} {}", e.credit, tr("licencia"), e.license)).size(11.0).color(TEXT_DIM()));
             });
             if r.clicked() {
                 match (installed, target) {
@@ -513,19 +513,19 @@ impl App {
             if ui.button(tr("Volver a buscar")).clicked() {
                 self.plugins = scan_plugins();
             }
-            ui.label(RichText::new(tr("Cargarlos en las pistas llega en la próxima versión.")).size(11.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("Cargarlos en las pistas llega en la próxima versión.")).size(11.0).color(TEXT_DIM()));
         });
         if self.plugins.is_empty() {
-            ui.label(RichText::new(tr("No se encontraron plugins VST3/LV2/CLAP. Instala por ejemplo LSP o x42 y pulsa «Volver a buscar».")).color(TEXT_DIM));
+            ui.label(RichText::new(tr("No se encontraron plugins VST3/LV2/CLAP. Instala por ejemplo LSP o x42 y pulsa «Volver a buscar».")).color(TEXT_DIM()));
         }
         for (name, format, path) in self.plugins.clone() {
             if self.config.hidden_plugins.contains(&path) {
                 continue;
             }
             let r = row(ui, 44.0, 0.0, false, |p, r| {
-                p.text(r.left_center() + vec2(12.0, -8.0), Align2::LEFT_CENTER, format, FontId::proportional(11.0), ACCENT);
-                title(p, r.left_center() + vec2(52.0, -8.0), &name, 14.5, TEXT);
-                title(p, r.left_center() + vec2(12.0, 10.0), &path.display().to_string(), 11.0, TEXT_DIM);
+                p.text(r.left_center() + vec2(12.0, -8.0), Align2::LEFT_CENTER, format, FontId::proportional(11.0), ACCENT());
+                title(p, r.left_center() + vec2(52.0, -8.0), &name, 14.5, TEXT());
+                title(p, r.left_center() + vec2(12.0, 10.0), &path.display().to_string(), 11.0, TEXT_DIM());
             });
             r.context_menu(|ui| {
                 widgets::menu_style(ui);
@@ -538,7 +538,7 @@ impl App {
                         self.config.hidden_plugins.push(path.clone());
                         self.config.save();
                     }
-                    ui.label(RichText::new(tr("Instalado en el sistema: se desinstala con el gestor de paquetes (dnf).")).size(11.0).color(TEXT_DIM));
+                    ui.label(RichText::new(tr("Instalado en el sistema: se desinstala con el gestor de paquetes (dnf).")).size(11.0).color(TEXT_DIM()));
                 }
             });
             r.on_hover_text(format!("{} · {}", path.display(), tr("clic derecho: desinstalar u ocultar")));
@@ -557,7 +557,7 @@ impl App {
             widgets::menu_style(ui);
             ui.set_width(440.0);
             ui.label(RichText::new(format!("{} «{name}»", tr("Desinstalar"))).size(18.0).strong());
-            ui.label(RichText::new(path.display().to_string()).size(11.5).color(TEXT_DIM));
+            ui.label(RichText::new(path.display().to_string()).size(11.5).color(TEXT_DIM()));
             ui.label(tr("Se moverá a la papelera. Las pistas que lo usen quedarán con el QUANTUM Synth."));
             ui.add_space(6.0);
             ui.horizontal(|ui| {

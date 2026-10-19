@@ -21,7 +21,7 @@ fn gain(db: f32) -> f32 {
 
 /// Medidor vertical con la misma curva que el fader: verde < -12 dB < ámbar < -3 dB < rojo.
 fn meter_v(p: &Painter, r: Rect, level: f32) {
-    p.rect_filled(r, rr(2.0), BG);
+    p.rect_filled(r, rr(2.0), BG());
     let y = |g: f32| r.bottom() - fader_pos(g) * r.height();
     for (lo, hi, c) in [(-60.0, -12.0, METER[0]), (-12.0, -3.0, METER[1]), (-3.0, 6.0, METER[2])] {
         if db(level) > lo {
@@ -51,15 +51,15 @@ pub fn fader(ui: &mut egui::Ui, g: &AtomicF32, level: f32, h: f32) -> Response {
             continue;
         }
         last = y;
-        p.text(pos2(rect.left() + 18.0, y), Align2::RIGHT_CENTER, format!("{d}"), FontId::monospace(9.0), if d == 0.0 { TEXT } else { TEXT_DIM });
-        p.hline(rect.left() + 20.0..=rect.left() + 25.0, y, Stroke::new(1.0, BORDER));
+        p.text(pos2(rect.left() + 18.0, y), Align2::RIGHT_CENTER, format!("{d}"), FontId::monospace(9.0), if d == 0.0 { TEXT() } else { TEXT_DIM() });
+        p.hline(rect.left() + 20.0..=rect.left() + 25.0, y, Stroke::new(1.0, BORDER()));
     }
-    p.text(pos2(rect.left() + 18.0, track.bottom()), Align2::RIGHT_CENTER, "-∞", FontId::monospace(9.0), TEXT_DIM);
-    p.rect_filled(track, rr(2.0), BG);
+    p.text(pos2(rect.left() + 18.0, track.bottom()), Align2::RIGHT_CENTER, "-∞", FontId::monospace(9.0), TEXT_DIM());
+    p.rect_filled(track, rr(2.0), BG());
     meter_v(p, Rect::from_x_y_ranges(rect.right() - 12.0..=rect.right() - 4.0, track.y_range()), level);
     let cap = Rect::from_center_size(pos2(track.center().x, y_of(fader_pos(g.get()))), vec2(22.0, 13.0));
-    p.rect_filled(cap, rr(4.0), if resp.dragged() || resp.hovered() { TEXT } else { Color32::from_gray(190) });
-    p.hline(cap.shrink(4.0).x_range(), cap.center().y, Stroke::new(1.5, BG));
+    p.rect_filled(cap, rr(4.0), if resp.dragged() || resp.hovered() { TEXT() } else { Color32::from_gray(190) });
+    p.hline(cap.shrink(4.0).x_range(), cap.center().y, Stroke::new(1.5, BG()));
     resp.on_hover_text(tr("Volumen · doble clic: 0 dB"))
 }
 
@@ -69,7 +69,7 @@ pub fn meter_h(ui: &mut egui::Ui, level: f32, w: f32) -> Response {
     let bar = Rect::from_min_size(rect.min + vec2(0.0, 3.0), vec2(w, 6.0));
     let x = |d: f32| bar.left() + ((d + 60.0) / 60.0).clamp(0.0, 1.0) * w;
     let p = ui.painter();
-    p.rect_filled(bar, rr(3.0), BG);
+    p.rect_filled(bar, rr(3.0), BG());
     let ld = db(level);
     for (lo, hi, c) in [(-60.0, -12.0, METER[0]), (-12.0, -3.0, METER[1]), (-3.0, 0.0, METER[2])] {
         if ld > lo {
@@ -77,7 +77,7 @@ pub fn meter_h(ui: &mut egui::Ui, level: f32, w: f32) -> Response {
         }
     }
     for d in [-48.0, -24.0, -12.0, -6.0, 0.0] {
-        p.text(pos2(x(d), bar.bottom() + 1.0), Align2::CENTER_TOP, format!("{}", -d as i32), FontId::monospace(8.0), TEXT_DIM);
+        p.text(pos2(x(d), bar.bottom() + 1.0), Align2::CENTER_TOP, format!("{}", -d as i32), FontId::monospace(8.0), TEXT_DIM());
     }
     resp.on_hover_text(format!("Entrada: {} dB", db_text(level)))
 }
@@ -87,7 +87,7 @@ pub fn color_dot(ui: &mut egui::Ui, color: &mut Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
     ui.painter().circle_filled(rect.center(), 6.5, *color);
     if resp.hovered() {
-        ui.painter().circle_stroke(rect.center(), 7.5, Stroke::new(1.0, TEXT));
+        ui.painter().circle_stroke(rect.center(), 7.5, Stroke::new(1.0, TEXT()));
     }
     egui::Popup::from_toggle_button_response(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         egui::widgets::color_picker::color_picker_color32(ui, color, egui::widgets::color_picker::Alpha::Opaque);
@@ -103,14 +103,14 @@ pub fn icon_button(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32
         r,
         rr(10.0),
         if on {
-            ACCENT
+            ACCENT()
         } else if resp.hovered() {
-            BORDER
+            BORDER()
         } else {
-            ELEVATED
+            ELEVATED()
         },
     );
-    draw(p, r.shrink2(vec2(11.0, 6.0)), if on { BG } else { TEXT });
+    draw(p, r.shrink2(vec2(11.0, 6.0)), if on { BG() } else { TEXT() });
     resp
 }
 
@@ -124,12 +124,12 @@ pub fn record_button(ui: &mut egui::Ui, on: bool) -> Response {
         if on {
             METER[2]
         } else if resp.hovered() {
-            BORDER
+            BORDER()
         } else {
-            ELEVATED
+            ELEVATED()
         },
     );
-    p.circle_filled(r.center(), 7.0, if on { TEXT } else { METER[2] });
+    p.circle_filled(r.center(), 7.0, if on { TEXT() } else { METER[2] });
     resp
 }
 
@@ -239,18 +239,18 @@ pub fn pan_knob(ui: &mut egui::Ui, v: &mut f32) -> Response {
     let arc = |a0: f32, a1: f32, rad: f32| -> Vec<egui::Pos2> { (0..=32).map(|i| at(a0 + (a1 - a0) * i as f32 / 32.0, rad)).collect() };
     let p = ui.painter();
     let hot = resp.hovered() || resp.dragged();
-    p.add(egui::Shape::line(arc(angle(-1.0), angle(1.0), r + 4.0), Stroke::new(4.0, BG)));
+    p.add(egui::Shape::line(arc(angle(-1.0), angle(1.0), r + 4.0), Stroke::new(4.0, BG())));
     if v.abs() > 0.005 {
-        p.add(egui::Shape::line(arc(0.0, angle(*v), r + 4.0), Stroke::new(4.0, ACCENT)));
+        p.add(egui::Shape::line(arc(0.0, angle(*v), r + 4.0), Stroke::new(4.0, ACCENT())));
     }
     for (x, label) in [(-1.0, "L"), (1.0, "R")] {
-        p.text(at(angle(x), r + 10.0) + vec2(0.0, 4.0), Align2::CENTER_CENTER, tr(label), FontId::proportional(9.0), TEXT_DIM);
+        p.text(at(angle(x), r + 10.0) + vec2(0.0, 4.0), Align2::CENTER_CENTER, tr(label), FontId::proportional(9.0), TEXT_DIM());
     }
-    p.line_segment([at(0.0, r + 7.0), at(0.0, r + 10.0)], Stroke::new(1.5, TEXT_DIM));
-    p.circle_filled(c, r, if hot { BORDER } else { ELEVATED });
+    p.line_segment([at(0.0, r + 7.0), at(0.0, r + 10.0)], Stroke::new(1.5, TEXT_DIM()));
+    p.circle_filled(c, r, if hot { BORDER() } else { ELEVATED() });
     p.circle_filled(c - vec2(0.0, 3.0), r - 5.0, Color32::from_white_alpha(10));
     p.circle_stroke(c, r, Stroke::new(1.0, Color32::from_gray(90)));
-    p.line_segment([at(angle(*v), 3.0), at(angle(*v), r - 2.5)], Stroke::new(2.5, TEXT));
+    p.line_segment([at(angle(*v), 3.0), at(angle(*v), r - 2.5)], Stroke::new(2.5, TEXT()));
     resp
 }
 
@@ -273,11 +273,11 @@ pub fn mini_knob(ui: &mut egui::Ui, v: &mut f32, min: f32, max: f32, default: f3
     let at = |a: f32, rad: f32| c + vec2(a.sin(), -a.cos()) * rad;
     let arc = |a0: f32, a1: f32| -> Vec<egui::Pos2> { (0..=24).map(|i| at(a0 + (a1 - a0) * i as f32 / 24.0, r + 3.0)).collect() };
     let p = ui.painter();
-    p.add(egui::Shape::line(arc(angle(min), angle(max)), Stroke::new(3.0, BG)));
+    p.add(egui::Shape::line(arc(angle(min), angle(max)), Stroke::new(3.0, BG())));
     p.add(egui::Shape::line(arc(angle(default.clamp(min, max)), angle(*v)), Stroke::new(3.0, color)));
-    p.circle_filled(c, r, if resp.hovered() || resp.dragged() { BORDER } else { ELEVATED });
+    p.circle_filled(c, r, if resp.hovered() || resp.dragged() { BORDER() } else { ELEVATED() });
     p.circle_stroke(c, r, Stroke::new(1.0, Color32::from_gray(90)));
-    p.line_segment([at(angle(*v), 2.5), at(angle(*v), r - 2.0)], Stroke::new(2.0, TEXT));
+    p.line_segment([at(angle(*v), 2.5), at(angle(*v), r - 2.0)], Stroke::new(2.0, TEXT()));
     resp
 }
 
@@ -301,9 +301,9 @@ pub fn console_knob_size(ui: &mut egui::Ui, t: &mut f32, default: f32, color: Co
     let hot = resp.hovered() || resp.dragged();
     for m in 0..=10 {
         let a = angle(m as f32 / 10.0);
-        p.line_segment([at(a, r + 7.0 * k), at(a, r + 10.0 * k)], Stroke::new(if m % 5 == 0 { 1.6 } else { 1.0 } * k.sqrt(), TEXT_DIM));
+        p.line_segment([at(a, r + 7.0 * k), at(a, r + 10.0 * k)], Stroke::new(if m % 5 == 0 { 1.6 } else { 1.0 } * k.sqrt(), TEXT_DIM()));
     }
-    p.add(egui::Shape::line(arc(angle(0.0), angle(1.0), r + 3.0 * k), Stroke::new(4.0 * k, BG)));
+    p.add(egui::Shape::line(arc(angle(0.0), angle(1.0), r + 3.0 * k), Stroke::new(4.0 * k, BG())));
     p.add(egui::Shape::line(arc(angle(default), angle(*t), r + 3.0 * k), Stroke::new(4.0 * k, color)));
     if hot {
         p.circle_filled(c, r + k, color.gamma_multiply(0.18));

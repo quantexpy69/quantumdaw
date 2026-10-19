@@ -32,7 +32,7 @@ fn lcd_cell(ui: &mut egui::Ui, caption: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         add(ui);
-        ui.label(RichText::new(tr(caption)).size(8.5).color(TEXT_DIM));
+        ui.label(RichText::new(tr(caption)).size(8.5).color(TEXT_DIM()));
     });
 }
 
@@ -84,6 +84,16 @@ impl App {
                 if item(ui, tr("Importar audio…"), tr("Ctrl+I")) {
                     let files = rfd::FileDialog::new().add_filter("Audio", &AUDIO_EXT).pick_files();
                     self.import(files.unwrap_or_default());
+                }
+                if item(ui, tr("Importar MIDI…"), "")
+                    && let Some(f) = rfd::FileDialog::new().add_filter("MIDI", &["mid", "midi"]).pick_file()
+                {
+                    let at = self.pos();
+                    let r = self.importar_midi(&f, at);
+                    self.report(tr("MIDI importado"), r);
+                }
+                if item(ui, tr("Exportar MIDI…"), "") {
+                    self.exportar_midi(None);
                 }
                 if item(ui, tr("Exportar…"), tr("Ctrl+E")) {
                     self.dialog = Some(Dialog::Export(Format::Wav24, 0, 0, 0));
@@ -152,6 +162,18 @@ impl App {
                     self.config.save();
                     theme(ui.ctx());
                 }
+                ui.menu_button(tr("Tema"), |ui| {
+                    widgets::menu_style(ui);
+                    for (k, (nombre, colores)) in TEMAS.iter().enumerate() {
+                        let texto = RichText::new(tr(nombre)).color(colores[6]).strong();
+                        if ui.radio(self.config.tema == k, texto).clicked() {
+                            self.config.tema = k;
+                            TEMA.store(k, Relaxed);
+                            theme(ui.ctx());
+                            self.config.save();
+                        }
+                    }
+                });
                 ui.menu_button(tr("Tamaño de la interfaz"), |ui| {
                     widgets::menu_style(ui);
                     let current = ui.ctx().zoom_factor();
@@ -172,7 +194,7 @@ impl App {
                 }
                 ui.menu_button(tr("Altura de pistas"), |ui| {
                     widgets::menu_style(ui);
-                    ui.label(RichText::new(tr("Afecta a las pistas seleccionadas (o a todas). También puedes arrastrar el borde inferior de cada cabecera.")).size(11.0).color(TEXT_DIM));
+                    ui.label(RichText::new(tr("Afecta a las pistas seleccionadas (o a todas). También puedes arrastrar el borde inferior de cada cabecera.")).size(11.0).color(TEXT_DIM()));
                     for (label, h) in [("Compacta", 60.0), ("Normal", TRACK_H), ("Grande", 160.0), ("Muy grande", 240.0)] {
                         if ui.button(tr(label)).clicked() {
                             let any = self.s.tracks.iter().any(|t| t.selected);
@@ -263,13 +285,13 @@ impl App {
                 ui.add_space(6.0);
                 let (r, resp) = ui.allocate_exact_size(vec2(96.0, 28.0), egui::Sense::click());
                 let p = ui.painter();
-                p.rect_filled(r, rr(8.0), if resp.hovered() { ACCENT.lerp_to_gamma(Color32::WHITE, 0.18) } else { ACCENT });
+                p.rect_filled(r, rr(8.0), if resp.hovered() { ACCENT().lerp_to_gamma(Color32::WHITE, 0.18) } else { ACCENT() });
                 // Casita dibujada: tejado y cuerpo con puerta.
                 let c = r.left_center() + vec2(18.0, 0.5);
-                p.add(egui::Shape::convex_polygon(vec![c + vec2(-7.5, -1.0), c + vec2(0.0, -8.0), c + vec2(7.5, -1.0)], BG, Stroke::NONE));
-                p.rect_filled(egui::Rect::from_min_max(c + vec2(-5.0, -1.5), c + vec2(5.0, 7.0)), 1.0, BG);
-                p.rect_filled(egui::Rect::from_min_max(c + vec2(-1.5, 2.0), c + vec2(1.5, 7.0)), 0.0, ACCENT);
-                p.text(r.left_center() + vec2(32.0, 0.0), egui::Align2::LEFT_CENTER, tr("Inicio"), egui::FontId::proportional(15.0), BG);
+                p.add(egui::Shape::convex_polygon(vec![c + vec2(-7.5, -1.0), c + vec2(0.0, -8.0), c + vec2(7.5, -1.0)], BG(), Stroke::NONE));
+                p.rect_filled(egui::Rect::from_min_max(c + vec2(-5.0, -1.5), c + vec2(5.0, 7.0)), 1.0, BG());
+                p.rect_filled(egui::Rect::from_min_max(c + vec2(-1.5, 2.0), c + vec2(1.5, 7.0)), 0.0, ACCENT());
+                p.text(r.left_center() + vec2(32.0, 0.0), egui::Align2::LEFT_CENTER, tr("Inicio"), egui::FontId::proportional(15.0), BG());
                 if resp.on_hover_text(tr("Volver a Pantalla Inicial")).clicked() {
                     self.open_main_menu(0);
                 }
@@ -294,7 +316,7 @@ impl App {
             let lead = ((width - self.bar_widths[ri]) / 2.0).max(4.0);
             let r = ui.horizontal(|ui| {
                 ui.add_space(lead);
-                let frame = egui::Frame::new().fill(LCD).stroke(Stroke::new(1.0, BORDER)).corner_radius(rr(12.0)).inner_margin(egui::Margin::symmetric(10, 5));
+                let frame = egui::Frame::new().fill(LCD).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(egui::Margin::symmetric(10, 5));
                 frame.show(ui, |ui| {
                     ui.allocate_ui_with_layout(vec2(ui.available_width(), BOX_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         ui.set_min_height(BOX_H);
@@ -303,7 +325,7 @@ impl App {
                             if k > 0 {
                                 ui.add_space(6.0);
                                 let (line, _) = ui.allocate_exact_size(vec2(1.0, BOX_H - 4.0), egui::Sense::hover());
-                                ui.painter().rect_filled(line, 0.0, BORDER);
+                                ui.painter().rect_filled(line, 0.0, BORDER());
                                 ui.add_space(6.0);
                             }
                             self.bar_group(ui, id);
@@ -387,7 +409,7 @@ impl App {
         let (fill, stroke, ink) = match (self.recording(), self.playing()) {
             (true, _) => (Color32::from_rgb(0x3A, 0x10, 0x14), METER[2], Color32::from_rgb(0xFF, 0xC4, 0xC6)),
             (false, true) => (Color32::from_rgb(0x0E, 0x2A, 0x1A), METER[0], Color32::from_rgb(0xC8, 0xFF, 0xDD)),
-            _ => (Color32::from_rgb(0x0C, 0x0C, 0x0E), BORDER, TEXT),
+            _ => (Color32::from_rgb(0x0C, 0x0C, 0x0E), BORDER(), TEXT()),
         };
         let lcd = egui::Frame::new().fill(fill).corner_radius(rr(9.0)).stroke(Stroke::new(1.0, stroke)).inner_margin(egui::Margin::symmetric(14, 2));
         lcd.show(ui, |ui| {
@@ -431,7 +453,7 @@ impl App {
             ui.set_width(300.0);
             ui.label(RichText::new(tr("Contador de tempo")).size(16.0).strong());
             let now = ui.input(|i| i.time);
-            let tap = egui::Button::new(RichText::new("TAP").size(22.0).strong().color(BG)).fill(METER[1]).min_size(vec2(300.0, 64.0)).corner_radius(rr(12.0));
+            let tap = egui::Button::new(RichText::new("TAP").size(22.0).strong().color(BG())).fill(METER[1]).min_size(vec2(300.0, 64.0)).corner_radius(rr(12.0));
             let tapped = ui.add(tap).on_hover_text(tr("Haz clic (o pulsa T con el ratón encima) al ritmo de la canción")).clicked() || (ui.ui_contains_pointer() && ui.input(|i| i.key_pressed(Key::T)));
             if tapped {
                 if self.taps.last().is_some_and(|&t| now - t > 2.0) {
@@ -472,7 +494,7 @@ impl App {
                 self.set_tempo_here(bpm.clamp(20.0, 300.0).round());
                 self.status = format!("{} {:.0} BPM", tr("Tempo del proyecto:"), bpm.round());
             }
-            ui.label(RichText::new(tr("Se aplica al tramo de tempo donde está el cursor.")).size(11.5).color(TEXT_DIM));
+            ui.label(RichText::new(tr("Se aplica al tramo de tempo donde está el cursor.")).size(11.5).color(TEXT_DIM()));
         });
     }
 
@@ -481,20 +503,20 @@ impl App {
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
             ui.add(welcome::logo(24.0));
-            ui.label(RichText::new(tr("QUANTUM DAW")).size(15.0).strong().color(TEXT));
-            ui.label(RichText::new(format!("v{}", welcome::VERSION)).size(11.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("QUANTUM DAW")).size(15.0).strong().color(TEXT()));
+            ui.label(RichText::new(format!("v{}", welcome::VERSION)).size(11.0).color(TEXT_DIM()));
             let song = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
             ui.separator();
-            ui.label(RichText::new(song).size(13.0).color(TEXT));
+            ui.label(RichText::new(song).size(13.0).color(TEXT()));
             if !self.meta.artist.is_empty() {
-                ui.label(RichText::new(format!("· {}", self.meta.artist)).size(12.5).color(TEXT_DIM));
+                ui.label(RichText::new(format!("· {}", self.meta.artist)).size(12.5).color(TEXT_DIM()));
             }
         });
     }
 
     pub fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
-            ui.label(RichText::new(&self.status).size(12.0).color(TEXT_DIM));
+            ui.label(RichText::new(&self.status).size(12.0).color(TEXT_DIM()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let e = &self.engine;
                 let buf = match self.audio.buffer {
@@ -505,7 +527,7 @@ impl App {
                     0 => "sin entrada".to_string(),
                     n => format!("entrada: {} ({n} canales)", device_label(&self.devices, &self.audio.input)),
                 };
-                ui.label(RichText::new(format!("{} Hz{buf} · {input}", e.sample_rate)).size(12.0).color(TEXT_DIM));
+                ui.label(RichText::new(format!("{} Hz{buf} · {input}", e.sample_rate)).size(12.0).color(TEXT_DIM()));
             });
         });
     }
@@ -576,15 +598,15 @@ impl App {
                             for &(k, label, hint, icon, accent) in pair {
                                 let on = *kind == k;
                                 let (rect, r) = ui.allocate_exact_size(card, egui::Sense::click());
-                                let fill = if on { accent.gamma_multiply(0.28) } else if r.hovered() { BORDER } else { ELEVATED };
-                                ui.painter().rect(rect, rr(12.0), fill, egui::Stroke::new(if on { 2.0 } else { 1.0 }, if on { accent } else { BORDER }), egui::StrokeKind::Inside);
+                                let fill = if on { accent.gamma_multiply(0.28) } else if r.hovered() { BORDER() } else { ELEVATED() };
+                                ui.painter().rect(rect, rr(12.0), fill, egui::Stroke::new(if on { 2.0 } else { 1.0 }, if on { accent } else { BORDER() }), egui::StrokeKind::Inside);
                                 {
                                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(12.0)).layout(egui::Layout::left_to_right(egui::Align::Center)));
                                     ui.add(icons::image(icon).tint(accent).fit_to_exact_size(vec2(36.0, 36.0)));
                                     ui.vertical(|ui| {
                                         ui.spacing_mut().item_spacing.y = 2.0;
                                         ui.label(RichText::new(tr(label)).size(15.0).strong());
-                                        ui.add(egui::Label::new(RichText::new(tr(hint)).size(12.0).color(TEXT_DIM)).wrap());
+                                        ui.add(egui::Label::new(RichText::new(tr(hint)).size(12.0).color(TEXT_DIM())).wrap());
                                     });
                                 }
                                 if r.clicked() {
@@ -616,7 +638,7 @@ impl App {
                                 let (r, resp) = ui.allocate_exact_size(vec2(24.0, 24.0), egui::Sense::click());
                                 ui.painter().circle_filled(r.center(), 9.0, c);
                                 if *color == Some(c) || resp.hovered() {
-                                    ui.painter().circle_stroke(r.center(), 11.0, egui::Stroke::new(2.0, TEXT));
+                                    ui.painter().circle_stroke(r.center(), 11.0, egui::Stroke::new(2.0, TEXT()));
                                 }
                                 if resp.clicked() {
                                     *color = Some(c);
@@ -629,7 +651,7 @@ impl App {
                     ui.horizontal(|ui| {
                         ui.add_space(((ui.available_width() - 302.0) / 2.0).max(0.0));
                         let label = if *count == 1 { "Crear pista".to_string() } else { format!("Crear {count} pistas") };
-                        let b = egui::Button::new(RichText::new(&label).size(15.5).strong()).fill(ACCENT).min_size(vec2(180.0, 38.0)).corner_radius(rr(19.0));
+                        let b = egui::Button::new(RichText::new(&label).size(15.5).strong()).fill(ACCENT()).min_size(vec2(180.0, 38.0)).corner_radius(rr(19.0));
                         if ui.add(b).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
                             act = Some(Act::NewTrack(name.clone(), *kind, *count, *color));
                         }
@@ -692,8 +714,8 @@ impl App {
                         (None, 0) => "Sin entrada activa.".into(),
                         (None, n) => format!("Entrada activa con {n} canales."),
                     };
-                    ui.label(RichText::new(state).size(11.0).color(TEXT_DIM));
-                    ui.label(RichText::new(tr("Buffers pequeños = menos latencia y más CPU. Al aplicar se reinicia el motor de audio.")).size(11.0).color(TEXT_DIM));
+                    ui.label(RichText::new(state).size(11.0).color(TEXT_DIM()));
+                    ui.label(RichText::new(tr("Buffers pequeños = menos latencia y más CPU. Al aplicar se reinicia el motor de audio.")).size(11.0).color(TEXT_DIM()));
                     ui.horizontal(|ui| {
                         if ui.button(tr("Aplicar")).clicked() {
                             act = Some(Act::Settings(cfg.clone(), *bits, midi.clone()));
@@ -733,7 +755,7 @@ impl App {
                 }
                 Dialog::Stretch(pct) => {
                     ui.heading(tr("Estirar tiempo"));
-                    ui.label(RichText::new(tr("Cambia la duración de las regiones seleccionadas sin cambiar el tono.")).color(TEXT_DIM));
+                    ui.label(RichText::new(tr("Cambia la duración de las regiones seleccionadas sin cambiar el tono.")).color(TEXT_DIM()));
                     ui.add(egui::Slider::new(pct, 25.0..=400.0).suffix(" %").text(tr("Duración")));
                     ui.horizontal(|ui| {
                         for v in [50.0, 75.0, 90.0, 110.0, 150.0, 200.0] {
@@ -751,7 +773,7 @@ impl App {
                 }
                 Dialog::Transpose(st) => {
                     ui.heading(tr("Transponer"));
-                    ui.label(RichText::new(tr("Cambia el tono sin cambiar la duración (en MIDI mueve las notas).")).color(TEXT_DIM));
+                    ui.label(RichText::new(tr("Cambia el tono sin cambiar la duración (en MIDI mueve las notas).")).color(TEXT_DIM()));
                     ui.add(egui::Slider::new(st, -12.0..=12.0).step_by(1.0).suffix(" semitonos"));
                     ui.horizontal(|ui| {
                         if ui.button(tr("Aplicar")).clicked() {
@@ -763,7 +785,7 @@ impl App {
                 Dialog::Keys(_) => {}
                 Dialog::Tempo(a, b, bpm, adapt) => {
                     ui.heading(tr("Tempo del tramo"));
-                    ui.label(RichText::new(&tempo_range).color(TEXT_DIM));
+                    ui.label(RichText::new(&tempo_range).color(TEXT_DIM()));
                     ui.add(egui::DragValue::new(bpm).range(20.0..=300.0).speed(0.5).fixed_decimals(1).suffix(" BPM"));
                     ui.checkbox(adapt, tr("Adaptar el audio y el MIDI de todas las pistas a este tempo"));
                     ui.label(
@@ -773,7 +795,7 @@ impl App {
                             "Solo cambian la rejilla y el metrónomo en este tramo; el audio no se toca."
                         })
                         .size(11.0)
-                        .color(TEXT_DIM),
+                        .color(TEXT_DIM()),
                     );
                     ui.horizontal(|ui| {
                         if ui.button(tr("Aplicar")).clicked() {
@@ -801,7 +823,7 @@ impl App {
                             // Acorde = raíz + tipo; los botones cambian una parte y conservan la otra.
                             let split = name.char_indices().nth(1).filter(|(_, c)| *c == '#' || *c == 'b').map_or(name.chars().next().map_or(0, |c| c.len_utf8()), |(i, c)| i + c.len_utf8());
                             let (root, quality) = (name[..split].to_string(), name[split..].to_string());
-                            ui.label(RichText::new(tr("Raíz")).color(TEXT_DIM));
+                            ui.label(RichText::new(tr("Raíz")).color(TEXT_DIM()));
                             ui.horizontal_wrapped(|ui| {
                                 for r in ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"] {
                                     if chip(ui, r, root == r) {
@@ -809,7 +831,7 @@ impl App {
                                     }
                                 }
                             });
-                            ui.label(RichText::new(tr("Tipo")).color(TEXT_DIM));
+                            ui.label(RichText::new(tr("Tipo")).color(TEXT_DIM()));
                             ui.horizontal_wrapped(|ui| {
                                 for q in ["", "m", "7", "maj7", "m7", "sus2", "sus4", "dim", "aug", "add9", "6", "9"] {
                                     if chip(ui, if q.is_empty() { tr("Mayor") } else { q }, quality == q) {
@@ -830,7 +852,7 @@ impl App {
                         _ => {}
                     }
                     ui.horizontal(|ui| {
-                        if ui.add(egui::Button::new(RichText::new(tr("Aceptar")).strong()).fill(ACCENT)).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+                        if ui.add(egui::Button::new(RichText::new(tr("Aceptar")).strong()).fill(ACCENT())).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
                             act = Some(Act::Name(*kind, *k, name.clone()));
                         }
                         close |= ui.button(tr("Cancelar")).clicked();
@@ -839,7 +861,7 @@ impl App {
                 Dialog::Groups => {
                     ui.heading(tr("Grupos"));
                     if groups.is_empty() {
-                        ui.label(RichText::new(tr("No hay grupos. Selecciona pistas y usa Pista → Agrupar seleccionadas.")).color(TEXT_DIM));
+                        ui.label(RichText::new(tr("No hay grupos. Selecciona pistas y usa Pista → Agrupar seleccionadas.")).color(TEXT_DIM()));
                     }
                     for (g, group) in groups.iter_mut().enumerate() {
                         ui.horizontal(|ui| {

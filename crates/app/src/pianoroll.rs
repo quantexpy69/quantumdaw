@@ -182,12 +182,12 @@ impl App {
         };
         let mut pick = None;
         egui::ComboBox::from_id_salt(("inst", i)).width(200.0).height(520.0).selected_text(current).show_ui(ui, |ui| {
-            ui.label(RichText::new(tr("INSTRUMENTOS REALES · gratis y libres")).size(10.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("INSTRUMENTOS REALES · gratis y libres")).size(10.0).color(TEXT_DIM()));
             let mut family = "";
             for e in instruments::CATALOG.iter() {
                 if e.family != family {
                     family = e.family;
-                    ui.label(RichText::new(family).strong().size(11.0).color(ACCENT));
+                    ui.label(RichText::new(family).strong().size(11.0).color(ACCENT()));
                 }
                 let st = self.downloads.get(e.id).and_then(|s| s.lock().ok().map(|s| s.clone())).unwrap_or_default();
                 let label = match (instruments::installed(e.id), st.as_str()) {
@@ -202,7 +202,7 @@ impl App {
                 }
             }
             ui.separator();
-            ui.label(RichText::new(tr("QUANTUM SYNTH")).size(10.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("QUANTUM SYNTH")).size(10.0).color(TEXT_DIM()));
             for (k, (name, _)) in PRESETS.iter().enumerate() {
                 if ui.selectable_label(self.s.tracks[i].instrument == format!("synth:{name}"), *name).clicked() {
                     pick = Some(Pick::Preset(k));
@@ -443,12 +443,12 @@ impl App {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut r.menor, false, tr("Mayor"));
                 ui.selectable_value(&mut r.menor, true, tr("Menor"));
-                ui.label(RichText::new(format!("{} {}", tr("Tonalidad"), acordes::tonalidad(r.tono, r.menor))).color(ACCENT).strong());
+                ui.label(RichText::new(format!("{} {}", tr("Tonalidad"), acordes::tonalidad(r.tono, r.menor))).color(ACCENT()).strong());
             });
             if let Some((raiz, tipo)) = acordes::circulo(ui, &mut r.tono, &mut r.menor) {
                 accion = Some((raiz, tipo));
             }
-            ui.label(RichText::new(tr("Acordes de la tonalidad: clic para escribirlo en el cursor (un compás); el cursor avanza.")).size(11.0).color(TEXT_DIM));
+            ui.label(RichText::new(tr("Acordes de la tonalidad: clic para escribirlo en el cursor (un compás); el cursor avanza.")).size(11.0).color(TEXT_DIM()));
             ui.horizontal_wrapped(|ui| {
                 for (raiz, tipo, grado) in acordes::diatonicos(r.tono, r.menor) {
                     let b = egui::Button::new(RichText::new(format!("{grado}\n{}", acordes::nombre(raiz, tipo))).size(12.0)).min_size(vec2(44.0, 38.0));
@@ -476,7 +476,7 @@ impl App {
                     ui.selectable_value(&mut r.compases, c, c.to_string());
                 }
             });
-            if ui.add(egui::Button::new(RichText::new(tr("Escribir progresión en el cursor")).color(BG).strong()).fill(ACCENT)).clicked() {
+            if ui.add(egui::Button::new(RichText::new(tr("Escribir progresión en el cursor")).color(BG()).strong()).fill(ACCENT())).clicked() {
                 accion = Some((u8::MAX, 0));
             }
         });
@@ -500,7 +500,7 @@ impl App {
             if let Some(s) = &t.sampler {
                 let e = instruments::find(&t.instrument);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("QUANTUM").size(10.0).strong().color(ACCENT));
+                    ui.label(RichText::new("QUANTUM").size(10.0).strong().color(ACCENT()));
                     ui.label(RichText::new(e.map_or(s.name.as_str(), |e| e.name)).size(16.0).strong());
                 });
                 let mut db = widgets::db(s.gain.get());
@@ -508,12 +508,12 @@ impl App {
                     s.gain.set(10f32.powf(db / 20.0));
                 }
                 if let Some(e) = e {
-                    ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM));
+                    ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM()));
                 }
             } else if let Some(s) = &t.synth {
                 let preset = t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth");
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("QUANTUM SYNTH").size(10.0).strong().color(ACCENT));
+                    ui.label(RichText::new("QUANTUM SYNTH").size(10.0).strong().color(ACCENT()));
                     ui.label(RichText::new(preset).size(16.0).strong());
                 });
                 ui.horizontal_wrapped(|ui| {
@@ -522,7 +522,7 @@ impl App {
                     }
                 });
             } else {
-                ui.label(RichText::new(tr("Esta pista no tiene instrumento.")).color(TEXT_DIM));
+                ui.label(RichText::new(tr("Esta pista no tiene instrumento.")).color(TEXT_DIM()));
             }
             ui.add_space(6.0);
             if ui.button(tr("Cerrar")).clicked() {
@@ -547,7 +547,7 @@ impl App {
             ui.add_space(30.0);
             ui.vertical_centered(|ui| {
                 ui.label(RichText::new(tr("Piano roll")).size(18.0).strong());
-                ui.label(RichText::new(tr("Haz doble clic en una región MIDI para editarla, o en un carril MIDI vacío para crear una.")).color(TEXT_DIM));
+                ui.label(RichText::new(tr("Haz doble clic en una región MIDI para editarla, o en un carril MIDI vacío para crear una.")).color(TEXT_DIM()));
                 if ui.button(tr("+ Crear pista MIDI")).clicked() {
                     self.add_track(format!("MIDI {}", self.s.tracks.len() + 1), TrackKind::Midi);
                     let i = self.s.tracks.len() - 1;
@@ -589,7 +589,7 @@ impl App {
                 self.roll.typing = !self.roll.typing;
             }
             if self.roll.typing {
-                ui.label(RichText::new(format!("Octava Do{}", self.roll.octave - 1)).size(11.0).color(ACCENT));
+                ui.label(RichText::new(format!("Octava Do{}", self.roll.octave - 1)).size(11.0).color(ACCENT()));
             }
             let step = egui::Button::selectable(self.roll.step, "Escribir por pasos");
             if ui.add(step).on_hover_text(tr("Cada nota que toques (teclado del PC o teclas de la izquierda) se escribe en el cursor con la duración de la rejilla, y el cursor avanza")).clicked() {
@@ -613,8 +613,8 @@ impl App {
                 let rel = self.pos() as i64 - c.origin();
                 notes.iter().filter(|n| (n.start as i64..(n.start + n.len) as i64).contains(&rel)).map(|n| n.key).collect()
             };
-            ui.label(RichText::new(tr("Acorde")).color(TEXT_DIM));
-            ui.label(RichText::new(acordes::detectar(&teclas).unwrap_or_else(|| "—".into())).size(15.0).strong().color(ACCENT));
+            ui.label(RichText::new(tr("Acorde")).color(TEXT_DIM()));
+            ui.label(RichText::new(acordes::detectar(&teclas).unwrap_or_else(|| "—".into())).size(15.0).strong().color(ACCENT()));
             ui.separator();
             ui.label(tr("Crear acordes"));
             let actual = self.roll.modo_acorde.map_or(tr("Notas sueltas").to_string(), |t| tr(acordes::TIPOS[t].1).to_string());
@@ -849,7 +849,7 @@ impl App {
             let r = Rect::from_two_pos(*from, p);
             // En una capa por encima de la rejilla y las notas (que se pintan después).
             let capa = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::new("roll-recuadro"))).with_clip_rect(grid);
-            capa.rect(r, rr(2.0), ACCENT.gamma_multiply(0.15), Stroke::new(1.5, ACCENT), egui::StrokeKind::Inside);
+            capa.rect(r, rr(2.0), ACCENT().gamma_multiply(0.15), Stroke::new(1.5, ACCENT()), egui::StrokeKind::Inside);
         }
         if !ui.input(|i| i.pointer.primary_down()) && self.roll.drag.take().is_some() {
             self.preview(None);
@@ -933,7 +933,7 @@ impl App {
         // ---------- Dibujo ----------
         let notes: Vec<Note> = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
         let p = ui.painter_at(area);
-        p.rect_filled(area, 0.0, BG);
+        p.rect_filled(area, 0.0, BG());
         let gp = p.with_clip_rect(grid);
         for key in 0..128u8 {
             let y = y_of(key);
@@ -943,12 +943,12 @@ impl App {
             if self.roll.escala_on && !creativo::en_escala(key, self.roll.tono, self.roll.escala) {
                 gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, Color32::from_black_alpha(130));
             } else if self.roll.escala_on && key % 12 == self.roll.tono % 12 {
-                gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, ACCENT.gamma_multiply(0.10));
+                gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, ACCENT().gamma_multiply(0.10));
             } else if BLACK[key as usize % 12] {
                 gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, Color32::from_black_alpha(60));
             }
             if key % 12 == 0 {
-                gp.hline(grid.x_range(), y + kh, Stroke::new(1.0, BORDER));
+                gp.hline(grid.x_range(), y + kh, Stroke::new(1.0, BORDER()));
             }
         }
         let beats = self.engine.beats.load(Relaxed).max(1) as i64;
@@ -958,15 +958,15 @@ impl App {
             let x = x_of(k as f64 * step);
             let per_beat = self.roll.grid as i64;
             let stroke = if k % (per_beat * beats) == 0 {
-                Stroke::new(1.0, TEXT_DIM.gamma_multiply(0.5))
+                Stroke::new(1.0, TEXT_DIM().gamma_multiply(0.5))
             } else if k % per_beat == 0 {
-                Stroke::new(1.0, BORDER)
+                Stroke::new(1.0, BORDER())
             } else {
-                Stroke::new(1.0, PANEL)
+                Stroke::new(1.0, PANEL())
             };
             gp.vline(x, grid.y_range(), stroke);
             if k % (per_beat * beats) == 0 {
-                gp.text(pos2(x + 3.0, grid.top() + 2.0), Align2::LEFT_TOP, format!("{}", k / (per_beat * beats) + 1), FontId::monospace(10.0), TEXT_DIM);
+                gp.text(pos2(x + 3.0, grid.top() + 2.0), Align2::LEFT_TOP, format!("{}", k / (per_beat * beats) + 1), FontId::monospace(10.0), TEXT_DIM());
             }
             k += 1;
         }
@@ -977,10 +977,10 @@ impl App {
             let c = color.gamma_multiply(0.45 + 0.55 * n.vel as f32 / 127.0);
             gp.rect_filled(r, rr(3.0), c);
             if self.roll.sel.contains(&k) {
-                gp.rect_stroke(r, rr(3.0), Stroke::new(1.5, TEXT), StrokeKind::Inside);
+                gp.rect_stroke(r, rr(3.0), Stroke::new(1.5, TEXT()), StrokeKind::Inside);
             }
             if r.width() > 26.0 && kh >= 10.0 {
-                gp.text(r.left_center() + vec2(3.0, 0.0), Align2::LEFT_CENTER, NOTE_NAMES[n.key as usize % 12], FontId::proportional(9.0), BG);
+                gp.text(r.left_center() + vec2(3.0, 0.0), Align2::LEFT_CENTER, NOTE_NAMES[n.key as usize % 12], FontId::proportional(9.0), BG());
             }
         }
         // Notas que se están grabando en vivo (teclado MIDI o del PC) sobre esta pista.
@@ -1006,12 +1006,12 @@ impl App {
         }
         let px = x_of(self.pos() as f64 - clip.start as f64);
         if (grid.left()..grid.right()).contains(&px) {
-            gp.vline(px, grid.y_range(), Stroke::new(1.5, TEXT));
+            gp.vline(px, grid.y_range(), Stroke::new(1.5, TEXT()));
         }
         // Nombres de las piezas (batería y percusión) sobre sus teclas.
         if let Some(s) = &self.s.tracks[i].sampler {
             for (key, name) in &s.key_names {
-                gp.text(pos2(grid.left() + 4.0, y_of(*key) + kh / 2.0), Align2::LEFT_CENTER, instruments::spanish(name), FontId::proportional(10.0), TEXT_DIM);
+                gp.text(pos2(grid.left() + 4.0, y_of(*key) + kh / 2.0), Align2::LEFT_CENTER, instruments::spanish(name), FontId::proportional(10.0), TEXT_DIM());
             }
         }
         // Teclado del piano.
@@ -1020,7 +1020,7 @@ impl App {
             let y = y_of(key);
             let black = BLACK[key as usize % 12];
             let fill = if self.roll.sounding == Some(key) {
-                ACCENT
+                ACCENT()
             } else if black {
                 Color32::from_gray(30)
             } else {
@@ -1028,14 +1028,14 @@ impl App {
             };
             kp.rect_filled(Rect::from_x_y_ranges(keys.left()..=keys.right() - if black { 20.0 } else { 0.0 }, y..=y + kh - 1.0), rr(2.0), fill);
             if key % 12 == 0 {
-                kp.text(pos2(keys.right() - 4.0, y + kh / 2.0), Align2::RIGHT_CENTER, format!("Do{}", key as i32 / 12 - 1), FontId::proportional(9.0), BG);
+                kp.text(pos2(keys.right() - 4.0, y + kh / 2.0), Align2::RIGHT_CENTER, format!("Do{}", key as i32 / 12 - 1), FontId::proportional(9.0), BG());
             }
         }
         // Carril de control.
         let full = Rect::from_min_max(pos2(area.left(), grid.bottom()), area.max);
         let vp = p.with_clip_rect(full);
-        vp.rect_filled(full, 0.0, PANEL);
-        vp.hline(full.x_range(), grid.bottom() + 3.0, Stroke::new(2.0, if sr.hovered() || sr.dragged() { ACCENT } else { BG }));
+        vp.rect_filled(full, 0.0, PANEL());
+        vp.hline(full.x_range(), grid.bottom() + 3.0, Stroke::new(2.0, if sr.hovered() || sr.dragged() { ACCENT() } else { BG() }));
         let y_val = |v: u8| vel.bottom() - 4.0 - v as f32 / 127.0 * (vel.height() - 8.0);
         // Líneas guía: 25 %, 50 %, 75 % y máximo, con su valor a la izquierda.
         for v in [32u8, 64, 96, 127] {
@@ -1045,8 +1045,8 @@ impl App {
         for (c, nombre) in Carril::TODOS {
             let r = Rect::from_min_size(pos2(lane_tabs.left() + 4.0, tab_y), vec2(lane_tabs.width() - 8.0, 20.0));
             let activo = c == carril;
-            vp.rect_filled(r, rr(4.0), if activo { ACCENT } else { Color32::from_white_alpha(8) });
-            vp.text(r.center(), Align2::CENTER_CENTER, tr(nombre), FontId::proportional(11.0), if activo { BG } else { TEXT_DIM });
+            vp.rect_filled(r, rr(4.0), if activo { ACCENT() } else { Color32::from_white_alpha(8) });
+            vp.text(r.center(), Align2::CENTER_CENTER, tr(nombre), FontId::proportional(11.0), if activo { BG() } else { TEXT_DIM() });
             tab_y += 23.0;
         }
         let bp = p.with_clip_rect(vel);
@@ -1073,7 +1073,7 @@ impl App {
         }
         // Regla con números de compás y cursor de reproducción sobre rejilla y carril.
         let rp = p.with_clip_rect(regla);
-        rp.rect_filled(regla, 0.0, PANEL);
+        rp.rect_filled(regla, 0.0, PANEL());
         let compas = beat * self.engine.beats.load(Relaxed).max(1) as f64;
         let primero = ((rel_at(grid.left()) + clip.start as f64 - origin as f64) / compas).floor().max(0.0) as i64;
         for b in primero..primero + 400 {
@@ -1081,15 +1081,15 @@ impl App {
             if x > regla.right() {
                 break;
             }
-            rp.vline(x, regla.center().y..=regla.bottom(), Stroke::new(1.0, BORDER));
-            rp.text(pos2(x + 3.0, regla.top() + 1.0), Align2::LEFT_TOP, (b + 1).to_string(), FontId::monospace(10.0), TEXT_DIM);
+            rp.vline(x, regla.center().y..=regla.bottom(), Stroke::new(1.0, BORDER()));
+            rp.text(pos2(x + 3.0, regla.top() + 1.0), Align2::LEFT_TOP, (b + 1).to_string(), FontId::monospace(10.0), TEXT_DIM());
         }
         let cx = x_of(self.pos() as f64 - clip.start as f64);
         if (regla.left()..=regla.right()).contains(&cx) {
             let lp = p.with_clip_rect(Rect::from_min_max(regla.min, pos2(area.right(), area.bottom())));
-            lp.vline(cx, regla.top()..=area.bottom(), Stroke::new(1.5, TEXT));
+            lp.vline(cx, regla.top()..=area.bottom(), Stroke::new(1.5, TEXT()));
             let t = regla.top();
-            lp.add(egui::Shape::convex_polygon(vec![pos2(cx - 6.0, t), pos2(cx + 6.0, t), pos2(cx + 6.0, t + 6.0), pos2(cx, t + 12.0), pos2(cx - 6.0, t + 6.0)], ACCENT, Stroke::new(1.0, BG)));
+            lp.add(egui::Shape::convex_polygon(vec![pos2(cx - 6.0, t), pos2(cx + 6.0, t), pos2(cx + 6.0, t + 6.0), pos2(cx, t + 12.0), pos2(cx - 6.0, t + 6.0)], ACCENT(), Stroke::new(1.0, BG())));
         }
     }
 }

@@ -159,7 +159,7 @@ fn meta_form(ui: &mut egui::Ui, m: &mut SongMeta, id: &str) {
 
 fn card(ui: &mut egui::Ui, on: bool, width: f32, add: impl FnOnce(&mut egui::Ui)) -> egui::Response {
     let frame =
-        egui::Frame::new().fill(if on { ACCENT.gamma_multiply(0.35) } else { ELEVATED }).stroke(egui::Stroke::new(1.0, if on { ACCENT } else { BORDER })).corner_radius(rr(12.0)).inner_margin(14.0);
+        egui::Frame::new().fill(if on { ACCENT().gamma_multiply(0.35) } else { ELEVATED() }).stroke(egui::Stroke::new(1.0, if on { ACCENT() } else { BORDER() })).corner_radius(rr(12.0)).inner_margin(14.0);
     let r = frame
         .show(ui, |ui| {
             ui.set_width(width);
@@ -168,7 +168,7 @@ fn card(ui: &mut egui::Ui, on: bool, width: f32, add: impl FnOnce(&mut egui::Ui)
         .response
         .interact(egui::Sense::click());
     if r.hovered() && !on {
-        ui.painter().rect_stroke(r.rect, rr(12.0), egui::Stroke::new(1.0, ACCENT.gamma_multiply(0.7)), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(r.rect, rr(12.0), egui::Stroke::new(1.0, ACCENT().gamma_multiply(0.7)), egui::StrokeKind::Inside);
     }
     r
 }
@@ -225,7 +225,7 @@ impl App {
         };
         let (mut close, mut action): (bool, Option<Action>) = (false, None);
         let max_h = (ctx.content_rect().height() - 260.0).max(240.0);
-        let frame = egui::Frame::popup(&ctx.global_style()).fill(PANEL).inner_margin(28.0).corner_radius(rr(18.0)).stroke(egui::Stroke::new(1.0, BORDER));
+        let frame = egui::Frame::popup(&ctx.global_style()).fill(PANEL()).inner_margin(28.0).corner_radius(rr(18.0)).stroke(egui::Stroke::new(1.0, BORDER()));
         // Fondo muy oscurecido para aislar la ventana del proyecto que hay detrás.
         let modal = egui::Modal::new(Id::new("welcome")).backdrop_color(Color32::from_black_alpha(225)).frame(frame);
         modal.show(ctx, |ui| {
@@ -239,11 +239,11 @@ impl App {
                         ui.add_space(8.0);
                         ui.add(logo(136.0));
                         ui.add_space(6.0);
-                        ui.label(RichText::new(tr("QUANTUM DAW")).size(24.0).strong().color(TEXT));
-                        ui.label(RichText::new(format!("versión {VERSION}")).size(13.0).color(TEXT_DIM));
+                        ui.label(RichText::new(tr("QUANTUM DAW")).size(24.0).strong().color(TEXT()));
+                        ui.label(RichText::new(format!("versión {VERSION}")).size(13.0).color(TEXT_DIM()));
                     });
                     ui.add_space(18.0);
-                    ui.label(RichText::new(tr("RECIENTES")).size(11.5).strong().color(TEXT_DIM));
+                    ui.label(RichText::new(tr("RECIENTES")).size(11.5).strong().color(TEXT_DIM()));
                     ui.add_space(-4.0);
                     for dir in self.config.recent.iter().filter(|d| d.join(project::FILE).exists()).take(7).cloned().collect::<Vec<_>>() {
                         let name = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -251,12 +251,12 @@ impl App {
                         // Fila completa: resalta al pasar el ratón y se separa con una línea sutil.
                         let (r, resp) = ui.allocate_exact_size(vec2(230.0, 44.0), egui::Sense::click());
                         if resp.hovered() {
-                            ui.painter().rect_filled(r, rr(8.0), ELEVATED);
-                            ui.painter().rect_filled(egui::Rect::from_min_size(r.min + vec2(0.0, 8.0), vec2(3.0, r.height() - 16.0)), 1.5, ACCENT);
+                            ui.painter().rect_filled(r, rr(8.0), ELEVATED());
+                            ui.painter().rect_filled(egui::Rect::from_min_size(r.min + vec2(0.0, 8.0), vec2(3.0, r.height() - 16.0)), 1.5, ACCENT());
                         }
-                        ui.painter().text(r.left_top() + vec2(12.0, 7.0), egui::Align2::LEFT_TOP, &name, egui::FontId::proportional(14.5), if resp.hovered() { TEXT } else { TEXT.gamma_multiply(0.9) });
-                        ui.painter().text(r.left_bottom() + vec2(12.0, -7.0), egui::Align2::LEFT_BOTTOM, format!("{parent} · {}", modified(&dir)), egui::FontId::proportional(11.0), TEXT_DIM);
-                        ui.painter().hline(r.x_range(), r.bottom() + 0.5, egui::Stroke::new(1.0, BORDER.gamma_multiply(0.6)));
+                        ui.painter().text(r.left_top() + vec2(12.0, 7.0), egui::Align2::LEFT_TOP, &name, egui::FontId::proportional(14.5), if resp.hovered() { TEXT() } else { TEXT().gamma_multiply(0.9) });
+                        ui.painter().text(r.left_bottom() + vec2(12.0, -7.0), egui::Align2::LEFT_BOTTOM, format!("{parent} · {}", modified(&dir)), egui::FontId::proportional(11.0), TEXT_DIM());
+                        ui.painter().hline(r.x_range(), r.bottom() + 0.5, egui::Stroke::new(1.0, BORDER().gamma_multiply(0.6)));
                         if resp.on_hover_text(dir.display().to_string()).clicked() {
                             action = Some(Box::new(move |app: &mut Self| {
                                 let r = app.open_dir(dir);
@@ -314,7 +314,7 @@ impl App {
                                     {
                                         w.folder = d;
                                     }
-                                    ui.add(egui::Label::new(RichText::new(w.folder.display().to_string()).color(TEXT_DIM)).truncate()).on_hover_text(w.folder.display().to_string());
+                                    ui.add(egui::Label::new(RichText::new(w.folder.display().to_string()).color(TEXT_DIM())).truncate()).on_hover_text(w.folder.display().to_string());
                                 });
                                 ui.end_row();
                                 ui.label(RichText::new(tr("Frecuencia de muestreo")).size(14.0));
@@ -343,7 +343,7 @@ impl App {
                                 ui.end_row();
                             });
                             ui.add_space(10.0);
-                            ui.label(RichText::new(tr("PLANTILLA")).size(11.5).strong().color(TEXT_DIM));
+                            ui.label(RichText::new(tr("PLANTILLA")).size(11.5).strong().color(TEXT_DIM()));
                             // Tarjetas de plantilla del mismo ancho y alto, tres por fila.
                             let size = vec2(200.0, 74.0);
                             for row in TEMPLATES.iter().enumerate().collect::<Vec<_>>().chunks(3) {
@@ -352,12 +352,12 @@ impl App {
                                     for &(k, (name, desc, _)) in row {
                                         let on = w.template == k;
                                         let (rect, r) = ui.allocate_exact_size(size, egui::Sense::click());
-                                        let fill = if on { ACCENT.gamma_multiply(0.35) } else if r.hovered() { BORDER } else { ELEVATED };
-                                        ui.painter().rect(rect, rr(12.0), fill, egui::Stroke::new(1.0, if on || r.hovered() { ACCENT } else { BORDER }), egui::StrokeKind::Inside);
+                                        let fill = if on { ACCENT().gamma_multiply(0.35) } else if r.hovered() { BORDER() } else { ELEVATED() };
+                                        ui.painter().rect(rect, rr(12.0), fill, egui::Stroke::new(1.0, if on || r.hovered() { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
                                         let inner = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(14.0, 12.0))).layout(egui::Layout::top_down(egui::Align::Min)));
                                         inner.spacing_mut().item_spacing.y = 3.0;
                                         inner.label(RichText::new(tr(name)).size(14.5).strong());
-                                        inner.add(egui::Label::new(RichText::new(tr(desc)).size(12.0).color(TEXT_DIM)).wrap());
+                                        inner.add(egui::Label::new(RichText::new(tr(desc)).size(12.0).color(TEXT_DIM())).wrap());
                                         if r.clicked() {
                                             w.template = k;
                                         }
@@ -366,12 +366,12 @@ impl App {
                             }
                         }
                         1 => {
-                            ui.label(RichText::new(format!("Proyecto actual: {}", self.dir.display())).color(TEXT_DIM));
+                            ui.label(RichText::new(format!("Proyecto actual: {}", self.dir.display())).color(TEXT_DIM()));
                             ui.add_space(4.0);
                             meta_form(ui, &mut self.meta, "song-meta");
                             ui.add_space(10.0);
                             ui.vertical_centered(|ui| {
-                                if ui.add(egui::Button::new(RichText::new(tr("Guardar datos")).size(16.0).strong()).fill(ACCENT).min_size(vec2(220.0, 40.0)).corner_radius(rr(20.0))).clicked() {
+                                if ui.add(egui::Button::new(RichText::new(tr("Guardar datos")).size(16.0).strong()).fill(ACCENT()).min_size(vec2(220.0, 40.0)).corner_radius(rr(20.0))).clicked() {
                                     self.save();
                                 }
                             });
@@ -385,7 +385,7 @@ impl App {
                                     ui.label(RichText::new(title).size(16.0).strong().color(METER[1]));
                                     if let Some(c) = &info {
                                         let by = if c.author.is_empty() { String::new() } else { format!("{} {} · ", tr("por"), c.author) };
-                                        ui.label(RichText::new(format!("{by}{} {} · {} {}", tr("creado"), c.created_at, songs.len(), tr("canciones"))).size(12.0).color(TEXT_DIM));
+                                        ui.label(RichText::new(format!("{by}{} {} · {} {}", tr("creado"), c.created_at, songs.len(), tr("canciones"))).size(12.0).color(TEXT_DIM()));
                                     }
                                 });
                                 for (dir, p) in songs {
@@ -394,10 +394,10 @@ impl App {
                                         ui.horizontal(|ui| {
                                             ui.label(RichText::new(&name).size(15.0).strong());
                                             if !p.meta.artist.is_empty() {
-                                                ui.label(RichText::new(&p.meta.artist).color(TEXT_DIM));
+                                                ui.label(RichText::new(&p.meta.artist).color(TEXT_DIM()));
                                             }
                                         });
-                                        ui.label(RichText::new(song_info(&p)).size(11.5).color(TEXT_DIM));
+                                        ui.label(RichText::new(song_info(&p)).size(11.5).color(TEXT_DIM()));
                                     });
                                     if r.on_hover_text(dir.display().to_string()).clicked() {
                                         action = Some(Box::new(move |app: &mut Self| {
@@ -416,7 +416,7 @@ impl App {
                             }
                         }
                         3 => {
-                            ui.label(RichText::new(tr("Proyecto de demostración con batería, bajo y pad para probar el mixer y los efectos.")).size(14.0).color(TEXT_DIM));
+                            ui.label(RichText::new(tr("Proyecto de demostración con batería, bajo y pad para probar el mixer y los efectos.")).size(14.0).color(TEXT_DIM()));
                             if ui.button(RichText::new(tr("Abrir la demo")).size(14.5)).clicked() {
                                 action = Some(Box::new(|app: &mut Self| {
                                     let dir = projects_dir().join("Demo");
@@ -425,16 +425,16 @@ impl App {
                                 }));
                             }
                             ui.add_space(8.0);
-                            ui.label(RichText::new(tr("Instrumentos reales gratuitos: en la Biblioteca (Y) → Instrumentos, o desde el piano roll.")).color(TEXT_DIM));
-                            ui.label(RichText::new(tr("Atajos: Herramientas → Atajos de teclado y ratón.")).color(TEXT_DIM));
+                            ui.label(RichText::new(tr("Instrumentos reales gratuitos: en la Biblioteca (Y) → Instrumentos, o desde el piano roll.")).color(TEXT_DIM()));
+                            ui.label(RichText::new(tr("Atajos: Herramientas → Atajos de teclado y ratón.")).color(TEXT_DIM()));
                         }
                         _ => {
                             ui.label(RichText::new(format!("Quantum DAW {VERSION}")).size(20.0).strong());
                             ui.label(RichText::new(tr("Estación de audio digital escrita en Rust.")).size(14.0));
-                            ui.label(RichText::new(tr("Desarrollado por QUANTEX")).size(14.0).strong().color(ACCENT));
+                            ui.label(RichText::new(tr("Desarrollado por QUANTEX")).size(14.0).strong().color(ACCENT()));
                             ui.add_space(8.0);
                             for site in ["www.quantumdaw.com", "www.quantex.com.py"] {
-                                ui.hyperlink_to(RichText::new(site).size(15.0).color(ACCENT), format!("https://{site}"));
+                                ui.hyperlink_to(RichText::new(site).size(15.0).color(ACCENT()), format!("https://{site}"));
                             }
                         }
                     });
@@ -453,7 +453,7 @@ impl App {
                 let buttons = if w.tab == 0 { size.x * 2.0 + 12.0 } else { size.x };
                 let left = ui.min_rect().left();
                 ui.add_space(((940.0 - buttons) / 2.0 - (ui.cursor().min.x - left)).max(0.0));
-                if w.tab == 0 && ui.add(egui::Button::new(RichText::new(tr("Crear canción")).size(16.0).strong()).fill(ACCENT).min_size(size).corner_radius(rr(21.0))).clicked() {
+                if w.tab == 0 && ui.add(egui::Button::new(RichText::new(tr("Crear canción")).size(16.0).strong()).fill(ACCENT()).min_size(size).corner_radius(rr(21.0))).clicked() {
                     let r = self.create_song(&w);
                     self.report(format!("Canción «{}» creada", w.name), r);
                     close = true;

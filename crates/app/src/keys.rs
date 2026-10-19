@@ -305,7 +305,7 @@ impl App {
     /// Editor de atajos: clic en un atajo y pulsa la nueva combinación (o gira la rueda con los modificadores).
     pub fn keys_editor(&mut self, ui: &mut egui::Ui, capture: &mut Option<Capture>) {
         ui.heading(tr("Atajos de teclado y ratón"));
-        ui.label(RichText::new(tr("Haz clic en un atajo y pulsa la nueva combinación. Esc cancela, Retroceso lo deja vacío.")).size(11.0).color(TEXT_DIM));
+        ui.label(RichText::new(tr("Haz clic en un atajo y pulsa la nueva combinación. Esc cancela, Retroceso lo deja vacío.")).size(11.0).color(TEXT_DIM()));
         // Captura de la combinación pulsada.
         if let Some(c) = *capture {
             for e in ui.input(|i| i.events.clone()) {
@@ -357,7 +357,7 @@ impl App {
                     } else {
                         current
                     };
-                    let b = ui.button(RichText::new(text).color(if dup { METER[2] } else { TEXT }));
+                    let b = ui.button(RichText::new(text).color(if dup { METER[2] } else { TEXT() }));
                     if b.on_hover_text(if dup { "Atajo repetido en otro comando" } else { "Clic para cambiar" }).clicked() {
                         *capture = Some(Capture::Key(c));
                     }

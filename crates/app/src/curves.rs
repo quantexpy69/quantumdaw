@@ -66,11 +66,11 @@ pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32) {
     // Rejilla.
     for (f, t) in [(50.0, "50"), (100.0, "100"), (200.0, "200"), (500.0, "500"), (1000.0, "1k"), (2000.0, "2k"), (5000.0, "5k"), (10000.0, "10k")] {
         p.vline(x_de(f), r.y_range(), Stroke::new(1.0, Color32::from_white_alpha(10)));
-        p.text(pos2(x_de(f) + 3.0, rect.bottom() - 2.0), Align2::LEFT_BOTTOM, t, FontId::proportional(9.5), TEXT_DIM);
+        p.text(pos2(x_de(f) + 3.0, rect.bottom() - 2.0), Align2::LEFT_BOTTOM, t, FontId::proportional(9.5), TEXT_DIM());
     }
     for db in [-18.0, -12.0, -6.0, 6.0, 12.0, 18.0] {
         p.hline(r.x_range(), y_eq(db), Stroke::new(1.0, Color32::from_white_alpha(6)));
-        p.text(pos2(rect.left() + 2.0, y_eq(db)), Align2::LEFT_CENTER, format!("{db:+.0}"), FontId::proportional(8.5), TEXT_DIM.gamma_multiply(0.7));
+        p.text(pos2(rect.left() + 2.0, y_eq(db)), Align2::LEFT_CENTER, format!("{db:+.0}"), FontId::proportional(8.5), TEXT_DIM().gamma_multiply(0.7));
     }
     p.hline(r.x_range(), y_eq(0.0), Stroke::new(1.0, Color32::from_white_alpha(22)));
     // Espectro en vivo (relleno) y reducción de resonancias (barras rojas desde la línea de 0 dB).
@@ -165,7 +165,7 @@ pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32) {
         let relleno = if ganancia.is_some_and(|k| valores[k].abs() > 0.05) || (*freq == 0 && f > 21.0) || (*freq == 14 && f < 19_900.0) { COLORES[n] } else { Color32::from_gray(70) };
         p.circle_filled(c, if activo { 10.0 } else { 8.0 }, relleno);
         p.circle_stroke(c, if activo { 10.0 } else { 8.0 }, Stroke::new(1.5, Color32::WHITE.gamma_multiply(0.8)));
-        p.text(c, Align2::CENTER_CENTER, (n + 1).to_string(), FontId::proportional(10.0), BG);
+        p.text(c, Align2::CENTER_CENTER, (n + 1).to_string(), FontId::proportional(10.0), BG());
         let detalle = match (ganancia, q) {
             (Some(k), Some(kq)) => format!("{} · {:.0} Hz · {:+.1} dB · Q {:.1}", tr(nombre), f, valores[*k], valores[*kq]),
             (Some(k), None) => format!("{} · {:.0} Hz · {:+.1} dB", tr(nombre), f, valores[*k]),
@@ -174,7 +174,7 @@ pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32) {
         resp.on_hover_text(format!("{detalle}\n{}", tr("Arrastra: frecuencia y ganancia · rueda: ancho (Q) · doble clic: 0 dB")));
     }
     p.text(rect.right_top() + vec2(-10.0, 6.0), Align2::RIGHT_TOP, tr("rojo: resonancias atenuadas"), FontId::proportional(10.0), ROJO);
-    p.rect_stroke(rect, widgets::rr(10.0), Stroke::new(1.0, BORDER), StrokeKind::Inside);
+    p.rect_stroke(rect, widgets::rr(10.0), Stroke::new(1.0, BORDER()), StrokeKind::Inside);
     ui.ctx().request_repaint();
 }
 
@@ -275,7 +275,7 @@ impl App {
 /// Encabezado de Curves: presets, detección automática y pista clave del sidechain.
 pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, String)], detectar: &mut bool, sincronizar: &mut bool) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Preset")).size(12.0).color(TEXT_DIM));
+        ui.label(RichText::new(tr("Preset")).size(12.0).color(TEXT_DIM()));
         egui::ComboBox::from_id_salt(("curves-preset", fx as *const _ as usize)).selected_text(tr("Elegir…")).width(170.0).show_ui(ui, |ui| {
             for (i, (nombre, _)) in PRESETS.iter().enumerate() {
                 if ui.selectable_label(false, tr(nombre)).clicked() {
@@ -283,12 +283,12 @@ pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, String)], detec
                 }
             }
         });
-        let boton = egui::Button::new(RichText::new(tr("Detectar frecuencias")).strong().color(BG)).fill(Color32::from_rgb(0xFF, 0x6B, 0x9A));
+        let boton = egui::Button::new(RichText::new(tr("Detectar frecuencias")).strong().color(BG())).fill(Color32::from_rgb(0xFF, 0x6B, 0x9A));
         if ui.add(boton).on_hover_text(tr("Analiza la pista y atenúa las frecuencias que sobresalen (resonancias molestas)")).clicked() {
             *detectar = true;
         }
         // Sidechain: otra pista (por ejemplo la voz) hace que esta le abra espacio en sus frecuencias.
-        ui.label(RichText::new(tr("Sidechain")).size(12.0).color(TEXT_DIM));
+        ui.label(RichText::new(tr("Sidechain")).size(12.0).color(TEXT_DIM()));
         let actual = fx.sidechain.load(Relaxed);
         let nombre = pistas.iter().find(|p| p.0 == actual).map_or_else(|| tr("Ninguno").to_string(), |p| p.1.clone());
         egui::ComboBox::from_id_salt(("curves-sc", fx as *const _ as usize))

@@ -12,11 +12,11 @@ const SLOTS: usize = 4;
 /// Línea separadora fina entre secciones del canal.
 fn sep(ui: &mut egui::Ui) {
     let (r, _) = ui.allocate_exact_size(vec2(STRIP_W, 7.0), Sense::hover());
-    ui.painter().hline(r.x_range().shrink(4.0), r.center().y, Stroke::new(1.0, BORDER));
+    ui.painter().hline(r.x_range().shrink(4.0), r.center().y, Stroke::new(1.0, BORDER()));
 }
 
 fn readout(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
-    let frame = egui::Frame::new().fill(BG).corner_radius(rr(5.0)).inner_margin(egui::Margin::symmetric(4, 2));
+    let frame = egui::Frame::new().fill(BG()).corner_radius(rr(5.0)).inner_margin(egui::Margin::symmetric(4, 2));
     frame
         .show(ui, |ui| {
             ui.set_width(42.0);
@@ -61,7 +61,7 @@ impl App {
                 for i in 0..n {
                     self.strip(ui, Some(i), top_h, fader_h, compact);
                 }
-                if ui.add_sized([40.0, fader_h + 120.0], egui::Button::new(RichText::new("+").size(22.0).color(TEXT_DIM))).on_hover_text(tr("Nueva pista")).clicked() {
+                if ui.add_sized([40.0, fader_h + 120.0], egui::Button::new(RichText::new("+").size(22.0).color(TEXT_DIM()))).on_hover_text(tr("Nueva pista")).clicked() {
                     self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
                 }
                 ui.add_space(12.0);
@@ -76,7 +76,7 @@ impl App {
             d.1 = self.strip_rects.iter().filter(|r| r.center().x < p.x).count();
             let x = self.strip_rects.get(d.1).map_or_else(|| self.strip_rects.last().map_or(0.0, |r| r.right() + 3.0), |r| r.left() - 3.0);
             let y = self.strip_rects.first().map_or(0.0..=0.0, |r| r.top()..=r.bottom());
-            ui.painter().vline(x, y, Stroke::new(3.0, ACCENT));
+            ui.painter().vline(x, y, Stroke::new(3.0, ACCENT()));
         }
     }
 
@@ -86,7 +86,7 @@ impl App {
         let (level, peak) = (self.levels.get(li).copied().unwrap_or(0.0), self.peaks.get(li).copied().unwrap_or(0.0));
         let params = i.map(|i| self.s.tracks[i].params.clone());
         let selected = i.is_some_and(|i| self.s.tracks[i].selected);
-        let color = i.map_or(ACCENT, |i| self.s.tracks[i].color);
+        let color = i.map_or(ACCENT(), |i| self.s.tracks[i].color);
         // El master no tiene las filas de botones de las pistas: su fader crece para igualar la altura.
         let fader_h = if i.is_none() && !self.s.tracks.is_empty() { fader_h + (self.strip_extra - self.master_extra).max(0.0) } else { fader_h };
         // Clic derecho en cualquier parte del canal (con el área del cuadro anterior, debajo de sus controles).
@@ -98,8 +98,8 @@ impl App {
                 self.track_menu(ui, i);
             });
         }
-        let frame = egui::Frame::new().fill(if selected { BORDER } else { ELEVATED }).corner_radius(rr(10.0)).inner_margin(6.0);
-        let resp = frame.stroke(Stroke::new(1.0, if selected { ACCENT } else { BORDER })).show(ui, |ui| {
+        let frame = egui::Frame::new().fill(if selected { BORDER() } else { ELEVATED() }).corner_radius(rr(10.0)).inner_margin(6.0);
+        let resp = frame.stroke(Stroke::new(1.0, if selected { ACCENT() } else { BORDER() })).show(ui, |ui| {
             ui.set_width(STRIP_W);
             ui.vertical_centered(|ui| {
                 let sense = if i.is_some() { Sense::click_and_drag() } else { Sense::hover() };
@@ -129,7 +129,7 @@ impl App {
                 }
                 let top = ui.scope(|ui| match i {
                     Some(i) if compact => self.fx_button(ui, i),
-                    Some(i) if self.s.tracks[i].kind == TrackKind::Click => _ = ui.label(RichText::new(tr("Clic (metrónomo)")).size(11.0).color(TEXT_DIM)),
+                    Some(i) if self.s.tracks[i].kind == TrackKind::Click => _ = ui.label(RichText::new(tr("Clic (metrónomo)")).size(11.0).color(TEXT_DIM())),
                     Some(i) if self.s.tracks[i].midi() => {
                         let t = &self.s.tracks[i];
                         let name = instruments::find(&t.instrument).map_or("QUANTUM Synth", |e| e.name);
@@ -143,7 +143,7 @@ impl App {
                         self.input_combo(ui, i);
                         self.fx_slots(ui, i);
                     }
-                    None => _ = ui.label(RichText::new(tr("Salida")).size(11.0).color(TEXT_DIM)),
+                    None => _ = ui.label(RichText::new(tr("Salida")).size(11.0).color(TEXT_DIM())),
                 });
                 ui.add_space((top_h - top.response.rect.height()).max(0.0));
                 sep(ui);
@@ -163,7 +163,7 @@ impl App {
                         };
                         touched |= widgets::pan_knob(ui, &mut pan).on_hover_text(tr("Panorama · arrastra arriba/abajo · doble clic: centro")).dragged();
                         p.pan.set(pan);
-                        ui.label(RichText::new(text).size(11.0).strong().color(if pan.abs() < 0.005 { TEXT_DIM } else { ACCENT }));
+                        ui.label(RichText::new(text).size(11.0).strong().color(if pan.abs() < 0.005 { TEXT_DIM() } else { ACCENT() }));
                     }
                     None => ui.add_space(68.0),
                 }
@@ -171,7 +171,7 @@ impl App {
                 let gain = params.as_ref().map_or(&self.engine.master.gain, |p| &p.gain);
                 ui.horizontal(|ui| {
                     ui.add_space(6.0);
-                    readout(ui, widgets::db_text(gain.get()), TEXT).on_hover_text(tr("Volumen del fader"));
+                    readout(ui, widgets::db_text(gain.get()), TEXT()).on_hover_text(tr("Volumen del fader"));
                     let c = if widgets::db(peak) > 0.0 { METER[2] } else { METER[0] };
                     if readout(ui, widgets::db_text(peak), c).on_hover_text(tr("Pico retenido · clic para reiniciar")).clicked() {
                         self.peaks[li] = 0.0;
@@ -189,7 +189,7 @@ impl App {
                     let t = &self.s.tracks[i];
                     let group = t.group.and_then(|g| self.s.groups.get(g));
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("{}", i + 1)).monospace().strong().color(TEXT_DIM));
+                        ui.label(RichText::new(format!("{}", i + 1)).monospace().strong().color(TEXT_DIM()));
                         ui.label(group.map_or(RichText::new(" "), |g| RichText::new(&g.name).color(g.color)).size(11.0));
                     });
                     ui.horizontal(|ui| {
@@ -201,11 +201,11 @@ impl App {
                 let name = egui::Frame::new().fill(color.gamma_multiply(0.85)).corner_radius(rr(8.0)).inner_margin(egui::Margin::symmetric(4, 2));
                 name.show(ui, |ui| match i {
                     Some(i) => {
-                        _ = ui.add(egui::TextEdit::singleline(&mut self.s.tracks[i].name).frame(egui::Frame::new()).text_color(BG).horizontal_align(egui::Align::Center).desired_width(STRIP_W - 10.0))
+                        _ = ui.add(egui::TextEdit::singleline(&mut self.s.tracks[i].name).frame(egui::Frame::new()).text_color(BG()).horizontal_align(egui::Align::Center).desired_width(STRIP_W - 10.0))
                     }
                     None => {
                         ui.set_width(STRIP_W - 10.0);
-                        ui.label(RichText::new(tr("Stereo Out")).strong().color(BG));
+                        ui.label(RichText::new(tr("Stereo Out")).strong().color(BG()));
                     }
                 });
             });
@@ -222,7 +222,7 @@ impl App {
         let r = resp.response;
         self.strip_rects[i] = r.rect;
         if r.dnd_hover_payload::<LibItem>().is_some() {
-            ui.painter().rect_stroke(r.rect, rr(10.0), Stroke::new(2.0, ACCENT), StrokeKind::Inside);
+            ui.painter().rect_stroke(r.rect, rr(10.0), Stroke::new(2.0, ACCENT()), StrokeKind::Inside);
         }
         if let Some(item) = r.dnd_release_payload::<LibItem>() {
             self.drop_item(&item, Some(i), self.pos());
@@ -242,7 +242,7 @@ impl App {
             let fill = if on { on_color } else if resp.hovered() { Color32::from_gray(70) } else { Color32::from_gray(48) };
             let big = size.x > 24.0;
             ui.painter().rect(r, rr(if big { 4.0 } else { 10.0 }), fill, Stroke::new(1.0, if on { on_color } else { Color32::from_gray(30) }), StrokeKind::Inside);
-            let ink = if on { if k == 2 { BG } else { TEXT } } else { Color32::from_gray(200) };
+            let ink = if on { if k == 2 { BG() } else { TEXT() } } else { Color32::from_gray(200) };
             ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(if big { 15.0 } else { 11.0 }), ink);
             if resp.on_hover_text(tr(tip)).clicked() {
                 for m in self.flag_targets(i, k) {
@@ -255,16 +255,16 @@ impl App {
     /// Ranuras sobre el panorama: envíos (abre el ruteo), grupo y modo de automatización.
     fn strip_slots(&mut self, ui: &mut egui::Ui, i: usize) {
         let w = STRIP_W - 8.0;
-        let slot = |text: String, color: Color32| egui::Button::new(RichText::new(text).size(11.0).color(color)).fill(BG).min_size(vec2(w, 20.0)).truncate();
+        let slot = |text: String, color: Color32| egui::Button::new(RichText::new(text).size(11.0).color(color)).fill(BG()).min_size(vec2(w, 20.0)).truncate();
         // Envíos.
         let n = self.s.tracks[i].sends.len();
         let text = if n == 0 { tr("Envíos").to_string() } else { format!("{} · {n}", tr("Envíos")) };
-        if ui.add(slot(text, if n > 0 { ACCENT } else { TEXT_DIM })).on_hover_text(tr("Envíos a buses: clic para abrir el ruteo")).clicked() {
+        if ui.add(slot(text, if n > 0 { ACCENT() } else { TEXT_DIM() })).on_hover_text(tr("Envíos a buses: clic para abrir el ruteo")).clicked() {
             self.route_window = Some(i);
         }
         // Grupo.
         let group = self.s.tracks[i].group.and_then(|g| self.s.groups.get(g)).map(|g| (g.name.clone(), g.color));
-        let (text, color) = group.clone().unwrap_or_else(|| (tr("Grupo").to_string(), TEXT_DIM));
+        let (text, color) = group.clone().unwrap_or_else(|| (tr("Grupo").to_string(), TEXT_DIM()));
         egui::containers::menu::MenuButton::from_button(slot(text, color)).ui(ui, |ui| {
             widgets::menu_style(ui);
             for g in 0..self.s.groups.len() {
@@ -285,17 +285,17 @@ impl App {
             }
         });
         // Modo de automatización (Lectura, Apagado, Toque, Retención, Escritura).
-        const MODES: [(&str, &str, Color32); 5] = [
+        let modes: [(&str, &str, Color32); 5] = [
             ("Lectura", "Lee la automatización", METER[0]),
-            ("Apagado", "Ignora la automatización", TEXT_DIM),
+            ("Apagado", "Ignora la automatización", TEXT_DIM()),
             ("Toque", "Escribe mientras mueves el fader o el panorama", Color32::from_rgb(0xFF, 0xD2, 0x3F)),
             ("Retención", "Escribe desde que tocas un control hasta parar", METER[1]),
             ("Escritura", "Escribe siempre mientras se reproduce", METER[2]),
         ];
         let mode = self.s.tracks[i].auto_mode.min(4) as usize;
-        egui::containers::menu::MenuButton::from_button(slot(tr(MODES[mode].0).to_string(), MODES[mode].2)).ui(ui, |ui| {
+        egui::containers::menu::MenuButton::from_button(slot(tr(modes[mode].0).to_string(), modes[mode].2)).ui(ui, |ui| {
             widgets::menu_style(ui);
-            for (k, (name, tip, color)) in MODES.iter().enumerate() {
+            for (k, (name, tip, color)) in modes.iter().enumerate() {
                 if ui.selectable_label(mode == k, RichText::new(tr(name)).color(*color)).on_hover_text(tr(tip)).clicked() {
                     self.s.tracks[i].auto_mode = k as u8;
                     ui.close();
@@ -306,12 +306,12 @@ impl App {
 
     /// Ranuras de efectos: clic abre el plugin, clic derecho bypass/quitar, "+" añade.
     fn fx_slots(&mut self, ui: &mut egui::Ui, i: usize) {
-        ui.label(RichText::new(tr("AUDIO FX")).size(9.0).color(TEXT_DIM));
+        ui.label(RichText::new(tr("AUDIO FX")).size(9.0).color(TEXT_DIM()));
         let (mut remove, mut add) = (None, None);
         for (j, fx) in self.s.tracks[i].fx.iter().enumerate().take(SLOTS) {
             let on = !fx.bypass.load(Relaxed);
-            let text = RichText::new(fx.kind.name()).size(11.0).color(if on { TEXT } else { TEXT_DIM });
-            let b = ui.add(egui::Button::new(text).fill(if on { ACCENT.gamma_multiply(0.4) } else { BG }).min_size(vec2(STRIP_W - 8.0, 20.0)));
+            let text = RichText::new(fx.kind.name()).size(11.0).color(if on { TEXT() } else { TEXT_DIM() });
+            let b = ui.add(egui::Button::new(text).fill(if on { ACCENT().gamma_multiply(0.4) } else { BG() }).min_size(vec2(STRIP_W - 8.0, 20.0)));
             if b.clicked() {
                 self.fx_window = Some(i);
             }
@@ -327,9 +327,9 @@ impl App {
         }
         let extra = self.s.tracks[i].fx.len().saturating_sub(SLOTS);
         if extra > 0 {
-            ui.label(RichText::new(format!("+{extra} más")).size(10.0).color(TEXT_DIM));
+            ui.label(RichText::new(format!("+{extra} más")).size(10.0).color(TEXT_DIM()));
         }
-        ui.menu_button(RichText::new(tr("+ efecto")).size(11.0).color(TEXT_DIM), |ui| {
+        ui.menu_button(RichText::new(tr("+ efecto")).size(11.0).color(TEXT_DIM()), |ui| {
             for k in FxKind::ALL {
                 if ui.button(k.name()).clicked() {
                     add = Some(k);

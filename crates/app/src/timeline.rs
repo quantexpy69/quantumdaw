@@ -581,18 +581,18 @@ impl App {
 
         // ---------- Dibujo ----------
         let painter = ui.painter_at(full);
-        painter.rect_filled(full, 0.0, BG);
-        painter.rect_filled(ruler, 0.0, PANEL);
+        painter.rect_filled(full, 0.0, BG());
+        painter.rect_filled(ruler, 0.0, PANEL());
         let lp = painter.with_clip_rect(body);
         let drop_lane = body_r.dnd_hover_payload::<LibItem>().and(ptr).and_then(|p| lane_at(p.y));
         for (i, t) in self.s.tracks.iter().enumerate() {
             let r = Rect::from_min_size(pos2(x0, lane_y(i)), vec2(body.width(), lane_h(i)));
             if t.selected {
-                lp.rect_filled(r, 0.0, PANEL);
+                lp.rect_filled(r, 0.0, PANEL());
             }
-            lp.hline(r.x_range(), r.bottom(), Stroke::new(1.0, BORDER));
+            lp.hline(r.x_range(), r.bottom(), Stroke::new(1.0, BORDER()));
             if drop_lane == Some(i) {
-                lp.rect_stroke(r.shrink(2.0), rr(6.0), Stroke::new(2.0, ACCENT), StrokeKind::Inside);
+                lp.rect_stroke(r.shrink(2.0), rr(6.0), Stroke::new(2.0, ACCENT()), StrokeKind::Inside);
             }
         }
 
@@ -612,13 +612,13 @@ impl App {
         let mut k = first as u64 / step * step;
         while x_of(bar_at(k as f64) as u64) < full.right() {
             let x = x_of(bar_at(k as f64) as u64);
-            grid.vline(x, ruler.center().y..=full.bottom(), Stroke::new(1.0, BORDER));
-            grid.text(pos2(x + 4.0, ruler.top() + 3.0), Align2::LEFT_TOP, (k + 1).to_string(), FontId::monospace(11.0), TEXT_DIM);
-            marks.vline(x, mark_lane.bottom() - 6.0..=mark_lane.bottom(), Stroke::new(1.0, BORDER));
-            marks.text(pos2(x + 3.0, mark_lane.bottom() - 1.0), Align2::LEFT_BOTTOM, (k + 1).to_string(), FontId::monospace(9.0), TEXT_DIM.gamma_multiply(0.7));
+            grid.vline(x, ruler.center().y..=full.bottom(), Stroke::new(1.0, BORDER()));
+            grid.text(pos2(x + 4.0, ruler.top() + 3.0), Align2::LEFT_TOP, (k + 1).to_string(), FontId::monospace(11.0), TEXT_DIM());
+            marks.vline(x, mark_lane.bottom() - 6.0..=mark_lane.bottom(), Stroke::new(1.0, BORDER()));
+            marks.text(pos2(x + 3.0, mark_lane.bottom() - 1.0), Align2::LEFT_BOTTOM, (k + 1).to_string(), FontId::monospace(9.0), TEXT_DIM().gamma_multiply(0.7));
             if step == 1 && beat / sr * pps > 14.0 {
                 for b in 1..beats as u64 {
-                    grid.vline(x_of(self.frame_of(k as f64 * beats + b as f64) as u64), lanes_top..=full.bottom(), Stroke::new(1.0, PANEL));
+                    grid.vline(x_of(self.frame_of(k as f64 * beats + b as f64) as u64), lanes_top..=full.bottom(), Stroke::new(1.0, PANEL()));
                 }
             }
             k += step;
@@ -628,9 +628,9 @@ impl App {
         tp.rect_filled(tempo_lane, 0.0, Color32::from_rgb(0x1F, 0x1F, 0x24));
         for (k, &(s, bpm)) in self.s.tempo.iter().enumerate() {
             let (xa, xb) = (x_of(s), self.s.tempo.get(k + 1).map_or(full.right(), |n| x_of(n.0)));
-            tp.rect_filled(Rect::from_x_y_ranges(xa..=xb, tempo_lane.y_range()), 0.0, ACCENT.gamma_multiply(if k % 2 == 0 { 0.12 } else { 0.22 }));
-            tp.vline(xa, tempo_lane.y_range(), Stroke::new(2.0, ACCENT));
-            tp.text(pos2(xa + 5.0, tempo_lane.center().y), Align2::LEFT_CENTER, format!("{bpm:.1} BPM"), FontId::proportional(11.5), TEXT);
+            tp.rect_filled(Rect::from_x_y_ranges(xa..=xb, tempo_lane.y_range()), 0.0, ACCENT().gamma_multiply(if k % 2 == 0 { 0.12 } else { 0.22 }));
+            tp.vline(xa, tempo_lane.y_range(), Stroke::new(2.0, ACCENT()));
+            tp.text(pos2(xa + 5.0, tempo_lane.center().y), Align2::LEFT_CENTER, format!("{bpm:.1} BPM"), FontId::proportional(11.5), TEXT());
         }
         for (lane, kind) in [(arr_lane, NameKind::Section), (chord_lane, NameKind::Chord)] {
             if lane.height() > 0.0 {
@@ -650,7 +650,7 @@ impl App {
         if le > ls {
             let on = self.engine.looping.load(Relaxed);
             let r = Rect::from_x_y_ranges(x_of(ls)..=x_of(le), ruler.bottom() - 9.0..=ruler.bottom() - 1.0);
-            grid.rect_filled(r, rr(4.0), if on { METER[1] } else { BORDER });
+            grid.rect_filled(r, rr(4.0), if on { METER[1] } else { BORDER() });
             if on {
                 lp.rect_filled(Rect::from_x_y_ranges(r.x_range(), body.y_range()), 0.0, METER[1].gamma_multiply(0.04));
             }
@@ -659,10 +659,10 @@ impl App {
             let ys = self.razor_lanes.map_or(body.y_range(), |(l0, l1)| (lane_y(l0)..=lane_y(l1) + lane_h(l1)).into());
             let r = Rect::from_x_y_ranges(x_of(a)..=x_of(b), ys);
             lp.rect_filled(r, rr(4.0), Color32::from_white_alpha(16));
-            lp.rect_stroke(r, rr(4.0), Stroke::new(1.0, TEXT_DIM), StrokeKind::Inside);
+            lp.rect_stroke(r, rr(4.0), Stroke::new(1.0, TEXT_DIM()), StrokeKind::Inside);
             if let Some(Drag::RazorMove(acc)) = &self.drag {
                 let dx = (*acc / sr * pps) as f32;
-                lp.rect_stroke(r.translate(vec2(dx, 0.0)), rr(4.0), Stroke::new(2.0, ACCENT), StrokeKind::Inside);
+                lp.rect_stroke(r.translate(vec2(dx, 0.0)), rr(4.0), Stroke::new(2.0, ACCENT()), StrokeKind::Inside);
             }
         }
 
@@ -675,13 +675,13 @@ impl App {
         for (i, t) in self.s.tracks.iter().enumerate() {
             let (top, color, lh) = (lane_y(i), t.color, main(i));
             if t.midi() && t.clips.is_empty() {
-                lp.text(pos2(x0 + 12.0, top + lh / 2.0), Align2::LEFT_CENTER, tr("Doble clic para crear una región MIDI"), FontId::proportional(12.0), TEXT_DIM);
+                lp.text(pos2(x0 + 12.0, top + lh / 2.0), Align2::LEFT_CENTER, tr("Doble clic para crear una región MIDI"), FontId::proportional(12.0), TEXT_DIM());
             }
             if t.kind == TrackKind::Video && t.video.is_none() {
-                lp.text(pos2(x0 + 12.0, top + lh / 2.0), Align2::LEFT_CENTER, tr("Video no disponible"), FontId::proportional(12.0), TEXT_DIM);
+                lp.text(pos2(x0 + 12.0, top + lh / 2.0), Align2::LEFT_CENTER, tr("Video no disponible"), FontId::proportional(12.0), TEXT_DIM());
             }
             if t.kind == TrackKind::Click {
-                lp.text(pos2(x0 + 12.0, top + lh / 2.0), Align2::LEFT_CENTER, tr("Clic del metrónomo · sigue el tempo y la métrica · se exporta como stem"), FontId::proportional(12.0), TEXT_DIM);
+                lp.text(pos2(x0 + 12.0, top + lh / 2.0), Align2::LEFT_CENTER, tr("Clic del metrónomo · sigue el tempo y la métrica · se exporta como stem"), FontId::proportional(12.0), TEXT_DIM());
             }
             for (j, c) in t.clips.iter().enumerate() {
                 let r = clip_rect(i, c);
@@ -692,9 +692,9 @@ impl App {
                 let title = Rect::from_min_max(r.min, pos2(r.right(), r.top() + TITLE_H));
                 lp.rect_filled(title, CornerRadius { nw: k6, ne: k6, sw: 0, se: 0 }, color.gamma_multiply(0.85 * dim));
                 let label = format!("{} · {:.0} BPM", t.name, engine::bpm_at(&self.s.tempo, c.start as f64));
-                lp.with_clip_rect(title.intersect(body)).text(title.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(11.0), BG);
+                lp.with_clip_rect(title.intersect(body)).text(title.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(11.0), BG());
                 if c.selected {
-                    lp.rect_stroke(r, rr(6.0), Stroke::new(1.5, TEXT), StrokeKind::Inside);
+                    lp.rect_stroke(r, rr(6.0), Stroke::new(1.5, TEXT()), StrokeKind::Inside);
                 }
                 let inner = Rect::from_min_max(pos2(r.left(), title.bottom() + 3.0), pos2(r.right(), r.bottom() - 3.0));
                 let wave = color.gamma_multiply(dim);
@@ -726,7 +726,7 @@ impl App {
                             let last = ((c.offset as f64 + frame_at(full.right().min(r.right())) - c.start as f64).ceil() as usize + 1).min((c.offset + c.len) as usize);
                             let pts: Vec<Pos2> = (first..last).map(|k| pos2(x_of(c.start + (k as u64 - c.offset)), mid - mono(k).clamp(-1.0, 1.0) * half)).collect();
                             if pps / sr >= 6.0 {
-                                pts.iter().for_each(|p| _ = lp.circle_filled(*p, 2.5, TEXT));
+                                pts.iter().for_each(|p| _ = lp.circle_filled(*p, 2.5, TEXT()));
                             }
                             lp.add(egui::Shape::line(pts, Stroke::new(1.5, wave)));
                         }
@@ -749,13 +749,13 @@ impl App {
                     let xo = x_of(c.start + largo);
                     let guia = lp.with_clip_rect(body);
                     for y in (r.top() as i32..r.bottom() as i32).step_by(8) {
-                        guia.vline(xo, y as f32..=(y as f32 + 4.0).min(r.bottom()), Stroke::new(1.5, TEXT.gamma_multiply(0.7)));
+                        guia.vline(xo, y as f32..=(y as f32 + 4.0).min(r.bottom()), Stroke::new(1.5, TEXT().gamma_multiply(0.7)));
                     }
                     let pct = format!("{:.1} %", 100.0 / k);
                     let pos = pos2(r.right() - 6.0, r.bottom() - 18.0);
-                    let galeria = guia.layout_no_wrap(pct.clone(), FontId::proportional(13.0), BG);
+                    let galeria = guia.layout_no_wrap(pct.clone(), FontId::proportional(13.0), BG());
                     guia.rect_filled(Rect::from_min_size(pos2(pos.x - galeria.size().x - 8.0, pos.y - 10.0), vec2(galeria.size().x + 10.0, 20.0)), rr(5.0), METER[1]);
-                    guia.text(pos, Align2::RIGHT_CENTER, pct, FontId::proportional(13.0), BG);
+                    guia.text(pos, Align2::RIGHT_CENTER, pct, FontId::proportional(13.0), BG());
                 }
                 // Fades: curva; tiradores visibles al pasar el ratón o con la región seleccionada.
                 for (len, out) in [(c.fade_in, false), (c.fade_out, true)] {
@@ -768,18 +768,18 @@ impl App {
                                 pos2(a + (b - a) * t, r.bottom() - g * (r.bottom() - title.bottom()))
                             })
                             .collect();
-                        lp.add(egui::Shape::line(pts, Stroke::new(1.5, TEXT)));
+                        lp.add(egui::Shape::line(pts, Stroke::new(1.5, TEXT())));
                     }
                     if (c.selected || hover == Some((i, j))) && !out {
                         // Asa de time-stretch en la esquina inferior derecha.
                         let k = r.right_bottom() - vec2(4.0, 4.0);
                         for d in [4.0, 8.0] {
-                            lp.line_segment([k - vec2(d, 0.0), k - vec2(0.0, d)], Stroke::new(1.5, TEXT));
+                            lp.line_segment([k - vec2(d, 0.0), k - vec2(0.0, d)], Stroke::new(1.5, TEXT()));
                         }
                     }
                     if c.selected || hover == Some((i, j)) {
                         let x = if out { x_of(c.end() - c.fade_out) } else { x_of(c.start + c.fade_in) };
-                        lp.circle_filled(pos2(x.clamp(r.left() + 5.0, r.right() - 5.0), title.center().y), 4.5, TEXT);
+                        lp.circle_filled(pos2(x.clamp(r.left() + 5.0, r.right() - 5.0), title.center().y), 4.5, TEXT());
                     }
                 }
             }
@@ -791,7 +791,7 @@ impl App {
             if self.show_auto {
                 let (pts, c, cur) = match t.auto_param {
                     0 => (&t.vol_auto, METER[1], fader_pos(t.params.gain.get())),
-                    _ => (&t.pan_auto, ACCENT, (t.params.pan.get() + 1.0) / 2.0),
+                    _ => (&t.pan_auto, ACCENT(), (t.params.pan.get() + 1.0) / 2.0),
                 };
                 let norm = |v: f32| {
                     if t.auto_param == 0 { v } else { (v + 1.0) / 2.0 }
@@ -814,11 +814,11 @@ impl App {
         for (r, tex, clip) in &thumbs {
             let tp = lp.with_clip_rect(*clip);
             tp.image(tex.id(), *r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-            tp.rect_stroke(*r, 0.0, Stroke::new(1.0, BG), StrokeKind::Inside);
+            tp.rect_stroke(*r, 0.0, Stroke::new(1.0, BG()), StrokeKind::Inside);
         }
         if let Some(Drag::Swipe(i, k, a, b)) = &self.drag {
             let y = lane_y(*i) + main(*i) + *k as f32 * TAKE_H;
-            lp.rect_stroke(Rect::from_x_y_ranges(x_of((*a).min(*b))..=x_of((*a).max(*b)), y + 2.0..=y + TAKE_H - 2.0), rr(4.0), Stroke::new(2.0, ACCENT), StrokeKind::Inside);
+            lp.rect_stroke(Rect::from_x_y_ranges(x_of((*a).min(*b))..=x_of((*a).max(*b)), y + 2.0..=y + TAKE_H - 2.0), rr(4.0), Stroke::new(2.0, ACCENT()), StrokeKind::Inside);
         }
 
         // Marcas: línea vertical sobre todas las pistas y etiqueta con el nombre.
@@ -829,24 +829,24 @@ impl App {
             }
             grid.vline(x, ruler.top()..=full.bottom(), Stroke::new(1.0, MARK.gamma_multiply(0.45)));
             let font = FontId::proportional(11.5);
-            let w = ui.fonts_mut(|fo| fo.layout_no_wrap(name.clone(), font.clone(), BG).size().x);
+            let w = ui.fonts_mut(|fo| fo.layout_no_wrap(name.clone(), font.clone(), BG()).size().x);
             let pill = Rect::from_min_size(pos2(x, mark_lane.top() + 2.0), vec2(w.min(110.0) + 12.0, MARK_H - 8.0));
             let on = self.mark_drag == Some(k);
-            marks.rect_filled(pill, CornerRadius { nw: 0, ne: 6, sw: 0, se: 6 }, if on { TEXT } else { MARK });
-            marks.with_clip_rect(pill.intersect(mark_lane)).text(pill.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, name, font, BG);
+            marks.rect_filled(pill, CornerRadius { nw: 0, ne: 6, sw: 0, se: 6 }, if on { TEXT() } else { MARK });
+            marks.with_clip_rect(pill.intersect(mark_lane)).text(pill.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, name, font, BG());
         }
 
         // Cursor de reproducción.
         let px = x_of(self.pos());
         if px >= x0 {
-            painter.vline(px, ruler.top()..=full.bottom(), Stroke::new(1.5, TEXT));
+            painter.vline(px, ruler.top()..=full.bottom(), Stroke::new(1.5, TEXT()));
             // Tirador en la regla para arrastrar el cursor.
             let t = ruler.top();
-            painter.add(egui::Shape::convex_polygon(vec![pos2(px - 7.0, t), pos2(px + 7.0, t), pos2(px + 7.0, t + 7.0), pos2(px, t + 13.0), pos2(px - 7.0, t + 7.0)], ACCENT, Stroke::new(1.0, BG)));
+            painter.add(egui::Shape::convex_polygon(vec![pos2(px - 7.0, t), pos2(px + 7.0, t), pos2(px + 7.0, t + 7.0), pos2(px, t + 13.0), pos2(px - 7.0, t + 7.0)], ACCENT(), Stroke::new(1.0, BG())));
         }
 
         // Cabeceras de pista (widgets). El fondo de la columna tiene su propio menú contextual.
-        painter.rect_filled(Rect::from_min_max(full.min, pos2(x0, full.bottom())), 0.0, PANEL);
+        painter.rect_filled(Rect::from_min_max(full.min, pos2(x0, full.bottom())), 0.0, PANEL());
         ui.interact(heads, Id::new("heads-bg"), Sense::click()).context_menu(|ui| {
             widgets::menu_style(ui);
             ui.label(RichText::new(tr("Pistas")).strong());
@@ -882,7 +882,7 @@ impl App {
                 if take_r.bottom() > heads.top() && take_r.top() < heads.bottom() {
                     let active = self.s.tracks[i].comp.iter().any(|s| s.2 == k);
                     let b =
-                        egui::Button::new(RichText::new(format!("Toma {}", k + 1)).size(11.0).color(if active { BG } else { TEXT_DIM })).fill(if active { self.s.tracks[i].color } else { ELEVATED });
+                        egui::Button::new(RichText::new(format!("Toma {}", k + 1)).size(11.0).color(if active { BG() } else { TEXT_DIM() })).fill(if active { self.s.tracks[i].color } else { ELEVATED() });
                     if ui.put(take_r, b).on_hover_text(tr("Clic: escuchar esta toma completa (A/B) · barre en su carril para elegir tramos")).clicked() {
                         self.edit();
                         self.comp_take(i, 0, u64::MAX, k);
@@ -906,10 +906,10 @@ impl App {
                 let p = ui.painter().with_clip_rect(heads);
                 p.rect_filled(bar, rr(6.0), grp.color);
                 let light = grp.color.r() as u32 * 3 + grp.color.g() as u32 * 6 + grp.color.b() as u32 > 1300;
-                let galley = p.layout_no_wrap(grp.name.clone(), FontId::proportional(12.0), if light { BG } else { TEXT });
+                let galley = p.layout_no_wrap(grp.name.clone(), FontId::proportional(12.0), if light { BG() } else { TEXT() });
                 let (gw, gh) = (galley.size().x.min(bar.height() - 6.0), galley.size().y);
                 let pos = pos2(bar.center().x - gh / 2.0, bar.center().y + gw / 2.0);
-                p.with_clip_rect(bar.intersect(heads)).add(egui::epaint::TextShape::new(pos, galley, TEXT).with_angle(-std::f32::consts::FRAC_PI_2));
+                p.with_clip_rect(bar.intersect(heads)).add(egui::epaint::TextShape::new(pos, galley, TEXT()).with_angle(-std::f32::consts::FRAC_PI_2));
                 let r = ui
                     .interact(bar, Id::new(("group-bar", first)), Sense::click())
                     .on_hover_text(format!("Grupo «{}» · clic: seleccionar sus pistas · clic derecho: nombre, color y opciones", grp.name));
@@ -921,23 +921,23 @@ impl App {
             k += 1;
         }
         if let Some((_, to)) = self.track_drag {
-            painter.hline(full.x_range(), lane_y(to), Stroke::new(2.0, ACCENT));
+            painter.hline(full.x_range(), lane_y(to), Stroke::new(2.0, ACCENT()));
         }
         let add = Rect::from_min_size(pos2(full.left() + 5.0, lane_y(n) + 8.0), vec2(header_w - 10.0, 30.0));
-        if add.top() < full.bottom() && ui.put(add, egui::Button::new(RichText::new(tr("+  Nueva pista")).color(TEXT_DIM))).clicked() {
+        if add.top() < full.bottom() && ui.put(add, egui::Button::new(RichText::new(tr("+  Nueva pista")).color(TEXT_DIM()))).clicked() {
             self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
         }
-        painter.rect_filled(Rect::from_min_max(full.min, pos2(x0, lanes_top)), 0.0, PANEL);
-        painter.text(pos2(full.left() + 12.0, tempo_lane.center().y), Align2::LEFT_CENTER, tr("TEMPO"), FontId::proportional(11.0), ACCENT);
+        painter.rect_filled(Rect::from_min_max(full.min, pos2(x0, lanes_top)), 0.0, PANEL());
+        painter.text(pos2(full.left() + 12.0, tempo_lane.center().y), Align2::LEFT_CENTER, tr("TEMPO"), FontId::proportional(11.0), ACCENT());
         painter.text(pos2(full.left() + 12.0, mark_lane.center().y), Align2::LEFT_CENTER, tr("MARCAS"), FontId::proportional(11.0), MARK);
         for (lane, label, hint) in [(arr_lane, "ARREGLO", "doble clic: Intro, Estrofa, Coro…"), (chord_lane, "ACORDES", "doble clic: añadir acorde")] {
             if lane.height() > 0.0 {
                 painter.text(pos2(full.left() + 12.0, lane.center().y), Align2::LEFT_CENTER, tr(label), FontId::proportional(11.0), METER[1]);
-                painter.text(pos2(x0 - 8.0, lane.center().y), Align2::RIGHT_CENTER, tr(hint), FontId::proportional(10.0), TEXT_DIM);
+                painter.text(pos2(x0 - 8.0, lane.center().y), Align2::RIGHT_CENTER, tr(hint), FontId::proportional(10.0), TEXT_DIM());
             }
         }
-        painter.text(pos2(x0 - 8.0, mark_lane.center().y), Align2::RIGHT_CENTER, tr("doble clic o M: añadir marca"), FontId::proportional(10.0), TEXT_DIM);
-        painter.text(pos2(x0 - 8.0, tempo_lane.center().y), Align2::RIGHT_CENTER, tr("arrastra para cambiar el tempo de un tramo"), FontId::proportional(10.0), TEXT_DIM);
+        painter.text(pos2(x0 - 8.0, mark_lane.center().y), Align2::RIGHT_CENTER, tr("doble clic o M: añadir marca"), FontId::proportional(10.0), TEXT_DIM());
+        painter.text(pos2(x0 - 8.0, tempo_lane.center().y), Align2::RIGHT_CENTER, tr("arrastra para cambiar el tempo de un tramo"), FontId::proportional(10.0), TEXT_DIM());
         // Divisor entre cabeceras y regiones: se arrastra para ensanchar o estrechar las cabeceras.
         let div = ui.interact(Rect::from_x_y_ranges(x0 - 4.0..=x0 + 3.0, full.y_range()), Id::new("header-divider"), Sense::click_and_drag()).on_hover_text(tr("Arrastra para cambiar el ancho de las pistas"));
         if div.hovered() || div.dragged() {
@@ -953,7 +953,7 @@ impl App {
             self.config.header_w = 0.0;
         }
         let hot = div.hovered() || div.dragged();
-        painter.vline(x0 - 0.5, full.y_range(), Stroke::new(if hot { 3.0 } else { 1.0 }, if hot { ACCENT } else { BORDER }));
+        painter.vline(x0 - 0.5, full.y_range(), Stroke::new(if hot { 3.0 } else { 1.0 }, if hot { ACCENT() } else { BORDER() }));
     }
 
     /// Carril de acordes o de arreglo: doble clic añade (o renombra), arrastrar mueve o estira por los
@@ -1083,14 +1083,14 @@ impl App {
         let list = if chord { &self.s.chords } else { &self.s.sections };
         let p = ui.painter().with_clip_rect(lane);
         p.rect_filled(lane, 0.0, Color32::from_rgb(0x1A, 0x1A, 0x1F));
-        p.hline(lane.x_range(), lane.bottom() - 0.5, Stroke::new(1.0, BORDER));
+        p.hline(lane.x_range(), lane.bottom() - 0.5, Stroke::new(1.0, BORDER()));
         for (k, (a, b, name)) in list.iter().enumerate() {
             let rect = Rect::from_x_y_ranges(x_of(*a)..=x_of(*b), lane.top() + 2.0..=lane.bottom() - 2.0);
             let color = if chord { Color32::from_rgb(0x8A, 0xB4, 0xFF) } else { rgb(PALETTE[name.to_lowercase().bytes().map(|b| b as usize).sum::<usize>() % PALETTE.len()]) };
             let on = self.span_drag.is_some_and(|d| d.0 == kind && d.1 == k);
             p.rect_filled(rect, rr(5.0), color.gamma_multiply(if on { 0.6 } else { 0.32 }));
             p.rect_stroke(rect, rr(5.0), Stroke::new(1.0, color), StrokeKind::Inside);
-            p.with_clip_rect(rect.intersect(lane)).text(rect.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, name, FontId::proportional(if chord { 13.5 } else { 12.5 }), TEXT);
+            p.with_clip_rect(rect.intersect(lane)).text(rect.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, name, FontId::proportional(if chord { 13.5 } else { 12.5 }), TEXT());
         }
     }
 
@@ -1123,7 +1123,7 @@ impl App {
         let count = if t.show_takes && t.takes.len() > 1 { t.takes.len() } else { 0 };
         for k in 0..count {
             let row = Rect::from_x_y_ranges(xr.0..=xr.1, y0 + k as f32 * TAKE_H..=y0 + (k + 1) as f32 * TAKE_H);
-            p.rect_filled(row, 0.0, if k % 2 == 0 { BG } else { PANEL });
+            p.rect_filled(row, 0.0, if k % 2 == 0 { BG() } else { PANEL() });
             for &(a, b, _) in t.comp.iter().filter(|s| s.2 == k) {
                 p.rect_filled(Rect::from_x_y_ranges(x_of(a).max(xr.0)..=x_of(b.min(u64::MAX / 2)).min(xr.1), row.y_range()), 0.0, t.color.gamma_multiply(0.18));
             }
@@ -1134,7 +1134,7 @@ impl App {
                     p.add(peak_mesh(c, b, r, xr, fpp.max(1.0), t.color.gamma_multiply(0.7)));
                 }
             }
-            p.hline(row.x_range(), row.bottom(), Stroke::new(1.0, BORDER));
+            p.hline(row.x_range(), row.bottom(), Stroke::new(1.0, BORDER()));
         }
     }
 
@@ -1150,7 +1150,7 @@ impl App {
         let k6 = rr(6.0) as u8;
         p.rect_filled(title, CornerRadius { nw: k6, ne: k6, sw: 0, se: 0 }, METER[2]);
         let label = format!("● {} · {:.0} BPM", t.name, engine::bpm_at(&self.s.tempo, start as f64));
-        p.with_clip_rect(title.intersect(lane)).text(title.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(11.0), TEXT);
+        p.with_clip_rect(title.intersect(lane)).text(title.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(11.0), TEXT());
         let lane = Rect::from_min_max(pos2(lane.left(), title.bottom()), lane.max);
         if t.midi() {
             let mut held: HashMap<u8, u64> = HashMap::new();
@@ -1160,13 +1160,13 @@ impl App {
                     (0x90, v) if v > 0 => _ = held.insert(e[1], at),
                     (0x80 | 0x90, _) => {
                         if let Some(s) = held.remove(&e[1]) {
-                            p.hline(x_of(s)..=x_of(at).max(x_of(s) + 2.0), note_y(e[1]), Stroke::new(3.0, TEXT));
+                            p.hline(x_of(s)..=x_of(at).max(x_of(s) + 2.0), note_y(e[1]), Stroke::new(3.0, TEXT()));
                         }
                     }
                     _ => {}
                 }
             }
-            held.into_iter().for_each(|(key, s)| _ = p.hline(x_of(s)..=x_of(self.pos()), note_y(key), Stroke::new(3.0, TEXT)));
+            held.into_iter().for_each(|(key, s)| _ = p.hline(x_of(s)..=x_of(self.pos()), note_y(key), Stroke::new(3.0, TEXT())));
             return;
         }
         let ich = self.engine.in_channels.max(1);
@@ -1180,7 +1180,7 @@ impl App {
             let stride = ((f1.saturating_sub(f0)) / 64).max(1);
             let peak = (f0..f1).step_by(stride).map(|k| self.rec_data[k * ich + l].abs() * g).fold(0f32, f32::max);
             let h = (peak * half).clamp(0.5, half);
-            mesh.add_colored_rect(Rect::from_x_y_ranges(x as f32..=x as f32 + 1.0, mid - h..=mid + h), TEXT);
+            mesh.add_colored_rect(Rect::from_x_y_ranges(x as f32..=x as f32 + 1.0, mid - h..=mid + h), TEXT());
         }
         p.add(mesh);
     }
@@ -1214,6 +1214,10 @@ impl App {
                 ui.label(RichText::new(tr("Región")).strong());
                 if midi && ui.button(tr("Abrir en piano roll")).clicked() {
                     self.open_roll(i, j);
+                }
+                if midi && ui.button(tr("Exportar región a MIDI…")).clicked() {
+                    ui.close();
+                    self.exportar_midi(Some((i, j)));
                 }
                 if ui.button(tr("Dividir en el cursor")).clicked() {
                     self.split(self.pos());
@@ -1312,21 +1316,21 @@ impl App {
         }
         let t = &self.s.tracks[i];
         let p = ui.painter().with_clip_rect(clip);
-        p.rect_filled(r, rr(8.0), if t.selected { BORDER } else { ELEVATED });
+        p.rect_filled(r, rr(8.0), if t.selected { BORDER() } else { ELEVATED() });
         if t.selected || resp.dnd_hover_payload::<LibItem>().is_some() {
-            p.rect_stroke(r, rr(8.0), Stroke::new(1.0, ACCENT), StrokeKind::Inside);
+            p.rect_stroke(r, rr(8.0), Stroke::new(1.0, ACCENT()), StrokeKind::Inside);
         }
         // Franja de color con el número de pista.
         let k8 = rr(8.0) as u8;
         p.rect_filled(Rect::from_min_size(r.min, vec2(26.0, r.height())), CornerRadius { nw: k8, sw: k8, ne: 0, se: 0 }, t.color);
         let light = t.color.r() as u32 * 3 + t.color.g() as u32 * 6 + t.color.b() as u32 > 1300;
-        p.text(pos2(r.left() + 13.0, r.top() + 15.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(17.0), if light { BG } else { TEXT });
+        p.text(pos2(r.left() + 13.0, r.top() + 15.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(17.0), if light { BG() } else { TEXT() });
 
         // Medidor de salida de la pista (vertical, en el borde derecho).
         let meter = Rect::from_x_y_ranges(r.right() - 9.0..=r.right() - 4.0, r.top() + 6.0..=r.bottom() - 6.0);
         let level = self.levels.get(i).copied().unwrap_or(0.0);
         let db = widgets::db(level);
-        p.rect_filled(meter, rr(2.0), BG);
+        p.rect_filled(meter, rr(2.0), BG());
         let fill = ((db + 60.0) / 66.0).clamp(0.0, 1.0);
         p.rect_filled(Rect::from_min_max(pos2(meter.left(), meter.bottom() - fill * meter.height()), meter.max), rr(2.0), METER[(db > -12.0) as usize + (db > -3.0) as usize]);
         ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(34.0, 7.0), r.max - vec2(12.0, 7.0))), |ui| {
@@ -1339,7 +1343,7 @@ impl App {
                 widgets::color_dot(ui, &mut t.color);
                 ui.add(egui::TextEdit::singleline(&mut t.name).desired_width((r.width() - 200.0).max(110.0)).font(FontId::proportional(14.0)));
                 if t.takes.len() > 1 {
-                    let label = RichText::new(format!("Tomas {}", t.takes.len())).size(10.0).color(if t.show_takes { ACCENT } else { TEXT_DIM });
+                    let label = RichText::new(format!("Tomas {}", t.takes.len())).size(10.0).color(if t.show_takes { ACCENT() } else { TEXT_DIM() });
                     if ui.add(egui::Button::new(label).small()).on_hover_text(tr("Mostrar u ocultar los carriles de tomas (comping)")).clicked() {
                         t.show_takes = !t.show_takes;
                     }
@@ -1354,7 +1358,7 @@ impl App {
                     if proxy {
                         ui.label(RichText::new("PROXY").size(9.0).strong().color(METER[0])).on_hover_text(tr("Suena desde su proxy: el procesador no calcula su instrumento ni sus efectos"));
                     } else {
-                        ui.label(RichText::new(kind).size(9.0).color(TEXT_DIM));
+                        ui.label(RichText::new(kind).size(9.0).color(TEXT_DIM()));
                     }
                 }
             });
@@ -1383,12 +1387,12 @@ impl App {
                 match t.kind {
                     TrackKind::Midi => {
                         let state = if t.params.monitor.load(Relaxed) || t.params.arm.load(Relaxed) { "teclado MIDI conectado a esta pista" } else { "activa I para tocar con tu teclado MIDI" };
-                        ui.label(RichText::new(format!("QUANTUM Synth · {state}")).size(11.0).color(TEXT_DIM));
+                        ui.label(RichText::new(format!("QUANTUM Synth · {state}")).size(11.0).color(TEXT_DIM()));
                     }
-                    TrackKind::Click => _ = ui.label(RichText::new(tr("Metrónomo como audio")).size(11.0).color(TEXT_DIM)),
+                    TrackKind::Click => _ = ui.label(RichText::new(tr("Metrónomo como audio")).size(11.0).color(TEXT_DIM())),
                     TrackKind::Video => {
                         let info = t.video.as_ref().map_or("sin video".to_string(), |v| format!("{:.1} s · doble clic: abrir el visor", v.duration()));
-                        ui.label(RichText::new(info).size(11.0).color(TEXT_DIM));
+                        ui.label(RichText::new(info).size(11.0).color(TEXT_DIM()));
                     }
                     _ => {
                         let listening = t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed);
@@ -1401,7 +1405,7 @@ impl App {
                             p.in_gain.set(10f32.powf(d / 20.0));
                         }
                         k.on_hover_text(format!("{} {d:+.1} dB · {}", tr("Ganancia de entrada"), tr("arrastra arriba/abajo · doble clic: 0 dB")));
-                        ui.label(RichText::new(format!("{d:+.1} dB")).monospace().size(11.0).color(TEXT));
+                        ui.label(RichText::new(format!("{d:+.1} dB")).monospace().size(11.0).color(TEXT()));
                         self.input_combo(ui, i);
                     }
                 }
@@ -1431,11 +1435,11 @@ impl App {
 
     /// Botones R/M/S/I: afectan a las pistas seleccionadas si esta lo está; si no, solo a ella.
     pub fn flag_buttons(&mut self, ui: &mut egui::Ui, i: usize) {
-        let buttons = [(0, "R", METER[2], "Armar grabación"), (1, "M", ACCENT, "Mute"), (2, "S", METER[1], "Solo"), (3, "I", METER[0], "Monitoreo de entrada")];
+        let buttons = [(0, "R", METER[2], "Armar grabación"), (1, "M", ACCENT(), "Mute"), (2, "S", METER[1], "Solo"), (3, "I", METER[0], "Monitoreo de entrada")];
         for (k, label, color, tip) in buttons {
             let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
-            let text = RichText::new(tr(label)).strong().size(12.0).color(if on { BG } else { TEXT_DIM });
-            let b = egui::Button::new(text).fill(if on { color } else { BG }).min_size(vec2(24.0, 22.0)).corner_radius(rr(11.0));
+            let text = RichText::new(tr(label)).strong().size(12.0).color(if on { BG() } else { TEXT_DIM() });
+            let b = egui::Button::new(text).fill(if on { color } else { BG() }).min_size(vec2(24.0, 22.0)).corner_radius(rr(11.0));
             if ui.add(b).on_hover_text(tip).clicked() {
                 for m in self.flag_targets(i, k) {
                     flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
@@ -1450,8 +1454,8 @@ impl App {
         let on = inv.load(Relaxed);
         let (r, resp) = ui.allocate_exact_size(vec2(26.0, 22.0), Sense::click());
         let p = ui.painter();
-        p.rect_filled(r, rr(11.0), if on { METER[1] } else if resp.hovered() { BORDER } else { BG });
-        let c = if on { BG } else { TEXT_DIM };
+        p.rect_filled(r, rr(11.0), if on { METER[1] } else if resp.hovered() { BORDER() } else { BG() });
+        let c = if on { BG() } else { TEXT_DIM() };
         for dx in [-3.0, 3.0] {
             p.circle_stroke(r.center() + vec2(dx, 0.0), 5.5, Stroke::new(1.5, c));
         }
@@ -1463,8 +1467,8 @@ impl App {
 
     pub fn fx_button(&mut self, ui: &mut egui::Ui, i: usize) {
         let n = self.s.tracks[i].fx.len();
-        let text = RichText::new(if n > 0 { format!("FX {n}") } else { "FX".into() }).size(12.0).color(if n > 0 { ACCENT } else { TEXT_DIM });
-        if ui.add(egui::Button::new(text).fill(BG).min_size(vec2(34.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Instrumento y efectos de la pista")).clicked() {
+        let text = RichText::new(if n > 0 { format!("FX {n}") } else { "FX".into() }).size(12.0).color(if n > 0 { ACCENT() } else { TEXT_DIM() });
+        if ui.add(egui::Button::new(text).fill(BG()).min_size(vec2(34.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Instrumento y efectos de la pista")).clicked() {
             self.fx_window = Some(i);
         }
     }

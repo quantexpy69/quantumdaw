@@ -273,7 +273,7 @@ impl App {
             ui.horizontal(|ui| {
                 match &estado {
                     None => {
-                        if ui.add(egui::Button::new(egui::RichText::new(tr("Enviar informe")).color(BG).strong()).fill(ACCENT)).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(tr("Enviar informe")).color(BG()).strong()).fill(ACCENT())).clicked() {
                             enviar(p);
                         }
                         if ui.button(tr("No enviar")).clicked() {
@@ -285,7 +285,7 @@ impl App {
                         ui.label(tr("Enviando…"));
                     }
                     Some(Some(Ok(()))) => {
-                        ui.label(egui::RichText::new(tr("Informe enviado. ¡Gracias!")).color(ACCENT));
+                        ui.label(egui::RichText::new(tr("Informe enviado. ¡Gracias!")).color(ACCENT()));
                         if ui.button(tr("Cerrar")).clicked() {
                             cerrar = Some("enviado");
                         }
