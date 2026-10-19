@@ -387,7 +387,7 @@ impl App {
             // editor de audio abajo.
             "views" => {
                 let actual = if self.show_mixer { Some(self.bottom_tab) } else { None };
-                for (vista, nombre, tecla) in [(None, "Arreglo", ""), (Some(1), "Piano", ""), (Some(0), "Mix", "X"), (Some(2), "Análisis", ""), (Some(3), "Audio", "")] {
+                for (vista, nombre, tecla) in [(None, "Arreglo", ""), (Some(1), "Piano", ""), (Some(0), "Mix", "X"), (Some(2), "Análisis", ""), (Some(3), "Audio", ""), (Some(4), "Partitura", "")] {
                     if widgets::pestana(ui, actual == vista, tr(nombre)).on_hover_text(tecla).clicked() {
                         match vista {
                             None => self.show_mixer = false,

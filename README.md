@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.21.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.22.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -67,6 +67,10 @@ Versión actual: **0.21.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   (mayor, menor, 7, maj7, sus, dim… con inversiones); **círculo de quintas** con los acordes de la
   tonalidad y **progresiones automáticas** (pop, años 50, jazz, Canon…) en bloque, negras o arpegio.
 - Al elegir un instrumento se abre su ventana (QUANTUM Synth con sus perillas o instrumento real).
+- **Partitura** (pestaña PARTITURA): las pistas MIDI en pentagramas alineados con llave, clave de sol o
+  de fa según el registro, pentagrama de percusión para la batería, instrumentos transpositores escritos
+  como los leen sus intérpretes (clarinete, trompeta, saxos, trompa), armadura detectada, cifrado de
+  acordes encima, e impresión o PDF en A4 (Ctrl+P). Usa la fuente musical Bravura (SIL OFL).
 - **Herramientas MIDI**: bloqueo de escala (24 escalas y modos), arpegiador de la selección (arriba,
   abajo, arriba y abajo, aleatorio en 1/8, 1/16 o 1/32), rasgueo (strum) y generador de melodías en la
   escala; 13 estilos de progresión, incluido el blues de 12 compases.
@@ -194,4 +198,4 @@ pista de acordes · Mastering Assistant · separación de stems · Spatial Audio
 
 ---
 
-© 2026 Ivan Cheaib — QUANTUM DAW. Código bajo licencia [MPL-2.0](LICENSE). Los instrumentos de terceros conservan sus propias licencias.
+© 2026 Ivan Cheaib — QUANTUM DAW. Código bajo licencia [MPL-2.0](LICENSE). Los instrumentos de terceros conservan sus propias licencias; la fuente musical Bravura es de Steinberg bajo SIL Open Font License 1.1 (`assets/fuentes/OFL-Bravura.txt`).

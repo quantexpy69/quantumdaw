@@ -18,6 +18,7 @@ mod mastering;
 mod midi_archivo;
 mod mixer;
 mod paleta;
+mod partitura;
 mod pianoroll;
 mod plugins;
 mod proxies;
@@ -656,6 +657,10 @@ struct App {
     cambios: bool,
     autoguardado: std::time::Instant,
     recuperar: Option<SystemTime>,
+    /// Tamaño del espacio del pentagrama en la vista de partitura (píxeles).
+    partitura_sp: f32,
+    /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
+    partitura_todas: bool,
     /// Efectos del master y ventana de mastering y loudness.
     master_fx: Vec<Arc<Fx>>,
     mastering: mastering::Mastering,
@@ -671,6 +676,11 @@ struct App {
 impl App {
     fn new(dir: PathBuf, config: Config, ctx: &egui::Context) -> anyhow::Result<Self> {
         TEMA.store(config.tema, Relaxed);
+        // Fuente musical (Bravura, SMuFL) para la partitura.
+        let mut fuentes = egui::FontDefinitions::default();
+        fuentes.font_data.insert("bravura".into(), Arc::new(egui::FontData::from_static(partitura::FUENTE)));
+        fuentes.families.insert(egui::FontFamily::Name("musica".into()), vec!["bravura".into()]);
+        ctx.set_fonts(fuentes);
         let clic = (config.clic_nivel, config.clic_acento);
         theme(ctx);
         ctx.set_zoom_factor(if config.ui_scale > 0.0 { config.ui_scale } else { 1.0 });
@@ -775,6 +785,8 @@ impl App {
             recuperar: autoguardado_inicio,
             master_fx: vec![],
             mastering: Default::default(),
+            partitura_todas: true,
+            partitura_sp: 8.0,
             paleta: None,
             informe: informes::pendiente(),
             status: String::new(),
@@ -2046,7 +2058,7 @@ impl App {
     /// Panel inferior con pestañas: mixer, piano roll y analizador.
     fn bottom_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio")] {
+            for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura")] {
                 if widgets::pildora(ui, self.bottom_tab == k, tr(label)).clicked() {
                     self.bottom_tab = k;
                 }
@@ -2073,6 +2085,7 @@ impl App {
             0 => self.mixer(ui),
             1 => self.piano_roll(ui),
             2 => self.analyzer(ui),
+            4 => self.vista_partitura(ui),
             _ => self.audio_editor(ui),
         }
     }
