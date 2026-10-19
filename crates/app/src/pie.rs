@@ -37,6 +37,7 @@ pub enum Accion {
     PtMenuArmadura,
     PtClave(project::partitura::Clave),
     PtArmadura(i8),
+    PtAnotacion,
 }
 
 pub struct Pie {
@@ -119,6 +120,7 @@ fn icono(p: &egui::Painter, c: Pos2, a: Accion, color: Color32) {
         Accion::PtClave(project::partitura::Clave::Percusion) => glifo(p, c, '\u{E069}', color),
         Accion::PtClave(_) => glifo(p, c, '\u{E05C}', color),
         Accion::PtMenuArmadura => glifo(p, c, '\u{E262}', color),
+        Accion::PtAnotacion => _ = p.text(c, egui::Align2::CENTER_CENTER, "T", FontId::proportional(17.0), color),
     }
 }
 
@@ -302,7 +304,7 @@ impl App {
             Accion::Eliminar => self.delete(),
             Accion::MasOpciones => self.menu_region = Some(centro),
             Accion::GenerarAcordes => self.generador.abierto = true,
-            Accion::PtFigura(_) | Accion::PtPuntillo | Accion::PtSilencio | Accion::PtSubir | Accion::PtBajar | Accion::PtBorrar | Accion::PtEscuchar | Accion::PtClave(_) | Accion::PtArmadura(_) => self.pie_partitura(a),
+            Accion::PtFigura(_) | Accion::PtPuntillo | Accion::PtSilencio | Accion::PtSubir | Accion::PtBajar | Accion::PtBorrar | Accion::PtEscuchar | Accion::PtClave(_) | Accion::PtArmadura(_) | Accion::PtAnotacion => self.pie_partitura(a),
             Accion::PtMenuClave | Accion::PtMenuArmadura => self.abrir_pie_partitura_sub(centro, a),
             notas => self.pie_notas(notas),
         }
@@ -329,6 +331,7 @@ impl App {
                 ("Bajar", Accion::PtBajar, hay),
                 ("Borrar", Accion::PtBorrar, hay),
                 ("Escuchar", Accion::PtEscuchar, true),
+                ("Anotación", Accion::PtAnotacion, true),
                 ("Clave", Accion::PtMenuClave, true),
                 ("Armadura", Accion::PtMenuArmadura, true),
                 ("Blanca", Accion::PtFigura(1), true),

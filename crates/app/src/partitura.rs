@@ -44,6 +44,8 @@ pub struct Parte {
     pub clave: Clave,
     /// (inicio, duración, nota escrita, cabeza en x, identificador de la nota en su documento).
     pub notas: Vec<(f64, f64, u8, bool, usize)>,
+    /// Llave con la parte siguiente (sistema de piano).
+    pub llave: bool,
 }
 
 /// Ajustes del diseño: compás, armadura, cifrado de acordes y compases mínimos (para editar).
@@ -53,6 +55,8 @@ pub struct Conf {
     pub quintas: i32,
     pub acordes: Vec<(f64, String)>,
     pub compases_min: usize,
+    /// Anotaciones: (parte, inicio en negras, espacios sobre la quinta línea, texto).
+    pub anotaciones: Vec<(usize, f64, f32, String)>,
 }
 
 /// Compás dibujado: (número, x inicial y final de la música, puntos (tiempo relativo, x) de cada figura).
@@ -67,6 +71,8 @@ pub struct MapaSistema {
     pub compases: Vec<MapaCompas>,
     /// Cabezas de nota: (posición, parte, identificador).
     pub cabezas: Vec<(Pos2, usize, usize)>,
+    /// Anotaciones: (rectángulo del texto, índice).
+    pub anotaciones: Vec<(egui::Rect, usize)>,
 }
 
 /// Partitura diseñada: elementos de cada sistema, alto de cada uno y sus mapas.
@@ -174,7 +180,7 @@ impl App {
                 };
                 let abrev = transp.map_or_else(|| t.name.chars().take(4).collect::<String>() + ".", |x| x.2.to_string());
                 let nombre = transp.map_or_else(|| t.name.clone(), |x| format!("{} ({})", t.name, &x.2[x.2.find('(').map_or(0, |i| i + 1)..x.2.len().saturating_sub(1)]));
-                Parte { nombre, abrev, clave, notas }
+                Parte { nombre, abrev, clave, notas, llave: false }
             })
             .filter(|p| !p.notas.is_empty())
             .collect()
@@ -194,6 +200,7 @@ impl App {
             quintas: detectar_armadura(&partes),
             acordes: self.s.chords.iter().map(|(a, _, n)| ((self.beats(*a as f64) * a_negras * 4.0).round() / 4.0, n.clone())).collect(),
             compases_min: 1,
+            anotaciones: vec![],
         };
         let d = disenar(&partes, &conf, ancho, sp);
         (d.sistemas, d.alto)
@@ -348,9 +355,11 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
             // Llave que une los pentagramas y línea inicial.
             let (y_arriba, y_abajo) = (top, top + alto_sistema);
             el.push(Elem::Linea(pos2(x_ini, y_arriba), pos2(x_ini, y_abajo), sp * 0.16));
-            if partes.len() > 1 {
+            let grupos = partes.len() - partes.iter().filter(|p| p.llave).count();
+            if grupos > 1 {
                 el.push(Elem::Linea(pos2(x_ini - sp * 0.8, y_arriba - sp * 0.4), pos2(x_ini - sp * 0.8, y_abajo + sp * 0.4), sp * 0.5));
             }
+            let x_llave = x_ini - if grupos > 1 { sp * 1.5 } else { sp * 0.35 };
             for (pi, p) in partes.iter().enumerate() {
                 let y0 = top + pi as f32 * (alto_parte + separacion);
                 let base = y0 + alto_parte; // primera línea (abajo)
@@ -361,7 +370,16 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
                     el.push(Elem::Linea(pos2(x_ini, y_pos(l * 2)), pos2(ultimo_x, y_pos(l * 2)), sp * 0.11));
                 }
                 let nombre = if m0 == 0 { p.nombre.clone() } else { p.abrev.clone() };
-                el.push(Elem::Texto(pos2(x_ini - sp * 1.6, y_pos(4) + sp * 0.4), nombre, sp * 1.25, false, 2));
+                let con_llave = p.llave && pi + 1 < partes.len();
+                let bajo_llave = pi > 0 && partes[pi - 1].llave;
+                if con_llave {
+                    // Llave del piano y nombre centrado entre los dos pentagramas.
+                    let (a, b) = (y_pos(8), base + separacion + alto_parte);
+                    llave(&mut el, x_llave, a, b, sp);
+                    el.push(Elem::Texto(pos2(x_llave - sp * 2.0, (a + b) / 2.0 + sp * 0.4), nombre, sp * 1.25, false, 2));
+                } else if !bajo_llave {
+                    el.push(Elem::Texto(pos2(x_ini - sp * 1.6, y_pos(4) + sp * 0.4), nombre, sp * 1.25, false, 2));
+                }
                 // Clave, armadura y compás (este solo en el primer sistema).
                 let (glifo, pos_clave) = match p.clave {
                     Clave::Sol => (CLAVE_SOL, 2),
@@ -503,12 +521,28 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
                         xe += paso;
                     }
                     xc += w;
-                    el.push(Elem::Linea(pos2(xc, y_pos(0)), pos2(xc, y_pos(8)), sp * 0.12));
+                    // En el piano la barra cruza de un pentagrama al otro.
+                    let y_fin = if con_llave { base + separacion } else { y_pos(0) };
+                    el.push(Elem::Linea(pos2(xc, y_fin), pos2(xc, y_pos(8)), sp * 0.12));
                 }
                 if m1 == n_compases {
                     // Doble barra final.
-                    el.push(Elem::Linea(pos2(xc + sp * 0.5, y_pos(0)), pos2(xc + sp * 0.5, y_pos(8)), sp * 0.5));
+                    let y_fin = if con_llave { base + separacion } else { y_pos(0) };
+                    el.push(Elem::Linea(pos2(xc + sp * 0.5, y_fin), pos2(xc + sp * 0.5, y_pos(8)), sp * 0.5));
                 }
+            }
+            // Anotaciones de este sistema, en el tiempo y la altura donde se pusieron.
+            for (k, (pi, t, alto, texto)) in conf.anotaciones.iter().enumerate() {
+                let m = (t / compas).floor().max(0.0) as usize;
+                let Some(c) = mapa.compases.iter().find(|c| c.0 == m) else { continue };
+                let Some(&(base, _)) = mapa.partes.get(*pi) else { continue };
+                let x = tiempo_a_x(&c.3, c.1, c.2, compas, t - m as f64 * compas);
+                let y = base - sp * 4.0 - alto * sp;
+                let tam = sp * 1.5;
+                let texto = if texto.is_empty() { "…".to_string() } else { texto.clone() };
+                let ancho_t = texto.chars().count() as f32 * tam * 0.55;
+                mapa.anotaciones.push((egui::Rect::from_min_max(pos2(x - sp * 0.3, y - tam), pos2(x + ancho_t + sp * 0.3, y + sp * 0.4)), k));
+                el.push(Elem::Texto(pos2(x, y), texto, tam, true, 0));
             }
             sistemas.push(el);
             mapas.push(mapa);
@@ -516,6 +550,34 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
         }
         Diseno { sistemas, alto: top_alto(alto_sistema, sp), mapas }
     }
+
+/// Llave de piano de `y0` a `y1` con la punta a la izquierda de `x` (dos curvas por mitad dan el grosor).
+fn llave(el: &mut Vec<Elem>, x: f32, y0: f32, y1: f32, sp: f32) {
+    let (h, ym, xp) = (y1 - y0, (y0 + y1) / 2.0, x - sp * 1.3);
+    for (ancho, g) in [(0.0, sp * 0.14), (sp * 0.45, sp * 0.16), (sp * 0.22, sp * 0.26), (sp * 0.34, sp * 0.24)] {
+        for s in [-1.0f32, 1.0] {
+            let extremo = if s < 0.0 { y0 } else { y1 };
+            let c1 = pos2(x - sp * 0.95 - ancho, extremo - s * h * 0.06);
+            let c2 = pos2(x - sp * 0.15 - ancho, ym + s * h * 0.12);
+            el.push(Elem::Curva([pos2(x, extremo), c1, c2, pos2(xp, ym)], g));
+        }
+    }
+}
+
+/// x de un tiempo dentro del compás, interpolando entre las figuras dibujadas.
+pub(crate) fn tiempo_a_x(puntos: &[(f64, f32)], x0: f32, x1: f32, compas: f64, t: f64) -> f32 {
+    let mut v: Vec<(f64, f32)> = vec![(0.0, x0)];
+    v.extend(puntos.iter().copied().filter(|p| p.0 > 1e-9));
+    v.push((compas, x1));
+    v.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for w in v.windows(2) {
+        if t <= w[1].0 + 1e-9 {
+            let f = ((t - w[0].0) / (w[1].0 - w[0].0).max(1e-9)) as f32;
+            return w[0].1 + (w[1].1 - w[0].1) * f;
+        }
+    }
+    x1
+}
 
 /// Páginas A4 (HTML con la fuente musical incluida) de una partitura diseñada por `disenar`.
 pub(crate) fn pagina_html(titulo: &str, compositor: &str, disenar: impl FnOnce(f32, f32) -> Diseno) -> anyhow::Result<String> {
@@ -637,7 +699,7 @@ mod pruebas {
 
     #[test]
     fn armadura() {
-        let parte = |notas: &[u8]| Parte { nombre: String::new(), abrev: String::new(), clave: Clave::Sol, notas: notas.iter().map(|&k| (0.0, 1.0, k, false, 0)).collect() };
+        let parte = |notas: &[u8]| Parte { nombre: String::new(), abrev: String::new(), clave: Clave::Sol, notas: notas.iter().map(|&k| (0.0, 1.0, k, false, 0)).collect(), llave: false };
         // Sol mayor (con Fa#): un sostenido. Fa mayor (con Sib): un bemol.
         assert_eq!(detectar_armadura(&[parte(&[67, 69, 71, 72, 74, 76, 78, 67])]), 1);
         assert_eq!(detectar_armadura(&[parte(&[65, 67, 69, 70, 72, 74, 76, 65])]), -1);

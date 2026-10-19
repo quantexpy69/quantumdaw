@@ -3,11 +3,11 @@
 //! escritura con el ratón o el teclado (letras A–G, figuras 3–7, puntillo, silencios), alteraciones,
 //! claves, armadura y compás; transcripción en vivo de lo que se toca (MIDI o audio monofónico)
 //! con detección del pulso; reproducción, impresión/PDF, MusicXML e intercambio con pistas MIDI.
-use crate::partitura::{self as pt, Clave, Conf, Diseno, Parte};
+use crate::partitura::{self as pt, Clave, Conf, Diseno, Parte, tiempo_a_x};
 use crate::transcripcion::{self as tx, Golpe};
 use crate::*;
 use egui::{FontId, Key, Pos2, RichText, Sense, Stroke, pos2, vec2};
-use project::partitura::{NotaP, Partitura, Pentagrama};
+use project::partitura::{Anotacion, NotaP, Partitura, Pentagrama};
 
 /// Figuras de la paleta: (duración en negras, glifo SMuFL de la nota, nombre, tecla).
 const FIGURAS: [(f64, char, &str, Key); 5] = [
@@ -19,7 +19,7 @@ const FIGURAS: [(f64, char, &str, Key); 5] = [
 ];
 /// Instrumentos: (nombre, transposición escrita, clave habitual).
 const INSTRUMENTOS: [(&str, i32, Clave); 12] = [
-    ("Piano / sonido real", 0, Clave::Sol),
+    ("Piano", 0, Clave::Sol),
     ("Voz", 0, Clave::Sol),
     ("Violín", 0, Clave::Sol),
     ("Viola", 0, Clave::Alto),
@@ -75,6 +75,14 @@ pub struct EditorPartitura {
     sonando: Option<(std::time::Instant, Vec<EventoSonido>, usize)>,
     /// El ratón estuvo sobre el editor (los atajos del teclado van a la partitura).
     pub foco: bool,
+    /// Herramienta de anotaciones: un clic en el papel pone un texto ahí.
+    anotar: bool,
+    /// Anotación que se está escribiendo y dónde se ve su cuadro.
+    editando: Option<(usize, Pos2)>,
+    /// Punto del último clic derecho (pentagrama, tiempo, altura) y la anotación que había ahí.
+    punto: Option<(usize, f64, f32, Option<usize>, Pos2)>,
+    /// Anotación que se arrastra con el ratón.
+    arrastre: Option<usize>,
 }
 
 impl EditorPartitura {
@@ -85,7 +93,7 @@ impl EditorPartitura {
 
 impl Default for EditorPartitura {
     fn default() -> Self {
-        Self { abierto: false, doc: Partitura::default(), deshacer: vec![], rehacer: vec![], pentagrama: 0, sel: None, figura: 1.0, puntillo: false, cursor: 0.0, sp: 8.0, audio: false, detectar: true, grabacion: None, sonando: None, foco: false }
+        Self { abierto: false, doc: Partitura::default(), deshacer: vec![], rehacer: vec![], pentagrama: 0, sel: None, figura: 1.0, puntillo: false, cursor: 0.0, sp: 8.0, audio: false, detectar: true, grabacion: None, sonando: None, foco: false, anotar: false, editando: None, punto: None, arrastre: None }
     }
 }
 
@@ -135,6 +143,7 @@ impl App {
                 nombre: p.nombre.clone(),
                 abrev: p.nombre.chars().take(4).collect::<String>() + ".",
                 clave: p.clave,
+                llave: p.llave,
                 notas: {
                     // Ordenadas por tiempo (el diseño agrupa en acordes las que empiezan juntas).
                     let mut v: Vec<_> = p.notas.iter().enumerate().map(|(k, n)| (n.inicio, n.dur, (n.altura as i32 + p.transposicion).clamp(0, 127) as u8, false, k)).collect();
@@ -147,7 +156,7 @@ impl App {
 
     fn conf_doc(doc: &Partitura) -> Conf {
         let compases = (doc.fin() / doc.negras_compas()).ceil() as usize + 1;
-        Conf { num: doc.compas.0, den: doc.compas.1, quintas: doc.armadura, acordes: doc.acordes.clone(), compases_min: compases.max(4) }
+        Conf { num: doc.compas.0, den: doc.compas.1, quintas: doc.armadura, acordes: doc.acordes.clone(), compases_min: compases.max(4), anotaciones: doc.anotaciones.iter().map(|a| (a.pentagrama, a.inicio, a.alto, a.texto.clone())).collect() }
     }
 
     /// Escribe una nota (o silencio si `altura` es None) en el pentagrama desde `inicio`, sustituyendo
@@ -174,6 +183,37 @@ impl App {
         p.notas.sort_by(|a, b| a.inicio.total_cmp(&b.inicio).then(a.altura.cmp(&b.altura)));
         self.partitura_app.sel = altura.and_then(|a| p.notas.iter().position(|n| (n.inicio - inicio).abs() < 1e-6 && n.altura == a)).map(|k| (pi, k));
         self.partitura_app.cursor = fin;
+    }
+
+    /// Agrega notas al pentagrama `pi`; si es un piano, las de Do central hacia arriba van a la mano
+    /// derecha (clave de sol) y las demás a la izquierda (clave de fa).
+    fn repartir(doc: &mut Partitura, pi: usize, notas: impl Iterator<Item = NotaP>) {
+        let (g, n) = doc.grupo(pi);
+        for nota in notas {
+            let k = if n == 2 { if nota.altura >= 60 { g } else { g + 1 } } else { pi };
+            doc.pentagramas[k].notas.push(nota);
+        }
+        for p in doc.pentagramas[g..g + n].iter_mut() {
+            p.notas.sort_by(|a, b| a.inicio.total_cmp(&b.inicio).then(a.altura.cmp(&b.altura)));
+        }
+    }
+
+    /// Final de lo escrito en el pentagrama (o el piano) de `pi`, redondeado al compás siguiente.
+    fn fin_grupo(doc: &Partitura, pi: usize) -> f64 {
+        let (g, n) = doc.grupo(pi);
+        let compas = doc.negras_compas();
+        let fin = doc.pentagramas[g..g + n].iter().flat_map(|p| p.notas.iter().map(|x| x.inicio + x.dur)).fold(0.0, f64::max);
+        (fin / compas).ceil() * compas
+    }
+
+    /// Quita los pentagramas `a..b` (y sus anotaciones; las demás siguen a su pentagrama).
+    fn quitar_pentagramas(&mut self, a: usize, b: usize) {
+        let doc = &mut self.partitura_app.doc;
+        doc.pentagramas.drain(a..b);
+        doc.anotaciones.retain(|x| !(a..b).contains(&x.pentagrama));
+        doc.anotaciones.iter_mut().filter(|x| x.pentagrama >= b).for_each(|x| x.pentagrama -= b - a);
+        self.partitura_app.sel = None;
+        self.partitura_app.editando = None;
     }
 
     /// Duración actual de la paleta (con puntillo).
@@ -208,8 +248,18 @@ impl App {
             notas.sort_by(|a, b| a.inicio.total_cmp(&b.inicio).then(a.altura.cmp(&b.altura)));
             let mut alturas: Vec<u8> = notas.iter().map(|n| n.altura).collect();
             alturas.sort();
+            // Piano (por el nombre, o música que abarca los dos registros): sistema de dos pentagramas.
+            let piano = !bateria && transp == 0 && (nombre_min.contains("piano") || nombre_min.contains("keys") || (alturas[0] < 55 && alturas[alturas.len() - 1] >= 67));
+            if piano {
+                let mut doc = Partitura { pentagramas: Pentagrama::piano(), ..Default::default() };
+                doc.pentagramas[0].nombre = t.name.clone();
+                doc.pentagramas[1].nombre = format!("{} ({})", t.name, tr("izq."));
+                Self::repartir(&mut doc, 0, notas.into_iter());
+                pentagramas.extend(doc.pentagramas);
+                continue;
+            }
             let clave = if bateria { Clave::Percusion } else if alturas[alturas.len() / 2] < 57 { Clave::Fa } else { Clave::Sol };
-            pentagramas.push(Pentagrama { nombre: t.name.clone(), clave, transposicion: transp, notas });
+            pentagramas.push(Pentagrama { nombre: t.name.clone(), clave, transposicion: transp, notas, llave: false });
         }
         if pentagramas.is_empty() {
             self.status = tr("No hay pistas MIDI con notas para pasar a la partitura").into();
@@ -220,6 +270,7 @@ impl App {
         self.doc_editar();
         let doc = &mut self.partitura_app.doc;
         doc.pentagramas = pentagramas;
+        doc.anotaciones.clear();
         (doc.compas, doc.tempo, doc.acordes) = (compas, tempo, acordes);
         doc.armadura = pt::detectar_armadura(&Self::partes_doc(doc));
         if doc.titulo.is_empty() {
@@ -274,9 +325,17 @@ impl App {
         let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n<score-partwise version=\"4.0\">\n");
         x += &format!("<work><work-title>{}</work-title></work><identification><creator type=\"composer\">{}</creator><encoding><software>Quantum DAW {}</software></encoding></identification>\n<part-list>", pt::html_escapar(&doc.titulo), pt::html_escapar(&doc.compositor), welcome::VERSION);
         for (k, p) in doc.pentagramas.iter().enumerate() {
+            if p.llave && k + 1 < doc.pentagramas.len() {
+                x += &format!("<part-group type=\"start\" number=\"{}\"><group-symbol>brace</group-symbol><group-barline>yes</group-barline></part-group>", k + 1);
+            }
             x += &format!("<score-part id=\"P{}\"><part-name>{}</part-name></score-part>", k + 1, pt::html_escapar(&p.nombre));
+            if k > 0 && doc.pentagramas[k - 1].llave {
+                x += &format!("<part-group type=\"stop\" number=\"{k}\"/>");
+            }
         }
         x += "</part-list>\n";
+        // Anotaciones como textos (words) al principio de su compás.
+        let compas_de = |a: &Anotacion| (a.inicio / compas).floor().max(0.0) as usize;
         const LETRAS: [&str; 7] = ["C", "D", "E", "F", "G", "A", "B"];
         let ortografia: [(usize, i32); 12] = if doc.armadura >= 0 { [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0), (3, 1), (4, 0), (4, 1), (5, 0), (5, 1), (6, 0)] } else { [(0, 0), (1, -1), (1, 0), (2, -1), (2, 0), (3, 0), (4, -1), (4, 0), (5, -1), (5, 0), (6, -1), (6, 0)] };
         for (k, p) in doc.pentagramas.iter().enumerate() {
@@ -297,6 +356,10 @@ impl App {
                     if k == 0 {
                         x += &format!("<direction placement=\"above\"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>{:.0}</per-minute></metronome></direction-type><sound tempo=\"{:.0}\"/></direction>", doc.tempo, doc.tempo);
                     }
+                }
+                for an in doc.anotaciones.iter().filter(|an| an.pentagrama == k && compas_de(an) == m && !an.texto.is_empty()) {
+                    let pos = ((an.inicio - m as f64 * compas) * div as f64).round();
+                    x += &format!("<direction placement=\"{}\"><direction-type><words>{}</words></direction-type><offset>{pos}</offset></direction>", if an.alto >= -2.0 { "above" } else { "below" }, pt::html_escapar(&an.texto));
                 }
                 let (a, b) = (m as f64 * compas, (m + 1) as f64 * compas);
                 let mut t = a;
@@ -387,17 +450,17 @@ impl App {
             self.doc_editar();
             let e = &mut self.partitura_app;
             let pi = e.pentagrama.min(e.doc.pentagramas.len() - 1);
-            let compas = e.doc.negras_compas();
-            let vacio = e.doc.pentagramas[pi].notas.is_empty();
-            // Se agrega en el compás siguiente al final de lo escrito.
-            let desde = if vacio { 0.0 } else { (e.doc.pentagramas[pi].notas.iter().map(|n| n.inicio + n.dur).fold(0.0, f64::max) / compas).ceil() * compas };
-            let p = &mut e.doc.pentagramas[pi];
-            p.notas.extend(g.vista.iter().map(|n| NotaP { inicio: n.inicio + desde, ..*n }));
+            // Se agrega en el compás siguiente al final de lo escrito (en el piano, de las dos manos).
+            let desde = Self::fin_grupo(&e.doc, pi);
+            let vacio = desde == 0.0;
+            let piano = e.doc.grupo(pi).1 == 2;
+            Self::repartir(&mut e.doc, pi, g.vista.iter().map(|n| NotaP { inicio: n.inicio + desde, ..*n }));
             if vacio {
-                // Clave según el registro y tempo detectado.
+                // Clave según el registro (el piano ya tiene las suyas) y tempo detectado.
                 let mut alturas: Vec<u8> = g.vista.iter().map(|n| n.altura).collect();
                 alturas.sort();
-                if p.clave != Clave::Percusion {
+                let p = &mut e.doc.pentagramas[pi];
+                if p.clave != Clave::Percusion && !piano {
                     p.clave = if alturas[alturas.len() / 2] < 57 { Clave::Fa } else { Clave::Sol };
                 }
                 if let Some(t) = g.tempo.filter(|_| g.detectar) {
@@ -512,6 +575,14 @@ impl App {
                 self.doc_editar();
                 self.partitura_app.doc.armadura = q as i32;
             }
+            // Anotación en el punto del clic derecho (o editar la que había ahí).
+            Accion::PtAnotacion => {
+                match self.partitura_app.punto.take() {
+                    Some((_, _, _, Some(a), q)) => self.partitura_app.editando = Some((a, q)),
+                    Some((pi, t, alto, None, q)) => self.doc_anotar(pi, t, alto, q),
+                    None => {}
+                }
+            }
             _ => {}
         }
     }
@@ -608,21 +679,55 @@ impl App {
                         ui.selectable_value(&mut clave, c, tr(c.nombre()));
                     }
                 });
-                let instr = INSTRUMENTOS.iter().find(|x| x.1 == transp).map_or("—", |x| x.0);
+                let (g, n_grupo) = e.doc.grupo(pi);
+                let es_piano = n_grupo == 2;
+                let instr = if es_piano { "Piano" } else { INSTRUMENTOS[1..].iter().find(|x| x.1 == transp && x.2 == clave).or(INSTRUMENTOS[1..].iter().find(|x| x.1 == transp)).map_or("—", |x| x.0) };
+                let mut elegido = None;
                 egui::ComboBox::from_id_salt("pt-instrumento").width(170.0).selected_text(tr(instr)).show_ui(ui, |ui| {
-                    for (n, t, c) in INSTRUMENTOS {
-                        if ui.selectable_label(transp == t && clave == c, tr(n)).clicked() {
+                    for (k, (n, t, c)) in INSTRUMENTOS.into_iter().enumerate() {
+                        if ui.selectable_label(tr(instr) == tr(n), tr(n)).clicked() {
+                            elegido = Some(k);
                             (transp, clave) = (t, c);
-                            if nombre.starts_with(tr("Pentagrama")) || nombre == "Piano" {
+                            if nombre.starts_with(tr("Pentagrama")) || nombre.starts_with("Piano") || INSTRUMENTOS.iter().any(|x| tr(x.0).starts_with(nombre.as_str())) {
                                 nombre = tr(n).split(" en ").next().unwrap_or(n).split(" (").next().unwrap_or(n).to_string();
                             }
                         }
                     }
                 });
-                if (clave, &nombre, transp) != (p.clave, &p.nombre, p.transposicion) {
-                    self.doc_editar();
-                    let q = &mut self.partitura_app.doc.pentagramas[pi];
-                    (q.clave, q.nombre, q.transposicion) = (clave, nombre, transp);
+                match elegido {
+                    // Piano: clave de sol arriba y de fa abajo, unidas por la llave (las notas graves pasan abajo).
+                    Some(0) if !es_piano => {
+                        self.doc_editar();
+                        let doc = &mut self.partitura_app.doc;
+                        let notas = std::mem::take(&mut doc.pentagramas[pi].notas);
+                        let mut nuevo = Pentagrama::piano();
+                        nuevo[0].nombre = nombre.clone();
+                        nuevo[1].nombre = format!("{nombre} ({})", tr("izq."));
+                        doc.pentagramas.splice(pi..=pi, nuevo);
+                        doc.anotaciones.iter_mut().filter(|a| a.pentagrama > pi).for_each(|a| a.pentagrama += 1);
+                        Self::repartir(doc, pi, notas.into_iter());
+                        self.partitura_app.sel = None;
+                    }
+                    Some(0) => {}
+                    // Otro instrumento en un piano: un solo pentagrama con la música de las dos manos.
+                    Some(_) if es_piano => {
+                        self.doc_editar();
+                        let abajo = std::mem::take(&mut self.partitura_app.doc.pentagramas[g + 1].notas);
+                        self.quitar_pentagramas(g + 1, g + 2);
+                        let q = &mut self.partitura_app.doc.pentagramas[g];
+                        q.llave = false;
+                        q.notas.extend(abajo);
+                        q.notas.sort_by(|a, b| a.inicio.total_cmp(&b.inicio).then(a.altura.cmp(&b.altura)));
+                        (q.clave, q.nombre, q.transposicion) = (clave, nombre, transp);
+                        self.partitura_app.pentagrama = g;
+                    }
+                    _ => {
+                        if (clave, &nombre, transp) != (p.clave, &p.nombre, p.transposicion) {
+                            self.doc_editar();
+                            let q = &mut self.partitura_app.doc.pentagramas[pi];
+                            (q.clave, q.nombre, q.transposicion) = (clave, nombre, transp);
+                        }
+                    }
                 }
             }
             if ui.button(tr("+ Pentagrama")).clicked() {
@@ -631,11 +736,18 @@ impl App {
                 self.partitura_app.doc.pentagramas.push(Pentagrama { nombre: format!("{} {n}", tr("Pentagrama")), ..Default::default() });
                 self.partitura_app.pentagrama = n - 1;
             }
-            if self.partitura_app.doc.pentagramas.len() > 1 && ui.button(tr("− Quitar")).clicked() {
+            if ui.button(tr("+ Piano")).on_hover_text(tr("Agrega un sistema de piano: clave de sol y clave de fa unidas por una llave")).clicked() {
                 self.doc_editar();
-                let pi = self.partitura_app.pentagrama;
-                self.partitura_app.doc.pentagramas.remove(pi);
-                self.partitura_app.sel = None;
+                let n = self.partitura_app.doc.pentagramas.len();
+                self.partitura_app.doc.pentagramas.extend(Pentagrama::piano());
+                self.partitura_app.pentagrama = n;
+            }
+            // Quitar: el pentagrama elegido (en el piano, los dos).
+            let (g, n_grupo) = self.partitura_app.doc.grupo(self.partitura_app.pentagrama);
+            if self.partitura_app.doc.pentagramas.len() > n_grupo && ui.button(tr("− Quitar")).clicked() {
+                self.doc_editar();
+                self.quitar_pentagramas(g, g + n_grupo);
+                self.partitura_app.pentagrama = g.min(self.partitura_app.doc.pentagramas.len() - 1);
             }
         });
         // Barra 3: figuras, alteraciones, grabación y reproducción.
@@ -663,6 +775,11 @@ impl App {
             }
             if ui.button(tr("Borrar")).on_hover_text(tr("Borra la nota elegida (Supr)")).clicked() {
                 self.doc_borrar_sel();
+            }
+            ui.separator();
+            let on = self.partitura_app.anotar;
+            if ui.add(egui::Button::new(RichText::new(format!("T  {}", tr("Anotación"))).color(if on { BG() } else { TEXT() })).fill(if on { ACCENT() } else { ELEVATED() })).on_hover_text(tr("Con esta herramienta, un clic en la partitura pone un texto en ese punto (T). También con clic derecho → Anotación")).clicked() {
+                self.partitura_app.anotar = !on;
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(egui::Slider::new(&mut self.partitura_app.sp, 5.0..=14.0).show_value(false).text(tr("Tamaño")));
@@ -692,7 +809,7 @@ impl App {
                 let t = g.tempo.map_or("—".to_string(), |t| format!("{t:.0} BPM"));
                 ui.label(RichText::new(format!("{} {} · {} {}", g.vista.len(), tr("notas"), tr("pulso"), t)).color(METER[2]));
             } else {
-                ui.label(RichText::new(tr("Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, flechas mueven, Supr borra")).size(11.0).color(TEXT_DIM()));
+                ui.label(RichText::new(tr("Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, T anotación, flechas mueven, Supr borra")).size(11.0).color(TEXT_DIM()));
             }
         });
         self.doc_teclado(ui);
@@ -702,16 +819,14 @@ impl App {
         if let Some(g) = &self.partitura_app.grabacion {
             // Mientras se graba se ve lo transcrito, en el pentagrama elegido.
             let pi = self.partitura_app.pentagrama.min(doc_vista.pentagramas.len() - 1);
-            let compas = doc_vista.negras_compas();
-            let p = &mut doc_vista.pentagramas[pi];
-            let desde = if p.notas.is_empty() { 0.0 } else { (p.notas.iter().map(|n| n.inicio + n.dur).fold(0.0, f64::max) / compas).ceil() * compas };
-            p.notas.extend(g.vista.iter().map(|n| NotaP { inicio: n.inicio + desde, ..*n }));
+            let desde = Self::fin_grupo(&doc_vista, pi);
+            Self::repartir(&mut doc_vista, pi, g.vista.iter().map(|n| NotaP { inicio: n.inicio + desde, ..*n }));
         }
         egui::Frame::new().fill(Color32::from_rgb(0xFA, 0xF8, 0xF2)).corner_radius(widgets::rr(6.0)).inner_margin(sp * 1.5).show(ui, |ui| {
             egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
                 let ancho = ui.available_width().max(500.0);
                 let diseno: Diseno = pt::disenar(&Self::partes_doc(&doc_vista), &Self::conf_doc(&doc_vista), ancho, sp);
-                let (r, resp) = ui.allocate_exact_size(vec2(ancho, diseno.alto * diseno.sistemas.len() as f32), Sense::click());
+                let (r, resp) = ui.allocate_exact_size(vec2(ancho, diseno.alto * diseno.sistemas.len() as f32), Sense::click_and_drag());
                 let p = ui.painter_at(r);
                 for (k, s) in diseno.sistemas.iter().enumerate() {
                     pt::pintar(&p, s, r.min.to_vec2() + vec2(0.0, k as f32 * diseno.alto), Color32::from_gray(20));
@@ -719,8 +834,58 @@ impl App {
                 self.doc_interaccion(ui, &resp, r, &diseno, &doc_vista);
             });
         });
+        self.doc_editor_anotacion(ui.ctx());
         if self.pie.as_ref().is_some_and(|p| p.en_partitura) {
             self.procesar_pie(ui.ctx());
+        }
+    }
+
+    /// Pone una anotación en un punto (pentagrama, tiempo, altura) y abre su cuadro para escribir.
+    fn doc_anotar(&mut self, pi: usize, inicio: f64, alto: f32, pantalla: Pos2) {
+        self.doc_editar();
+        let doc = &mut self.partitura_app.doc;
+        doc.anotaciones.push(Anotacion { pentagrama: pi, inicio, alto, texto: String::new() });
+        self.partitura_app.editando = Some((doc.anotaciones.len() - 1, pantalla));
+    }
+
+    /// Cuadro flotante para escribir la anotación elegida (Intro o «Listo» cierra; vacía se borra).
+    fn doc_editor_anotacion(&mut self, ctx: &egui::Context) {
+        let Some((k, pos)) = self.partitura_app.editando else { return };
+        if k >= self.partitura_app.doc.anotaciones.len() {
+            self.partitura_app.editando = None;
+            return;
+        }
+        let (mut cerrar, mut borrar) = (false, false);
+        egui::Area::new(egui::Id::new("pt-anotacion")).order(egui::Order::Foreground).fixed_pos(pos + vec2(0.0, 10.0)).show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.label(RichText::new(tr("Anotación")).strong().color(ACCENT()));
+                let t = &mut self.partitura_app.doc.anotaciones[k].texto;
+                let r = ui.add(egui::TextEdit::singleline(t).hint_text(tr("Escribe el texto (p. ej. dolce, rit., D.C., digitación)…")).desired_width(280.0));
+                if !r.has_focus() && !r.lost_focus() {
+                    r.request_focus();
+                }
+                cerrar |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                ui.horizontal(|ui| {
+                    for sugerencia in ["p", "mf", "f", "cresc.", "rit.", "a tempo", "D.C. al Fine"] {
+                        if ui.small_button(sugerencia).clicked() {
+                            self.partitura_app.doc.anotaciones[k].texto = sugerencia.to_string();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    cerrar |= ui.button(tr("Listo")).clicked();
+                    borrar |= ui.button(RichText::new(tr("Borrar")).color(METER[2])).clicked();
+                    ui.label(RichText::new(tr("Arrastra el texto en la partitura para moverlo")).size(11.0).color(TEXT_DIM()));
+                });
+            });
+        });
+        cerrar |= ctx.input(|i| i.key_pressed(Key::Escape));
+        if borrar || (cerrar && self.partitura_app.doc.anotaciones[k].texto.trim().is_empty()) {
+            self.partitura_app.doc.anotaciones.remove(k);
+            cerrar = true;
+        }
+        if cerrar {
+            self.partitura_app.editando = None;
         }
     }
 
@@ -748,9 +913,30 @@ impl App {
             }
         }
         let Some(q) = resp.hover_pos().or(resp.interact_pointer_pos()) else { return };
+        if resp.secondary_clicked() {
+            self.partitura_app.punto = None;
+        }
         let k = ((q.y - r.top()) / d.alto.max(1.0)).floor().max(0.0) as usize;
         let Some(mapa) = d.mapas.get(k) else { return };
         let local = Pos2::new(q.x - r.left(), q.y - r.top() - k as f32 * d.alto);
+        // Anotación bajo el puntero: clic la edita, arrastrar la mueve.
+        let anotacion = mapa.anotaciones.iter().find(|a| a.0.contains(local)).map(|a| a.1);
+        if resp.drag_started() && let Some(a) = anotacion {
+            self.doc_editar();
+            self.partitura_app.arrastre = Some(a);
+        }
+        if !resp.dragged() {
+            self.partitura_app.arrastre = None;
+        }
+        if anotacion.is_some() || self.partitura_app.arrastre.is_some() {
+            ui.ctx().set_cursor_icon(if self.partitura_app.arrastre.is_some() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
+        }
+        if let Some(a) = anotacion
+            && resp.clicked()
+        {
+            self.partitura_app.editando = Some((a, q));
+            return;
+        }
         // Una cabeza bajo el puntero: clic la elige.
         let cabeza = mapa.cabezas.iter().find(|c| (c.0 - local).length() < sp * 0.9).copied();
         // Pentagrama más cercano en vertical.
@@ -767,6 +953,27 @@ impl App {
             return;
         }
         let Some((m, x0, x1, puntos)) = mapa.compases.iter().find(|c| local.x >= c.1 - sp && local.x <= c.2 + sp).cloned() else { return };
+        // Punto exacto para anotar: tiempo (a la semicorchea) y altura con el texto centrado en el puntero.
+        let t_anotacion = m as f64 * compas + (x_a_tiempo(&puntos, x0, x1, compas, local.x) * 4.0).round() / 4.0;
+        let alto_anotacion = (base - sp * 4.0 - local.y) / sp - 0.5;
+        if let Some(a) = self.partitura_app.arrastre {
+            if let Some(an) = self.partitura_app.doc.anotaciones.get_mut(a) {
+                (an.pentagrama, an.inicio, an.alto) = (pi, t_anotacion, alto_anotacion);
+            }
+            return;
+        }
+        if resp.secondary_clicked() {
+            self.partitura_app.punto = Some((pi, t_anotacion, alto_anotacion, anotacion, q));
+        }
+        if self.partitura_app.anotar && anotacion.is_none() && self.partitura_app.grabacion.is_none() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+            if resp.clicked() {
+                self.doc_anotar(pi, t_anotacion, alto_anotacion, q);
+            }
+            if !resp.secondary_clicked() {
+                return;
+            }
+        }
         let dur = self.dur_paleta();
         let reja = if dur >= 1.0 { 1.0 } else { dur.max(0.25) };
         let rel = ((x_a_tiempo(&puntos, x0, x1, compas, local.x) / reja).round() * reja).clamp(0.0, compas - reja.min(compas));
@@ -776,13 +983,13 @@ impl App {
         let escrita = altura_en(pos, clave, quintas);
         let sonido = (escrita as i32 - transp).clamp(0, 127) as u8;
         // Nota fantasma donde se escribiría.
-        if cabeza.is_none() && self.partitura_app.grabacion.is_none() {
+        if cabeza.is_none() && anotacion.is_none() && !self.partitura_app.anotar && self.partitura_app.grabacion.is_none() {
             let x = tiempo_a_x(&puntos, x0, x1, compas, rel);
             let y = base - pos as f32 * sp / 2.0;
             p.circle_filled(pos2(r.left() + x + sp * 0.6, r.top() + k as f32 * d.alto + y), sp * 0.55, ACCENT().gamma_multiply(0.5));
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
-        if resp.clicked() && self.partitura_app.grabacion.is_none() {
+        if resp.clicked() && anotacion.is_none() && self.partitura_app.grabacion.is_none() {
             self.partitura_app.pentagrama = pi;
             match cabeza {
                 Some((_, cpi, id)) if id != usize::MAX => {
@@ -895,6 +1102,7 @@ impl App {
                         self.partitura_app.figura = f.0;
                     }
                 }
+                Key::T if !modifiers.command => self.partitura_app.anotar = !self.partitura_app.anotar,
                 Key::Period => self.partitura_app.puntillo = !self.partitura_app.puntillo,
                 Key::Num0 => self.doc_silencio(),
                 Key::ArrowUp => self.doc_mover_sel(if modifiers.command { 12 } else { 1 }),
@@ -931,21 +1139,6 @@ fn pt_figuras(mut d: f64) -> Vec<f64> {
     v
 }
 
-/// x de un tiempo dentro del compás, interpolando entre las figuras dibujadas.
-fn tiempo_a_x(puntos: &[(f64, f32)], x0: f32, x1: f32, compas: f64, t: f64) -> f32 {
-    let mut v: Vec<(f64, f32)> = vec![(0.0, x0)];
-    v.extend(puntos.iter().copied().filter(|p| p.0 > 1e-9));
-    v.push((compas, x1));
-    v.sort_by(|a, b| a.0.total_cmp(&b.0));
-    for w in v.windows(2) {
-        if t <= w[1].0 + 1e-9 {
-            let f = ((t - w[0].0) / (w[1].0 - w[0].0).max(1e-9)) as f32;
-            return w[0].1 + (w[1].1 - w[0].1) * f;
-        }
-    }
-    x1
-}
-
 /// Tiempo dentro del compás de una x (inversa de `tiempo_a_x`).
 fn x_a_tiempo(puntos: &[(f64, f32)], x0: f32, x1: f32, compas: f64, x: f32) -> f64 {
     let mut v: Vec<(f64, f32)> = vec![(0.0, x0)];
@@ -976,6 +1169,17 @@ mod pruebas {
         assert_eq!(altura_en(4, Clave::Alto, 0), 60);
         // Fa mayor: el Si es bemol.
         assert_eq!(altura_en(4, Clave::Sol, -1), 70);
+    }
+
+    #[test]
+    fn piano_reparte_las_manos() {
+        let mut doc = Partitura::default();
+        assert_eq!((doc.grupo(0), doc.grupo(1)), ((0, 2), (0, 2)));
+        let nota = |altura| NotaP { inicio: 0.0, dur: 1.0, altura, alteracion: None };
+        App::repartir(&mut doc, 1, [nota(60), nota(64), nota(48), nota(55)].into_iter());
+        assert_eq!(doc.pentagramas[0].notas.iter().map(|n| n.altura).collect::<Vec<_>>(), [60, 64]);
+        assert_eq!(doc.pentagramas[1].notas.iter().map(|n| n.altura).collect::<Vec<_>>(), [48, 55]);
+        assert_eq!((doc.pentagramas[0].clave, doc.pentagramas[1].clave), (Clave::Sol, Clave::Fa));
     }
 
     #[test]

@@ -1065,7 +1065,6 @@ Grabar tocando	Record by playing	Gravar tocando
 Toca y la partitura se escribe sola; al terminar se agrega al pentagrama elegido	Play and the score writes itself; when you finish it is added to the selected staff	Toque e a partitura se escreve sozinha; ao terminar é adicionada à pauta escolhida
 notas	notes	notas
 pulso	beat	pulso
-Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, flechas mueven, Supr borra	Keys: A–G notes, 3–7 durations, '.' dot, 0 rest, arrows move, Del deletes	Teclado: A–G notas, 3–7 figuras, «.» ponto, 0 pausa, setas movem, Del apaga
 No hay pistas MIDI con notas para pasar a la partitura	There are no MIDI tracks with notes to bring into the score	Não há faixas MIDI com notas para passar à partitura
 partitura	score	partitura
 Partitura pasada a pistas MIDI	Score turned into MIDI tracks	Partitura passada para faixas MIDI
@@ -1084,3 +1083,12 @@ Subir	Up	Subir
 Bajar	Down	Descer
 Clave	Clef	Clave
 Armadura	Key signature	Armadura
+Teclado: A–G notas, 3–7 figuras, «.» puntillo, 0 silencio, T anotación, flechas mueven, Supr borra	Keys: A–G notes, 3–7 durations, '.' dot, 0 rest, T annotation, arrows move, Del deletes	Teclado: A–G notas, 3–7 figuras, «.» ponto, 0 pausa, T anotação, setas movem, Del apaga
+izq.	LH	esq.
++ Piano	+ Piano	+ Piano
+Anotación	Annotation	Anotação
+Listo	Done	Pronto
+Agrega un sistema de piano: clave de sol y clave de fa unidas por una llave	Adds a piano grand staff: treble and bass clef joined by a brace	Adiciona um sistema de piano: clave de sol e clave de fá unidas por uma chave
+Escribe el texto (p. ej. dolce, rit., D.C., digitación)…	Type the text (e.g. dolce, rit., D.C., fingering)…	Escreva o texto (ex.: dolce, rit., D.C., dedilhado)…
+Arrastra el texto en la partitura para moverlo	Drag the text on the score to move it	Arraste o texto na partitura para movê-lo
+Con esta herramienta, un clic en la partitura pone un texto en ese punto (T). También con clic derecho → Anotación	With this tool, a click on the score places a text at that point (T). Also with right-click → Annotation	Com esta ferramenta, um clique na partitura coloca um texto nesse ponto (T). Também com clique direito → Anotação

@@ -63,6 +63,19 @@ pub struct Pentagrama {
     /// Semitonos que se escriben por encima del sonido real (clarinete en Si♭: 2; trompa: 7).
     pub transposicion: i32,
     pub notas: Vec<NotaP>,
+    /// Une este pentagrama con el siguiente con una llave (piano: clave de sol arriba y de fa abajo).
+    pub llave: bool,
+}
+
+/// Anotación de texto en un punto de la partitura: pentagrama, tiempo (en negras) y altura en
+/// espacios sobre la quinta línea (negativa: debajo).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct Anotacion {
+    pub pentagrama: usize,
+    pub inicio: f64,
+    pub alto: f32,
+    pub texto: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -78,6 +91,7 @@ pub struct Partitura {
     pub pentagramas: Vec<Pentagrama>,
     /// Cifrado de acordes: (inicio en negras, nombre).
     pub acordes: Vec<(f64, String)>,
+    pub anotaciones: Vec<Anotacion>,
 }
 
 impl Default for Partitura {
@@ -88,13 +102,36 @@ impl Default for Partitura {
             tempo: 120.0,
             compas: (4, 4),
             armadura: 0,
-            pentagramas: vec![Pentagrama { nombre: "Piano".into(), ..Default::default() }],
+            pentagramas: Pentagrama::piano(),
             acordes: vec![],
+            anotaciones: vec![],
         }
     }
 }
 
+impl Pentagrama {
+    /// Sistema de piano: clave de sol (mano derecha) y clave de fa (mano izquierda) unidas por una llave.
+    pub fn piano() -> Vec<Pentagrama> {
+        vec![
+            Pentagrama { nombre: "Piano".into(), clave: Clave::Sol, llave: true, ..Default::default() },
+            Pentagrama { nombre: "Piano (izq.)".into(), clave: Clave::Fa, ..Default::default() },
+        ]
+    }
+}
+
 impl Partitura {
+    /// Primer pentagrama del grupo (piano) al que pertenece `pi` y cuántos tiene.
+    pub fn grupo(&self, pi: usize) -> (usize, usize) {
+        let pi = pi.min(self.pentagramas.len().saturating_sub(1));
+        if pi > 0 && self.pentagramas[pi - 1].llave {
+            (pi - 1, 2)
+        } else if self.pentagramas.get(pi).is_some_and(|p| p.llave) && pi + 1 < self.pentagramas.len() {
+            (pi, 2)
+        } else {
+            (pi, 1)
+        }
+    }
+
     /// Negras por compás.
     pub fn negras_compas(&self) -> f64 {
         self.compas.0 as f64 * 4.0 / self.compas.1.max(1) as f64
