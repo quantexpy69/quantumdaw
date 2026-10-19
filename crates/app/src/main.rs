@@ -2171,11 +2171,11 @@ impl eframe::App for App {
         self.engine.scope_on.store(self.show_mixer && self.bottom_tab == 2, Relaxed);
         // Franja del logo separada del menú; la barra de control crece según sus filas de cajas.
         egui::Panel::top("title").exact_size(42.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 12, right: 12, top: 6, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
-        // Arriba, la barra de herramientas del arreglo; abajo, el transporte (sobre la barra de estado).
-        egui::Panel::top("herramientas").exact_size(42.0).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(12, 5))).show(ui, |ui| self.barra_herramientas(ui));
-        egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
+        // Arriba: transporte con las vistas y, debajo, la barra de herramientas del arreglo.
         let bar_h = self.bar_rows().len() as f32 * (chrome::BAR_ROW_H + 6.0) + 6.0;
-        egui::Panel::bottom("control").exact_size(bar_h).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(6, 3))).show(ui, |ui| self.control_bar(ui));
+        egui::Panel::top("control").exact_size(bar_h).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(6, 3))).show(ui, |ui| self.control_bar(ui));
+        egui::Panel::top("herramientas").exact_size(40.0).frame(egui::Frame::new().fill(ELEVATED()).inner_margin(egui::Margin::symmetric(12, 4))).show(ui, |ui| self.barra_herramientas(ui));
+        egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
         if self.show_mixer {
             let default = if self.config.bottom_h > 0.0 { self.config.bottom_h } else { 440.0 };
             let panel = egui::Panel::bottom("bottom").default_size(default).min_size(140.0).resizable(true).show(ui, |ui| self.bottom_panel(ui));

@@ -161,6 +161,14 @@ impl App {
                     self.config.save();
                     theme(ui.ctx());
                 }
+                ui.menu_button(tr("Espacio de trabajo"), |ui| {
+                    widgets::menu_style(ui);
+                    for (k, (nombre, desc, ..)) in welcome::ESPACIOS.iter().enumerate() {
+                        if ui.button(tr(nombre)).on_hover_text(tr(desc)).clicked() {
+                            self.aplicar_espacio(k);
+                        }
+                    }
+                });
                 if item(ui, tr("Mastering y loudness…"), "") {
                     self.mastering.abierta = true;
                 }

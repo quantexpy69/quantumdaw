@@ -15,6 +15,8 @@ enum Accion {
     Informe,
     Tema(usize),
     Mastering,
+    Espacio(usize),
+    Panel,
 }
 
 /// Estado de la paleta abierta: texto buscado y fila elegida.
@@ -49,6 +51,8 @@ fn acciones() -> Vec<(String, &'static str, Accion)> {
         (tr("Mastering y loudness…").to_string(), tr("Ver"), Accion::Mastering),
         (tr("Enviar informe de error…").to_string(), tr("Herramientas"), Accion::Informe),
     ]);
+    v.extend(crate::welcome::ESPACIOS.iter().enumerate().map(|(k, e)| (format!("{}: {}", tr("Espacio de trabajo"), tr(e.0)), tr("Ver"), Accion::Espacio(k))));
+    v.push((tr("Pantalla inicial (panel)").to_string(), tr("Archivo"), Accion::Panel));
     v.extend(TEMAS.iter().enumerate().map(|(k, (n, _))| (format!("{}: {}", tr("Tema"), tr(n)), tr("Ver"), Accion::Tema(k))));
     v
 }
@@ -108,6 +112,8 @@ impl App {
             Some(Accion::Circulo) => self.roll.circulo = true,
             Some(Accion::Instrumento) => self.roll.instrumento = true,
             Some(Accion::PianoRoll) => (self.show_mixer, self.bottom_tab) = (true, 1),
+            Some(Accion::Espacio(k)) => self.aplicar_espacio(k),
+            Some(Accion::Panel) => self.open_main_menu(0),
             Some(Accion::Mastering) => self.mastering.abierta = true,
             Some(Accion::Registros) => informes::abrir_carpeta(&informes::carpeta()),
             Some(Accion::Informe) => {
