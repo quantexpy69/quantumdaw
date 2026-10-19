@@ -88,6 +88,24 @@ pub fn midi_ports() -> Vec<String> {
 }
 
 /// Conecta los puertos MIDI (todos si `only` está vacío, ninguno si es "-") y reenvía notas y controles al motor.
+/// Notas MIDI con la hora exacta en que llegaron (teclados externos y el teclado del PC), para
+/// transcribir sin depender del tamaño del bloque de audio. Guarda las últimas 4096.
+static LLEGADAS: std::sync::Mutex<std::collections::VecDeque<(std::time::Instant, MidiEvent)>> = std::sync::Mutex::new(std::collections::VecDeque::new());
+
+pub fn registrar_llegada(e: MidiEvent) {
+    if let Ok(mut l) = LLEGADAS.lock() {
+        if l.len() >= 4096 {
+            l.pop_front();
+        }
+        l.push_back((std::time::Instant::now(), e));
+    }
+}
+
+/// Notas llegadas desde `t`: (segundos desde `t`, evento).
+pub fn llegadas_desde(t: std::time::Instant) -> Vec<(f64, MidiEvent)> {
+    LLEGADAS.lock().map(|l| l.iter().filter(|x| x.0 >= t).map(|x| ((x.0 - t).as_secs_f64(), x.1)).collect()).unwrap_or_default()
+}
+
 pub fn connect_midi(only: &str, tx: Arc<Mutex<rtrb::Producer<MidiEvent>>>) -> MidiConnections {
     let Ok(probe) = midir::MidiInput::new("Quantum DAW") else {
         return vec![];
@@ -102,11 +120,11 @@ pub fn connect_midi(only: &str, tx: Arc<Mutex<rtrb::Producer<MidiEvent>>>) -> Mi
             }
             let tx = tx.clone();
             let forward = move |_: u64, msg: &[u8], _: &mut ()| {
-                if msg.len() == 3
-                    && matches!(msg[0] & 0xF0, 0x80 | 0x90 | 0xB0)
-                    && let Ok(mut tx) = tx.lock()
-                {
-                    let _ = tx.push([msg[0], msg[1], msg[2]]);
+                if msg.len() == 3 && matches!(msg[0] & 0xF0, 0x80 | 0x90 | 0xB0) {
+                    registrar_llegada([msg[0], msg[1], msg[2]]);
+                    if let Ok(mut tx) = tx.lock() {
+                        let _ = tx.push([msg[0], msg[1], msg[2]]);
+                    }
                 }
             };
             midir::MidiInput::new("Quantum DAW").ok()?.connect(port, "entrada", forward, ()).ok()

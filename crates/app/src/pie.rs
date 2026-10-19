@@ -25,6 +25,18 @@ pub enum Accion {
     GenerarAcordes,
     BorrarNotas,
     DuplicarNotas,
+    // Partitura.
+    PtFigura(u8),
+    PtPuntillo,
+    PtSilencio,
+    PtSubir,
+    PtBajar,
+    PtBorrar,
+    PtEscuchar,
+    PtMenuClave,
+    PtMenuArmadura,
+    PtClave(project::partitura::Clave),
+    PtArmadura(i8),
 }
 
 pub struct Pie {
@@ -35,6 +47,10 @@ pub struct Pie {
     pub con_tecla: bool,
     /// Región sobre la que se abrió (para las acciones de región).
     pub region: Option<(usize, usize)>,
+    /// Abierto en QUANTUM Partitura (se dibuja en su ventana, que puede estar en otra pantalla).
+    pub en_partitura: bool,
+    /// Arrastrando el menú desde su disco central.
+    pub arrastrando: bool,
 }
 
 const R_EXT: f32 = 178.0;
@@ -87,13 +103,51 @@ fn icono(p: &egui::Painter, c: Pos2, a: Accion, color: Color32) {
             p.line_segment([c + vec2(x, 5.0 - k as f32 * 5.0), c + vec2(x + 4.0, 5.0 - k as f32 * 5.0)], s);
         }),
         Accion::GenerarAcordes => (0..3).for_each(|k| _ = p.circle_filled(c + vec2(0.0, -6.0 + k as f32 * 6.0), 2.4, color)),
+        // Partitura: los símbolos de la fuente musical.
+        Accion::PtFigura(k) => glifo(p, c, ['\u{E1D2}', '\u{E1D3}', '\u{E1D5}', '\u{E1D7}', '\u{E1D9}'][k.min(4) as usize], color),
+        Accion::PtPuntillo => _ = p.circle_filled(c, 2.8, color),
+        Accion::PtSilencio => glifo(p, c, '\u{E4E5}', color),
+        Accion::PtSubir | Accion::PtArmadura(1..) => glifo(p, c, '\u{E262}', color),
+        Accion::PtBajar | Accion::PtArmadura(..=-1) => glifo(p, c, '\u{E260}', color),
+        Accion::PtArmadura(_) => glifo(p, c, '\u{E261}', color),
+        Accion::PtBorrar => icono(p, c, Accion::Eliminar, color),
+        Accion::PtEscuchar => {
+            p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -6.0), c + vec2(6.0, 0.0), c + vec2(-4.0, 6.0)], color, Stroke::NONE));
+        }
+        Accion::PtMenuClave | Accion::PtClave(project::partitura::Clave::Sol | project::partitura::Clave::Sol8vb) => glifo(p, c, '\u{E050}', color),
+        Accion::PtClave(project::partitura::Clave::Fa) => glifo(p, c, '\u{E062}', color),
+        Accion::PtClave(project::partitura::Clave::Percusion) => glifo(p, c, '\u{E069}', color),
+        Accion::PtClave(_) => glifo(p, c, '\u{E05C}', color),
+        Accion::PtMenuArmadura => glifo(p, c, '\u{E262}', color),
     }
 }
 
+/// Un símbolo de la fuente musical centrado en `c`.
+fn glifo(p: &egui::Painter, c: Pos2, g: char, color: Color32) {
+    // Línea base algo abajo del centro: las cabezas quedan centradas y las plicas suben.
+    crate::partitura::texto_base(p, c + vec2(0.0, 6.0), &g.to_string(), FontId::new(20.0, egui::FontFamily::Name("musica".into())), color, 1);
+}
+
 /// Dibuja el menú y devuelve la acción elegida y si hay que cerrarlo.
-fn dibujar(ctx: &egui::Context, pie: &Pie) -> (Option<Accion>, bool) {
+fn dibujar(ctx: &egui::Context, pie: &mut Pie) -> (Option<Accion>, bool) {
     let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("pie")));
     let (puntero, clic, soltada_q, esc, clic_der) = ctx.input(|i| (i.pointer.hover_pos(), i.pointer.primary_clicked(), i.key_released(egui::Key::Q), i.key_pressed(egui::Key::Escape), i.pointer.secondary_clicked()));
+    // Arrastrar el disco central mueve el menú (para ver lo que hay debajo).
+    let (pulsado, abajo, delta) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.delta()));
+    if pulsado && puntero.is_some_and(|q| (q - pie.centro).length() < R_INT) {
+        pie.arrastrando = true;
+    }
+    if pie.arrastrando {
+        if abajo {
+            pie.centro += delta;
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else {
+            pie.arrastrando = false;
+        }
+        ctx.request_repaint();
+    } else if puntero.is_some_and(|q| (q - pie.centro).length() < R_INT) {
+        ctx.set_cursor_icon(egui::CursorIcon::Grab);
+    }
     let n = pie.items.len().max(1);
     let paso = std::f32::consts::TAU / n as f32;
     let angulo = |k: f32| -std::f32::consts::FRAC_PI_2 - paso / 2.0 + k * paso;
@@ -135,7 +189,11 @@ fn dibujar(ctx: &egui::Context, pie: &Pie) -> (Option<Accion>, bool) {
     p.circle_stroke(pie.centro, R_INT, Stroke::new(1.0, BORDER()));
     p.text(pie.centro + vec2(0.0, -8.0), Align2::CENTER_CENTER, tr(pie.titulo), FontId::proportional(12.5), TEXT());
     p.text(pie.centro + vec2(0.0, 10.0), Align2::CENTER_CENTER, tr("Señala para elegir"), FontId::proportional(10.5), TEXT_DIM());
+    p.text(pie.centro + vec2(0.0, 26.0), Align2::CENTER_CENTER, tr("arrastra para mover"), FontId::proportional(9.0), TEXT_DIM().gamma_multiply(0.7));
     let elegida = sobre.and_then(|k| pie.items.get(k)).filter(|i| i.2).map(|i| i.1);
+    if pie.arrastrando || (clic && puntero.is_some_and(|q| (q - pie.centro).length() < R_INT)) {
+        return (None, false);
+    }
     match () {
         _ if esc => (None, true),
         _ if pie.con_tecla && soltada_q => (elegida, true),
@@ -165,6 +223,8 @@ impl App {
             ],
             con_tecla,
             region: Some((i, j)),
+            en_partitura: false,
+            arrastrando: false,
         });
     }
 
@@ -186,6 +246,8 @@ impl App {
             ],
             con_tecla: false,
             region: None,
+            en_partitura: false,
+            arrastrando: false,
         });
     }
 
@@ -203,7 +265,14 @@ impl App {
                 self.menu_region = None;
             }
         }
-        let Some(pie) = &self.pie else { return };
+        if self.pie.as_ref().is_some_and(|p| !p.en_partitura) {
+            self.procesar_pie(ctx);
+        }
+    }
+
+    /// Dibuja el menú abierto en el contexto (ventana) actual y ejecuta la acción elegida.
+    pub fn procesar_pie(&mut self, ctx: &egui::Context) {
+        let Some(pie) = &mut self.pie else { return };
         let (accion, cerrar) = dibujar(ctx, pie);
         let region = pie.region;
         let centro = pie.centro;
@@ -233,7 +302,51 @@ impl App {
             Accion::Eliminar => self.delete(),
             Accion::MasOpciones => self.menu_region = Some(centro),
             Accion::GenerarAcordes => self.generador.abierto = true,
+            Accion::PtFigura(_) | Accion::PtPuntillo | Accion::PtSilencio | Accion::PtSubir | Accion::PtBajar | Accion::PtBorrar | Accion::PtEscuchar | Accion::PtClave(_) | Accion::PtArmadura(_) => self.pie_partitura(a),
+            Accion::PtMenuClave | Accion::PtMenuArmadura => self.abrir_pie_partitura_sub(centro, a),
             notas => self.pie_notas(notas),
         }
+    }
+}
+
+/// Armaduras del submenú: (quintas, nombre).
+const ARMADURAS: [(i8, &str); 12] = [(-5, "Reb / Sibm"), (-4, "Lab / Fam"), (-3, "Mib / Dom"), (-2, "Sib / Solm"), (-1, "Fa / Rem"), (0, "Do / Lam"), (1, "Sol / Mim"), (2, "Re / Sim"), (3, "La / Fa#m"), (4, "Mi / Do#m"), (5, "Si / Sol#m"), (6, "Fa# / Re#m")];
+
+impl App {
+    /// Menú circular de QUANTUM Partitura (clic derecho en el papel).
+    pub fn abrir_pie_partitura(&mut self, centro: Pos2) {
+        let hay = self.partitura_app.tiene_seleccion();
+        self.pie = Some(Pie {
+            centro,
+            titulo: "PARTITURA",
+            items: vec![
+                ("Negra", Accion::PtFigura(2), true),
+                ("Corchea", Accion::PtFigura(3), true),
+                ("Semicorchea", Accion::PtFigura(4), true),
+                ("Puntillo", Accion::PtPuntillo, true),
+                ("Silencio", Accion::PtSilencio, true),
+                ("Subir", Accion::PtSubir, hay),
+                ("Bajar", Accion::PtBajar, hay),
+                ("Borrar", Accion::PtBorrar, hay),
+                ("Escuchar", Accion::PtEscuchar, true),
+                ("Clave", Accion::PtMenuClave, true),
+                ("Armadura", Accion::PtMenuArmadura, true),
+                ("Blanca", Accion::PtFigura(1), true),
+            ],
+            con_tecla: false,
+            region: None,
+            en_partitura: true,
+            arrastrando: false,
+        });
+    }
+
+    /// Submenús circulares de clave y armadura.
+    pub fn abrir_pie_partitura_sub(&mut self, centro: Pos2, a: Accion) {
+        let items = if a == Accion::PtMenuClave {
+            project::partitura::Clave::TODAS.iter().map(|&c| (c.nombre(), Accion::PtClave(c), true)).collect()
+        } else {
+            ARMADURAS.iter().map(|&(q, n)| (n, Accion::PtArmadura(q), true)).collect()
+        };
+        self.pie = Some(Pie { centro, titulo: if a == Accion::PtMenuClave { "CLAVE" } else { "ARMADURA" }, items, con_tecla: false, region: None, en_partitura: true, arrastrando: false });
     }
 }

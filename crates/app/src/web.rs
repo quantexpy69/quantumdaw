@@ -64,6 +64,11 @@ pub fn contenido() -> Option<Contenido> {
             let (noticias, productos) = (pedir::<Noticia>("api/noticias.php?limite=3", "noticias"), pedir::<Producto>("api/tienda.php", "productos"));
             if noticias.is_none() && productos.is_none() {
                 informes::registrar("INFO", "Novedades y tienda: sin conexión con la web");
+                // Sin conexión: queda lo guardado de otra sesión, o un contenido vacío que lo indica.
+                let mut e = ESTADO.lock().unwrap_or_else(|e| e.into_inner());
+                if e.is_none() {
+                    *e = Some(Contenido::default());
+                }
                 return;
             }
             let c = Contenido { noticias: noticias.unwrap_or_default(), productos: productos.unwrap_or_default(), en_linea: true };

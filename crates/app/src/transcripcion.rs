@@ -15,6 +15,11 @@ pub struct Golpe {
 /// Pulso más probable de unos ataques (segundos): (duración de un tiempo en segundos, fase: momento
 /// de un tiempo). Prefiere tempos cercanos a 100 BPM para decidir entre el doble y la mitad.
 pub fn estimar_pulso(ataques: &[f64]) -> Option<(f64, f64)> {
+    // Un acorde cuenta como un solo ataque.
+    let mut unicos: Vec<f64> = ataques.to_vec();
+    unicos.sort_by(|a, b| a.total_cmp(b));
+    unicos.dedup_by(|b, a| *b - *a < 0.05);
+    let ataques = &unicos[..];
     if ataques.len() < 3 {
         return None;
     }
@@ -55,8 +60,21 @@ pub fn cuantizar_con(golpes: &[Golpe], periodo: f64, fase: f64, origen_fijo: boo
     if golpes.is_empty() || periodo <= 0.0 {
         return vec![];
     }
+    // Acordes: las notas que se tocan juntas (menos de 50 ms) empiezan en el mismo momento.
+    let mut golpes = golpes.to_vec();
+    golpes.sort_by(|a, b| a.inicio.total_cmp(&b.inicio));
+    let mut ancla = f64::MIN;
+    for g in golpes.iter_mut() {
+        if g.inicio - ancla < 0.05 {
+            g.inicio = ancla;
+        } else {
+            ancla = g.inicio;
+        }
+    }
+    let golpes = &golpes[..];
     let a_tiempos = |t: f64| (t - fase) / periodo;
-    let origen = if origen_fijo { 0.0 } else { a_tiempos(golpes.iter().map(|g| g.inicio).fold(f64::MAX, f64::min)).floor() };
+    // El tiempo más cercano al primer ataque es el tiempo 0 (sin silencios de más al principio).
+    let origen = if origen_fijo { 0.0 } else { a_tiempos(golpes.iter().map(|g| g.inicio).fold(f64::MAX, f64::min)).round() };
     let q = |x: f64| (x * 4.0).round() / 4.0;
     let mut notas: Vec<NotaP> = golpes
         .iter()
@@ -203,6 +221,25 @@ mod pruebas {
         assert_eq!(inicios, vec![0.0, 1.0, 2.0, 2.5, 3.0, 5.0, 6.0]);
         let duraciones: Vec<f64> = notas.iter().map(|n| n.dur).collect();
         assert_eq!(&duraciones[..5], &[1.0, 1.0, 0.5, 0.5, 1.0]);
+    }
+
+    #[test]
+    fn acordes_tocados() {
+        // Dos acordes (Do mayor y Fa mayor) a 100 BPM, con las notas de cada uno algo desparejas.
+        let tiempo = 0.6;
+        let mut golpes = vec![];
+        for (k, acorde) in [[60, 64, 67], [65, 69, 72], [60, 64, 67], [65, 69, 72]].iter().enumerate() {
+            for (j, &a) in acorde.iter().enumerate() {
+                golpes.push(Golpe { inicio: 0.4 + k as f64 * 2.0 * tiempo + j as f64 * 0.015, dur: 1.9 * tiempo, altura: a, vel: 90 });
+            }
+        }
+        let ataques: Vec<f64> = golpes.iter().map(|g| g.inicio).collect();
+        let (periodo, fase) = estimar_pulso(&ataques).unwrap();
+        let notas = cuantizar(&golpes, periodo, fase);
+        let mut inicios: Vec<f64> = notas.iter().map(|n| n.inicio).collect();
+        inicios.dedup();
+        assert_eq!(inicios.len(), 4, "cuatro acordes: {notas:?}");
+        assert!(notas.iter().filter(|n| n.inicio == inicios[1]).map(|n| n.altura).eq([65, 69, 72]));
     }
 
     #[test]

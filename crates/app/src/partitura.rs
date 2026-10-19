@@ -571,7 +571,7 @@ pub fn pintar(p: &egui::Painter, el: &[Elem], d: egui::Vec2, color: Color32) {
 }
 
 /// Texto con su línea base en `q` (0 izquierda, 1 centro, 2 derecha).
-fn texto_base(p: &egui::Painter, q: Pos2, s: &str, fuente: egui::FontId, color: Color32, alinear: u8) {
+pub(crate) fn texto_base(p: &egui::Painter, q: Pos2, s: &str, fuente: egui::FontId, color: Color32, alinear: u8) {
     let g = p.layout_no_wrap(s.to_string(), fuente, color);
     let base = g.rows.first().map_or(0.0, |r| r.pos.y + r.row.glyphs.first().map_or(0.0, |gl| gl.pos.y));
     let dx = match alinear {

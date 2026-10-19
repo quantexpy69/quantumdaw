@@ -43,8 +43,9 @@ type EventoSonido = (f64, bool, u8);
 struct Grabacion {
     audio: bool,
     detectar: bool,
-    reloj0: u64,
     escritos0: u64,
+    /// Hora del inicio (las notas MIDI se fechan al llegar, con precisión de microsegundos).
+    inicio: std::time::Instant,
     cuadros: Vec<tx::Cuadro>,
     mono: Vec<f32>,
     golpes: Vec<Golpe>,
@@ -74,6 +75,12 @@ pub struct EditorPartitura {
     sonando: Option<(std::time::Instant, Vec<EventoSonido>, usize)>,
     /// El ratón estuvo sobre el editor (los atajos del teclado van a la partitura).
     pub foco: bool,
+}
+
+impl EditorPartitura {
+    pub fn tiene_seleccion(&self) -> bool {
+        self.sel.is_some()
+    }
 }
 
 impl Default for EditorPartitura {
@@ -401,7 +408,7 @@ impl App {
             self.status = format!("{} {}", g.vista.len(), tr("notas escritas en la partitura"));
             return;
         }
-        let (reloj0, escritos0) = self.engine.captura.lock().map(|c| (c.reloj, c.escritos)).unwrap_or_default();
+        let escritos0 = self.engine.captura.lock().map(|c| c.escritos).unwrap_or_default();
         let detectar = self.partitura_app.detectar;
         let mut detener = false;
         if !detectar {
@@ -422,8 +429,8 @@ impl App {
         self.partitura_app.grabacion = Some(Grabacion {
             audio: self.partitura_app.audio,
             detectar,
-            reloj0,
             escritos0,
+            inicio: std::time::Instant::now(),
             cuadros: vec![],
             mono: vec![],
             golpes: vec![],
@@ -439,8 +446,9 @@ impl App {
         let sr = self.engine.sample_rate as f64;
         let tempo_doc = self.partitura_app.doc.tempo as f64;
         let Some(g) = &mut self.partitura_app.grabacion else { return };
-        self.ctx.request_repaint_after(Duration::from_millis(100));
-        if g.actualizado.elapsed() < Duration::from_millis(300) {
+        // Latencia mínima: el MIDI se transcribe en cada cuadro; el audio cada 60 ms (análisis por ventanas).
+        self.ctx.request_repaint();
+        if g.audio && g.actualizado.elapsed() < Duration::from_millis(60) {
             return;
         }
         g.actualizado = std::time::Instant::now();
@@ -456,21 +464,23 @@ impl App {
             g.cuadros.extend(tx::cuadros_audio(&g.mono, sr as f32, desde));
             g.golpes = tx::segmentar(&g.cuadros, sr as f32);
         } else {
-            let ahora = c.reloj;
-            let mut sueltas: std::collections::HashMap<u8, (u64, u8)> = Default::default();
+            drop(c);
+            // MIDI fechado al llegar: la duración de las notas que siguen sonando llega hasta ahora.
+            let ahora = g.inicio.elapsed().as_secs_f64();
+            let mut sueltas: std::collections::HashMap<u8, (f64, u8)> = Default::default();
             let mut golpes = vec![];
-            for &(t, _, _, e) in c.midi.iter().filter(|m| m.0 >= g.reloj0) {
+            for (t, e) in engine::llegadas_desde(g.inicio) {
                 match (e[0] & 0xF0, e[2]) {
                     (0x90, v) if v > 0 => _ = sueltas.insert(e[1], (t, v)),
                     (0x80 | 0x90, _) => {
                         if let Some((a, v)) = sueltas.remove(&e[1]) {
-                            golpes.push(Golpe { inicio: (a - g.reloj0) as f64 / sr, dur: (t - a) as f64 / sr, altura: e[1], vel: v });
+                            golpes.push(Golpe { inicio: a, dur: t - a, altura: e[1], vel: v });
                         }
                     }
                     _ => {}
                 }
             }
-            golpes.extend(sueltas.into_iter().map(|(k, (a, v))| Golpe { inicio: (a - g.reloj0) as f64 / sr, dur: (ahora - a) as f64 / sr, altura: k, vel: v }));
+            golpes.extend(sueltas.into_iter().map(|(k, (a, v))| Golpe { inicio: a, dur: ahora - a, altura: k, vel: v }));
             golpes.sort_by(|a, b| a.inicio.total_cmp(&b.inicio));
             g.golpes = golpes;
         }
@@ -479,6 +489,30 @@ impl App {
             g.tempo = Some((60.0 / periodo) as f32);
             // Con pulso fijo el tiempo 0 es el inicio de la grabación (el metrónomo arrancó ahí).
             g.vista = tx::cuantizar_con(&g.golpes, periodo, fase, !g.detectar);
+        }
+    }
+
+    /// Acciones del menú circular de la partitura.
+    pub fn pie_partitura(&mut self, a: pie::Accion) {
+        use pie::Accion;
+        match a {
+            Accion::PtFigura(k) => self.partitura_app.figura = FIGURAS[(k as usize).min(4)].0,
+            Accion::PtPuntillo => self.partitura_app.puntillo = !self.partitura_app.puntillo,
+            Accion::PtSilencio => self.doc_silencio(),
+            Accion::PtSubir => self.doc_mover_sel(1),
+            Accion::PtBajar => self.doc_mover_sel(-1),
+            Accion::PtBorrar => self.doc_borrar_sel(),
+            Accion::PtEscuchar => self.doc_reproducir(),
+            Accion::PtClave(c) => {
+                self.doc_editar();
+                let pi = self.partitura_app.pentagrama.min(self.partitura_app.doc.pentagramas.len() - 1);
+                self.partitura_app.doc.pentagramas[pi].clave = c;
+            }
+            Accion::PtArmadura(q) => {
+                self.doc_editar();
+                self.partitura_app.doc.armadura = q as i32;
+            }
+            _ => {}
         }
     }
 
@@ -685,6 +719,9 @@ impl App {
                 self.doc_interaccion(ui, &resp, r, &diseno, &doc_vista);
             });
         });
+        if self.pie.as_ref().is_some_and(|p| p.en_partitura) {
+            self.procesar_pie(ui.ctx());
+        }
     }
 
     /// Clic en el papel: escribir en el lugar señalado o elegir una nota.
@@ -718,6 +755,17 @@ impl App {
         let cabeza = mapa.cabezas.iter().find(|c| (c.0 - local).length() < sp * 0.9).copied();
         // Pentagrama más cercano en vertical.
         let Some((pi, &(base, clave))) = mapa.partes.iter().enumerate().min_by(|a, b| (a.1.0 - sp * 2.0 - local.y).abs().total_cmp(&(b.1.0 - sp * 2.0 - local.y).abs())) else { return };
+        // Clic en la cabecera del pentagrama: la clave o la armadura abren su menú para cambiarlas.
+        let inicio_musica = mapa.compases.first().map_or(f32::MAX, |c| c.1);
+        if local.x > sp * 13.0 && local.x < inicio_musica - sp && (base - sp * 5.0..base + sp).contains(&local.y) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            if resp.clicked() {
+                self.partitura_app.pentagrama = pi;
+                let que = if local.x < sp * 17.0 { pie::Accion::PtMenuClave } else { pie::Accion::PtMenuArmadura };
+                self.abrir_pie_partitura_sub(q, que);
+            }
+            return;
+        }
         let Some((m, x0, x1, puntos)) = mapa.compases.iter().find(|c| local.x >= c.1 - sp && local.x <= c.2 + sp).cloned() else { return };
         let dur = self.dur_paleta();
         let reja = if dur >= 1.0 { 1.0 } else { dur.max(0.25) };
@@ -753,11 +801,13 @@ impl App {
                 }
             }
         }
-        if resp.secondary_clicked()
-            && let Some((_, cpi, id)) = cabeza
-        {
-            self.partitura_app.sel = Some((cpi, id));
-            self.doc_borrar_sel();
+        // Clic derecho: menú circular (sobre una nota, primero la elige).
+        if resp.secondary_clicked() {
+            if let Some((_, cpi, id)) = cabeza.filter(|c| c.2 != usize::MAX) {
+                self.partitura_app.sel = Some((cpi, id));
+            }
+            self.partitura_app.pentagrama = pi;
+            self.abrir_pie_partitura(q);
         }
     }
 

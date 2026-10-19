@@ -294,7 +294,9 @@ impl App {
                     (Key::Z | Key::X, false) => {}
                     (k, _) => {
                         let note = (self.roll.octave * 12 + MUSIC_KEYS.iter().position(|m| *m == k).unwrap_or(0) as i32).clamp(0, 127) as u8;
-                        self.engine.send_midi(if pressed { [0x90, note, 100] } else { [0x80, note, 0] });
+                        let e = if pressed { [0x90, note, 100] } else { [0x80, note, 0] };
+                        engine::registrar_llegada(e);
+                        self.engine.send_midi(e);
                         self.roll.sounding = pressed.then_some(note);
                         if pressed && self.roll.step {
                             self.step_note(note);

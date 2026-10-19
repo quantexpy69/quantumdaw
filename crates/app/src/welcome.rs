@@ -255,15 +255,18 @@ impl App {
                 lado.spacing_mut().item_spacing = vec2(8.0, 4.0);
                 lado.add_space(16.0);
                 let seccion = |ui: &mut egui::Ui, w: &mut Welcome, k: u8, texto: &str| {
-                    let (r, resp) = ui.allocate_exact_size(vec2(194.0, 34.0), egui::Sense::click());
+                    let (r, resp) = ui.allocate_exact_size(vec2(194.0, 36.0), egui::Sense::click());
                     let activa = w.tab == k;
-                    if activa || resp.hovered() {
-                        ui.painter().rect_filled(r, rr(7.0), if activa { ELEVATED() } else { PANEL() });
-                    }
+                    // Sección activa: píldora del color de acento suave con su icono en acento.
                     if activa {
-                        ui.painter().rect_filled(egui::Rect::from_min_size(r.min + vec2(0.0, 7.0), vec2(3.0, 20.0)), 1.5, ACCENT());
+                        ui.painter().rect_filled(r, rr(10.0), ACCENT().gamma_multiply(0.16));
+                        ui.painter().rect_filled(egui::Rect::from_min_size(r.min + vec2(0.0, 9.0), vec2(3.0, 18.0)), 1.5, ACCENT());
+                    } else if resp.hovered() {
+                        ui.painter().rect_filled(r, rr(10.0), PANEL());
                     }
-                    ui.painter().text(r.left_center() + vec2(14.0, 0.0), egui::Align2::LEFT_CENTER, tr(texto), egui::FontId::proportional(14.0), if activa { TEXT() } else { TEXT_DIM() });
+                    let color = if activa { ACCENT() } else { TEXT_DIM() };
+                    icono_seccion(ui.painter(), r.left_center() + vec2(22.0, 0.0), k, color);
+                    ui.painter().text(r.left_center() + vec2(42.0, 0.0), egui::Align2::LEFT_CENTER, tr(texto), egui::FontId::proportional(14.0), if activa { TEXT() } else { TEXT_DIM() });
                     if resp.clicked() {
                         w.tab = k;
                     }
@@ -277,11 +280,12 @@ impl App {
                 seccion(&mut lado, &mut w, 5, "Interfaz");
                 seccion(&mut lado, &mut w, 6, "Espacios de trabajo");
                 for (texto, accion) in [("Audio y MIDI", 0u8), ("Atajos", 1)] {
-                    let (r, resp) = lado.allocate_exact_size(vec2(194.0, 34.0), egui::Sense::click());
+                    let (r, resp) = lado.allocate_exact_size(vec2(194.0, 36.0), egui::Sense::click());
                     if resp.hovered() {
-                        lado.painter().rect_filled(r, rr(7.0), PANEL());
+                        lado.painter().rect_filled(r, rr(10.0), PANEL());
                     }
-                    lado.painter().text(r.left_center() + vec2(14.0, 0.0), egui::Align2::LEFT_CENTER, tr(texto), egui::FontId::proportional(14.0), TEXT_DIM());
+                    icono_seccion(lado.painter(), r.left_center() + vec2(22.0, 0.0), 10 + accion, TEXT_DIM());
+                    lado.painter().text(r.left_center() + vec2(42.0, 0.0), egui::Align2::LEFT_CENTER, tr(texto), egui::FontId::proportional(14.0), TEXT_DIM());
                     if resp.clicked() {
                         action = Some(Box::new(move |app: &mut Self| {
                             app.dialog = Some(if accion == 0 {
@@ -528,11 +532,107 @@ fn hace(dir: &Path) -> String {
 /// Título de sección en mayúsculas pequeñas.
 fn titulo(ui: &mut egui::Ui, texto: &str, nota: &str) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(tr(texto)).size(11.0).strong().color(TEXT_DIM()));
+        let (r, _) = ui.allocate_exact_size(vec2(4.0, 14.0), egui::Sense::hover());
+        ui.painter().rect_filled(r, 2.0, ACCENT());
+        ui.label(RichText::new(tr(texto)).size(11.0).strong().color(TEXT()));
         if !nota.is_empty() {
             ui.label(RichText::new(tr(nota)).size(11.0).color(TEXT_DIM().gamma_multiply(0.8)));
         }
     });
+}
+
+/// Iconos de la barra lateral (líneas simples, sin depender de la fuente).
+fn icono_seccion(p: &egui::Painter, c: egui::Pos2, k: u8, color: Color32) {
+    let s = egui::Stroke::new(1.6, color);
+    let r = |w: f32, h: f32, d: egui::Vec2| egui::Rect::from_center_size(c + d, vec2(w, h));
+    match k {
+        // Inicio: casa.
+        0 => {
+            p.line_segment([c + vec2(-7.0, -1.0), c + vec2(0.0, -7.0)], s);
+            p.line_segment([c + vec2(0.0, -7.0), c + vec2(7.0, -1.0)], s);
+            p.rect_stroke(r(10.0, 8.0, vec2(0.0, 3.0)), 1.0, s, egui::StrokeKind::Middle);
+        }
+        // Nueva canción: hoja con +.
+        3 => {
+            p.rect_stroke(r(12.0, 15.0, vec2(0.0, 0.0)), 2.0, s, egui::StrokeKind::Middle);
+            p.line_segment([c + vec2(-3.5, 0.0), c + vec2(3.5, 0.0)], s);
+            p.line_segment([c + vec2(0.0, -3.5), c + vec2(0.0, 3.5)], s);
+        }
+        // Abrir: carpeta.
+        2 => {
+            p.rect_stroke(r(15.0, 10.0, vec2(0.0, 2.0)), 2.0, s, egui::StrokeKind::Middle);
+            p.line_segment([c + vec2(-7.5, -3.0), c + vec2(-2.0, -3.0)], s);
+        }
+        // Datos: líneas de texto.
+        1 => (0..3).for_each(|i| _ = p.line_segment([c + vec2(-7.0, -5.0 + i as f32 * 5.0), c + vec2(if i == 2 { 2.0 } else { 7.0 }, -5.0 + i as f32 * 5.0)], s)),
+        // Interfaz: paleta (círculo con puntos).
+        5 => {
+            p.circle_stroke(c, 7.5, s);
+            (0..3).for_each(|i| _ = p.circle_filled(c + egui::Vec2::angled(-2.2 + i as f32 * 1.1) * 4.0, 1.4, color));
+        }
+        // Espacios de trabajo: cuadrícula.
+        6 => (0..4).for_each(|i| _ = p.rect_stroke(r(5.5, 5.5, vec2(if i % 2 == 0 { -3.5 } else { 3.5 }, if i < 2 { -3.5 } else { 3.5 })), 1.0, s, egui::StrokeKind::Middle)),
+        // Audio y MIDI: onda.
+        10 => (0..5).for_each(|i| {
+            let h = [3.0, 7.0, 5.0, 8.0, 3.0][i];
+            p.line_segment([c + vec2(-8.0 + i as f32 * 4.0, -h), c + vec2(-8.0 + i as f32 * 4.0, h)], s);
+        }),
+        // Atajos: tecla.
+        11 => {
+            p.rect_stroke(r(16.0, 11.0, vec2(0.0, 0.0)), 2.0, s, egui::StrokeKind::Middle);
+            p.line_segment([c + vec2(-4.0, 2.0), c + vec2(4.0, 2.0)], s);
+        }
+        // Acerca de: «i» en un círculo.
+        _ => {
+            p.circle_stroke(c, 7.5, s);
+            p.line_segment([c + vec2(0.0, -1.0), c + vec2(0.0, 4.0)], s);
+            p.circle_filled(c + vec2(0.0, -4.0), 1.2, color);
+        }
+    }
+}
+
+/// Icono de cada plantilla.
+fn icono_plantilla(p: &egui::Painter, c: egui::Pos2, k: usize, color: Color32) {
+    let s = egui::Stroke::new(1.8, color);
+    match k {
+        // Vacía: hoja.
+        0 => _ = p.rect_stroke(egui::Rect::from_center_size(c, vec2(16.0, 20.0)), 3.0, s, egui::StrokeKind::Middle),
+        // Banda: tres barras de mezclador.
+        1 => (0..3).for_each(|i| {
+            let x = -7.0 + i as f32 * 7.0;
+            p.line_segment([c + vec2(x, -9.0), c + vec2(x, 9.0)], s);
+            p.rect_filled(egui::Rect::from_center_size(c + vec2(x, [-3.0, 4.0, -1.0][i]), vec2(6.0, 3.0)), 1.0, color);
+        }),
+        // Cuerdas: clave de sol simplificada (curva y línea).
+        2 => {
+            p.line_segment([c + vec2(2.0, -10.0), c + vec2(-1.0, 10.0)], s);
+            p.circle_stroke(c + vec2(0.0, 3.0), 5.0, s);
+        }
+        // Electrónica: forma de onda cuadrada.
+        3 => {
+            let pts = [(-10.0, 4.0), (-5.0, 4.0), (-5.0, -6.0), (0.0, -6.0), (0.0, 4.0), (5.0, 4.0), (5.0, -6.0), (10.0, -6.0)];
+            p.add(egui::Shape::line(pts.iter().map(|&(x, y)| c + vec2(x, y)).collect(), s));
+        }
+        // Voz: micrófono.
+        _ => {
+            p.rect_stroke(egui::Rect::from_center_size(c + vec2(0.0, -4.0), vec2(8.0, 12.0)), 4.0, s, egui::StrokeKind::Middle);
+            p.line_segment([c + vec2(0.0, 5.0), c + vec2(0.0, 10.0)], s);
+            p.line_segment([c + vec2(-5.0, 10.0), c + vec2(5.0, 10.0)], s);
+        }
+    }
+}
+
+/// Color estable de un nombre (avatares de los recientes).
+fn color_de(nombre: &str) -> Color32 {
+    const C: [Color32; 6] = [
+        Color32::from_rgb(0x4F, 0xA3, 0xF7),
+        Color32::from_rgb(0xB0, 0x7C, 0xF2),
+        Color32::from_rgb(0xF2, 0x7C, 0xB0),
+        Color32::from_rgb(0x4A, 0xD6, 0xA0),
+        Color32::from_rgb(0xF2, 0xA6, 0x4A),
+        Color32::from_rgb(0x5C, 0xD0, 0xE0),
+    ];
+    C[nombre.bytes().fold(7usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % C.len()]
 }
 
 /// Contador con botones − y + (pistas, tempo).
@@ -589,9 +689,18 @@ impl App {
             mesh.add_triangle(base, base + 2, base + 3);
         }
         ui.painter().add(mesh);
+        // Luces suaves y el logo de fondo.
+        let pb = ui.painter().with_clip_rect(banner);
+        for (cx, r, a) in [(0.18, 120.0, 22), (0.62, 160.0, 16), (0.9, 90.0, 26)] {
+            pb.circle_filled(egui::pos2(banner.left() + banner.width() * cx, banner.top() + 20.0), r, Color32::from_white_alpha(a));
+        }
+        egui::Image::new(egui::include_image!("../../../assets/quantumlogo.svg")).tint(Color32::from_white_alpha(22)).paint_at(ui, egui::Rect::from_center_size(egui::pos2(banner.center().x + 60.0, banner.center().y), vec2(150.0, 150.0)));
         ui.painter().rect_stroke(banner, rr(12.0), egui::Stroke::new(6.0, PANEL()), egui::StrokeKind::Outside);
         let p = ui.painter();
-        p.text(banner.left_top() + vec2(30.0, 38.0), egui::Align2::LEFT_CENTER, tr(saludo()), egui::FontId::proportional(28.0), Color32::WHITE);
+        let nombre = self.config.author.split_whitespace().next().map(str::to_string).unwrap_or_else(|| user_name().split_whitespace().next().unwrap_or("").to_string());
+        let nombre: String = nombre.chars().take(1).flat_map(char::to_uppercase).chain(nombre.chars().skip(1)).collect();
+        let saludo_txt = if nombre.is_empty() { tr(saludo()).to_string() } else { format!("{}, {nombre}", tr(saludo())) };
+        p.text(banner.left_top() + vec2(30.0, 38.0), egui::Align2::LEFT_CENTER, saludo_txt, egui::FontId::proportional(28.0), Color32::WHITE);
         p.text(banner.left_top() + vec2(30.0, 74.0), egui::Align2::LEFT_CENTER, tr("Sigue donde lo dejaste o empieza algo nuevo."), egui::FontId::proportional(14.0), Color32::from_white_alpha(220));
         let ultimo = self.config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned();
         let mut botones = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(banner.right_top() + vec2(-420.0, 38.0), banner.right_bottom() - vec2(24.0, 38.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
@@ -638,15 +747,19 @@ impl App {
             ui.vertical(|ui| {
                 ui.set_width(col);
                 titulo(ui, "EMPEZAR UN PROYECTO NUEVO", "");
-                let tarjeta = vec2((col - 20.0) / 3.0, 92.0);
+                let tarjeta = vec2((col - 20.0) / 3.0, 98.0);
                 for fila in TEMPLATES.iter().enumerate().collect::<Vec<_>>().chunks(3) {
                     ui.horizontal(|ui| {
                         for &(k, (nombre, desc, _)) in fila {
                             let on = w.template == k;
-                            let (r, resp) = ui.allocate_exact_size(tarjeta, egui::Sense::click());
-                            ui.painter().rect(r, rr(10.0), if on { ACCENT().gamma_multiply(0.18) } else if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(if on { 2.0 } else { 1.0 }, if on { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
-                            let icono = egui::Rect::from_min_size(r.left_top() + vec2(14.0, 14.0), vec2(30.0, 22.0));
-                            ui.painter().rect_filled(icono, rr(4.0), ACCENT().gamma_multiply(if on { 1.0 } else { 0.5 }));
+                            let (r0, resp) = ui.allocate_exact_size(tarjeta, egui::Sense::click());
+                            // Sombra y leve elevación al pasar el ratón.
+                            let r = if resp.hovered() { r0.translate(vec2(0.0, -2.0)) } else { r0 };
+                            ui.painter().rect_filled(r.translate(vec2(0.0, 4.0)), rr(14.0), Color32::from_black_alpha(if resp.hovered() { 70 } else { 40 }));
+                            ui.painter().rect(r, rr(14.0), if on { ACCENT().gamma_multiply(0.16) } else if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(if on { 2.0 } else { 1.0 }, if on { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
+                            let icono = egui::Rect::from_min_size(r.left_top() + vec2(14.0, 12.0), vec2(34.0, 34.0));
+                            ui.painter().rect_filled(icono, rr(10.0), ACCENT().gamma_multiply(if on { 0.35 } else { 0.14 }));
+                            icono_plantilla(ui.painter(), icono.center(), k, if on { Color32::WHITE } else { ACCENT() });
                             ui.painter().text(r.left_bottom() + vec2(14.0, -32.0), egui::Align2::LEFT_CENTER, tr(nombre), egui::FontId::proportional(13.5), TEXT());
                             ui.painter().with_clip_rect(r.shrink(4.0)).text(r.left_bottom() + vec2(14.0, -14.0), egui::Align2::LEFT_CENTER, tr(desc), egui::FontId::proportional(10.5), TEXT_DIM());
                             if resp.clicked() {
@@ -710,10 +823,11 @@ impl App {
                         if resp.hovered() {
                             ui.painter().rect_filled(r, rr(6.0), BORDER());
                         }
-                        let insignia = egui::Rect::from_min_size(r.left_top() + vec2(8.0, 10.0), vec2(30.0, 30.0));
-                        ui.painter().rect_filled(insignia, rr(6.0), ACCENT().gamma_multiply(0.3));
-                        let iniciales: String = nombre.chars().take(2).collect();
-                        ui.painter().text(insignia.center(), egui::Align2::CENTER_CENTER, iniciales, egui::FontId::proportional(12.0), ACCENT());
+                        let insignia = egui::Rect::from_min_size(r.left_top() + vec2(8.0, 9.0), vec2(32.0, 32.0));
+                        let c = color_de(&nombre);
+                        ui.painter().rect_filled(insignia, rr(10.0), c.gamma_multiply(0.25));
+                        let iniciales: String = nombre.chars().take(2).collect::<String>().to_uppercase();
+                        ui.painter().text(insignia.center(), egui::Align2::CENTER_CENTER, iniciales, egui::FontId::proportional(12.5), c);
                         ui.painter().text(r.left_top() + vec2(48.0, 16.0), egui::Align2::LEFT_CENTER, &nombre, egui::FontId::proportional(13.5), TEXT());
                         ui.painter().with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(70.0, 0.0))).text(r.left_top() + vec2(48.0, 34.0), egui::Align2::LEFT_CENTER, dir.parent().map(|p| p.display().to_string()).unwrap_or_default(), egui::FontId::proportional(10.5), TEXT_DIM());
                         ui.painter().text(r.right_center() - vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, hace(&dir), egui::FontId::proportional(10.5), TEXT_DIM());
@@ -772,7 +886,12 @@ impl App {
         });
         let noticias = web.as_ref().map(|c| c.noticias.clone()).unwrap_or_default();
         if noticias.is_empty() {
-            ui.label(RichText::new(if web.is_none() { tr("Cargando novedades…") } else { tr("Todavía no hay novedades publicadas.") }).size(12.0).color(TEXT_DIM()));
+            let texto = match &web {
+                None => tr("Cargando novedades…"),
+                Some(c) if !c.en_linea => tr("Sin conexión con quantumdaw.com por ahora."),
+                Some(_) => tr("Todavía no hay novedades publicadas."),
+            };
+            ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
         } else {
             let tam = vec2((ancho - 20.0) / 3.0, 118.0);
             ui.horizontal(|ui| {
@@ -794,7 +913,12 @@ impl App {
         });
         let productos = web.as_ref().map(|c| c.productos.clone()).unwrap_or_default();
         if productos.is_empty() {
-            ui.label(RichText::new(if web.is_none() { tr("Cargando la tienda…") } else { tr("Muy pronto: plugins, instrumentos y sonidos para Quantum DAW.") }).size(12.0).color(TEXT_DIM()));
+            let texto = match &web {
+                None => tr("Cargando la tienda…"),
+                Some(c) if !c.en_linea && c.productos.is_empty() => tr("Sin conexión con quantumdaw.com por ahora."),
+                Some(_) => tr("Muy pronto: plugins, instrumentos y sonidos para Quantum DAW."),
+            };
+            ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
         } else {
             let n = ((ancho + 10.0) / 260.0).floor().max(1.0) as usize;
             let tam = vec2((ancho - 10.0 * (n as f32 - 1.0)) / n as f32, 128.0);
