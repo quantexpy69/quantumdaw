@@ -124,6 +124,15 @@ impl App {
             let primero = midi[d];
             // Si sonaba el transporte se respetan las posiciones de la canción; si no, la frase va en el cursor.
             eventos = midi[d..].iter().map(|&(t, pos, playing, e)| (if playing && primero.2 { pos } else { ahora + (t - primero.0) }, e)).collect();
+            // Teclados que mandan cada tecla dos veces: se quitan las notas repetidas a menos de 30 ms.
+            let ventana = sr * 3 / 100;
+            let mut ultimo: std::collections::HashMap<(u8, u8), u64> = Default::default();
+            eventos.retain(|&(t, e)| {
+                let tipo = if e[0] & 0xF0 == 0x90 && e[2] > 0 { 1 } else if matches!(e[0] & 0xF0, 0x80 | 0x90) { 0 } else { return true };
+                let repetida = ultimo.get(&(tipo, e[1])).is_some_and(|&u| t.saturating_sub(u) < ventana);
+                ultimo.insert((tipo, e[1]), t);
+                !repetida
+            });
         }
         // Audio: los últimos 30 s sin el silencio del principio y del final.
         let ich_n = ich.max(1);

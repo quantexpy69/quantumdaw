@@ -388,6 +388,9 @@ pub struct Engine {
     pub loop_start: AtomicU64,
     pub loop_end: AtomicU64,
     pub metronome: AtomicBool,
+    /// Volumen del clic y acento del primer tiempo de cada compás (dB).
+    pub clic_nivel: AtomicF32,
+    pub clic_acento: AtomicF32,
     pub bpm: AtomicF32,
     /// Compás: `beats` / `unit` (p. ej. 6/8).
     pub beats: AtomicU32,
@@ -574,6 +577,8 @@ impl Engine {
             loop_start: 0.into(),
             loop_end: 0.into(),
             metronome: false.into(),
+            clic_nivel: AtomicF32::new(0.0),
+            clic_acento: AtomicF32::new(3.0),
             bpm: AtomicF32::new(120.0),
             beats: 4.into(),
             unit: 4.into(),
@@ -747,13 +752,15 @@ impl Engine {
     fn click(&self, out: &mut [[f32; 2]], pos: u64) {
         let (sr, unit, beats) = (self.sample_rate as f64, self.unit.load(Relaxed), self.beats.load(Relaxed).max(1) as u64);
         let map = self.tempo.load();
+        let (nivel, acento) = (fx::db(self.clic_nivel.get()), fx::db(self.clic_acento.get()));
         for (i, o) in out.iter_mut().enumerate() {
             let f = (pos + i as u64) as f64;
             let b = beats_at(&map, sr, unit, f);
             let t = b.fract() * beat_len(sr, bpm_at(&map, f), unit) / sr;
             if t < 0.05 {
-                let freq = if (b as u64).is_multiple_of(beats) { 1760.0 } else { 1320.0 };
-                let v = ((TAU * freq * t).sin() * (-t * 90.0).exp() * 0.5) as f32;
+                let primero = (b as u64).is_multiple_of(beats);
+                let freq = if primero { 1760.0 } else { 1320.0 };
+                let v = ((TAU * freq * t).sin() * (-t * 90.0).exp() * 0.5) as f32 * nivel * if primero { acento } else { 1.0 };
                 *o = [o[0] + v, o[1] + v];
             }
         }

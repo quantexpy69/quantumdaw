@@ -276,6 +276,16 @@ impl App {
                             }
                             curves::visor(ui, fx, sr, accent);
                         }
+                        // Compresor y puerta: también pueden escuchar a otra pista (sidechain).
+                        (Some(k @ (FxKind::Compressor | FxKind::Gate)), Some(fx), Some(_)) => {
+                            let mut sincronizar = false;
+                            let ayuda = if k == FxKind::Compressor { tr("La pista elegida baja esta pista al sonar (por ejemplo, el bombo agacha el bajo)") } else { tr("La puerta se abre cuando suena la pista elegida (por ejemplo, un golpe de batería)") };
+                            curves::selector_sidechain(ui, fx, &pistas, &mut sincronizar, ayuda);
+                            if sincronizar {
+                                *act = Some(Act::Sincronizar);
+                            }
+                            display(ui, kind, &values, readout, accent, sr);
+                        }
                         _ => display(ui, kind, &values, readout, accent, sr),
                     }
                     // Curves muestra solo los controles esenciales; el resto en «Avanzado».

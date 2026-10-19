@@ -479,8 +479,29 @@ impl App {
             });
         });
         let metro = self.engine.metronome.load(Relaxed);
-        if widgets::icon_button(ui, metro, widgets::draw_metronome).on_hover_text(tr("Metrónomo (K)")).clicked() {
+        let r = widgets::icon_button(ui, metro, widgets::draw_metronome).on_hover_text(tr("Metrónomo (K) · clic derecho: volumen y acento"));
+        if r.clicked() {
             self.engine.metronome.store(!metro, Relaxed);
+        }
+        r.context_menu(|ui| {
+            widgets::menu_style(ui);
+            ui.label(RichText::new(tr("Metrónomo")).strong());
+            let mut cambio = ui.add(egui::Slider::new(&mut self.config.clic_nivel, -30.0..=6.0).suffix(" dB").text(tr("Volumen del clic"))).changed();
+            cambio |= ui.add(egui::Slider::new(&mut self.config.clic_acento, -12.0..=12.0).suffix(" dB").text(tr("Acento del primer tiempo"))).changed();
+            if cambio {
+                self.engine.clic_nivel.set(self.config.clic_nivel);
+                self.engine.clic_acento.set(self.config.clic_acento);
+                self.config.save();
+            }
+        });
+        // Tira del compás: un cuadro por tiempo; se ilumina el que suena (el primero, más fuerte).
+        let beats = self.engine.beats.load(Relaxed).clamp(1, 16) as usize;
+        let actual = (self.beats(self.pos() as f64) as u64 % beats as u64) as usize;
+        let (tira, _) = ui.allocate_exact_size(vec2(beats as f32 * 9.0, 16.0), egui::Sense::hover());
+        for k in 0..beats {
+            let c = egui::Rect::from_min_size(tira.left_center() + vec2(k as f32 * 9.0, -5.0), vec2(6.0, 10.0));
+            let on = metro && self.playing() && k == actual;
+            ui.painter().rect_filled(c, 2.0, if on { if k == 0 { ACCENT() } else { TEXT() } } else { BORDER() });
         }
         self.tempo_tool(ui);
     }

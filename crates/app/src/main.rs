@@ -195,6 +195,9 @@ struct Config {
     separadas: Vec<String>,
     /// Tema de color (índice en `TEMAS`).
     tema: usize,
+    /// Metrónomo: volumen del clic y acento del primer tiempo (dB).
+    clic_nivel: f32,
+    clic_acento: f32,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
     /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
@@ -668,6 +671,7 @@ struct App {
 impl App {
     fn new(dir: PathBuf, config: Config, ctx: &egui::Context) -> anyhow::Result<Self> {
         TEMA.store(config.tema, Relaxed);
+        let clic = (config.clic_nivel, config.clic_acento);
         theme(ctx);
         ctx.set_zoom_factor(if config.ui_scale > 0.0 { config.ui_scale } else { 1.0 });
         let p = Project::open_or_demo(&dir)?;
@@ -678,6 +682,8 @@ impl App {
         let (engine, streams) = Engine::start(&cfg).inspect_err(|e| informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg))))?;
         informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
         informes::contexto("Audio", describir_audio(&cfg));
+        engine.clic_nivel.set(clic.0);
+        engine.clic_acento.set(clic.1);
         let mut app = Self {
             ctx: ctx.clone(),
             midi_in: engine::connect_midi(&config.midi_port, engine.midi_tx.clone()),
@@ -1016,6 +1022,8 @@ impl App {
         };
         informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
         informes::contexto("Audio", describir_audio(&cfg));
+        engine.clic_nivel.set(self.config.clic_nivel);
+        engine.clic_acento.set(self.config.clic_acento);
         self.midi_in = engine::connect_midi(&self.config.midi_port, engine.midi_tx.clone());
         (self.engine, self.streams, self.dir) = (engine, streams, dir);
         self.apply_project(p);

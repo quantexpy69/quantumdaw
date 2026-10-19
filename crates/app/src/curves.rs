@@ -288,6 +288,14 @@ pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, String)], detec
             *detectar = true;
         }
         // Sidechain: otra pista (por ejemplo la voz) hace que esta le abra espacio en sus frecuencias.
+        selector_sidechain(ui, fx, pistas, sincronizar, tr("Cuando la pista elegida suena, Curves atenúa esta pista en esas mismas frecuencias para dejarle espacio"));
+    });
+}
+
+/// Elige la pista clave del sidechain (Curves, compresor y puerta). La clave se escucha antes de su
+/// fader (PRE): funciona aunque esa pista esté baja o silenciada.
+pub fn selector_sidechain(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, String)], sincronizar: &mut bool, ayuda: &str) {
+    ui.horizontal(|ui| {
         ui.label(RichText::new(tr("Sidechain")).size(12.0).color(TEXT_DIM()));
         let actual = fx.sidechain.load(Relaxed);
         let nombre = pistas.iter().find(|p| p.0 == actual).map_or_else(|| tr("Ninguno").to_string(), |p| p.1.clone());
@@ -303,7 +311,10 @@ pub fn barra(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, String)], detec
                 }
             })
             .response
-            .on_hover_text(tr("Cuando la pista elegida suena, Curves atenúa esta pista en esas mismas frecuencias para dejarle espacio"));
+            .on_hover_text(ayuda);
+        if actual != 0 {
+            ui.label(RichText::new(tr("escucha · PRE")).size(11.0).color(ACCENT()));
+        }
     });
 }
 

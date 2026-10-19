@@ -242,8 +242,10 @@ impl Fx {
                 let (att, rel, makeup) = ((-1.0 / (p[3].max(0.05) * 0.001 * sr)).exp(), (-1.0 / (p[4] * 0.001 * sr)).exp(), db(p[2]));
                 let (knee, slope, mix) = (p[5].max(0.01), 1.0 - 1.0 / p[1], p[6]);
                 let mut gr = 0f32;
-                for s in buf.iter_mut() {
-                    let lvl = s[0].abs().max(s[1].abs());
+                for (i, s) in buf.iter_mut().enumerate() {
+                    // Con sidechain el detector escucha la pista clave en vez de la propia señal.
+                    let det = clave.and_then(|c| c.get(i)).unwrap_or(s);
+                    let lvl = det[0].abs().max(det[1].abs());
                     let coef = if lvl > st.env { att } else { rel };
                     st.env = lvl + coef * (st.env - lvl);
                     let over = 20.0 * st.env.max(1e-6).log10() - p[0];
@@ -362,8 +364,9 @@ impl Fx {
                 let (umbral, rango) = (db(p[0]), db(p[1]));
                 let coef = |ms: f32| 1.0 - (-1.0 / (ms.max(0.05) * 0.001 * sr)).exp();
                 let (att, rel, caida, retencion) = (coef(p[2]), coef(p[3]), coef(10.0), (p[4] * 0.001 * sr) as usize);
-                for s in buf.iter_mut() {
-                    let lvl = s[0].abs().max(s[1].abs());
+                for (i, s) in buf.iter_mut().enumerate() {
+                    let det = clave.and_then(|c| c.get(i)).unwrap_or(s);
+                    let lvl = det[0].abs().max(det[1].abs());
                     st.env = if lvl > st.env { lvl } else { st.env + (lvl - st.env) * caida };
                     if st.env > umbral {
                         st.hop = retencion;
@@ -860,5 +863,27 @@ mod pruebas_dinamica {
         grave.chunks_mut(256).for_each(|c| de.process(c, 48_000.0, 120.0, true));
         assert!(pico(&agudo[12_000..]) < 0.5 * db(-8.0), "eses {}", pico(&agudo[12_000..]));
         assert!(pico(&grave[12_000..]) > 0.45);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_sidechain {
+    use super::*;
+
+    #[test]
+    fn compresor_con_clave() {
+        let comp = Fx::new(FxKind::Compressor, 48_000);
+        comp.params[0].set(-30.0);
+        comp.params[1].set(10.0);
+        let (mut bajo, clave) = (vec![[0.1f32; 2]; 4800], vec![[0.9f32; 2]; 4800]);
+        comp.process_clave(&mut bajo, 48_000.0, 120.0, true, Some(&clave));
+        // La señal (-20 dBFS, bajo el efecto propio sería poca reducción) baja por la clave fuerte.
+        assert!(bajo[4000][0] < 0.1 * db(-10.0), "{}", bajo[4000][0]);
+        let comp = Fx::new(FxKind::Compressor, 48_000);
+        comp.params[0].set(-30.0);
+        comp.params[1].set(10.0);
+        let mut solo = vec![[0.1f32; 2]; 4800];
+        comp.process_clave(&mut solo, 48_000.0, 120.0, true, Some(&vec![[0.0f32; 2]; 4800]));
+        assert!(solo[4000][0] > 0.099, "sin clave no debe agacharse");
     }
 }

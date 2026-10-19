@@ -429,7 +429,17 @@ impl App {
                     }
                     Some((i, j, _)) => {
                         let selected = self.s.tracks[i].clips[j].selected;
-                        if body_r.clicked() && (mods.command || mods.shift) {
+                        // Shift+clic: todas las regiones desde la seleccionada hasta esta (también entre
+                        // pistas), como en una lista de archivos.
+                        let ancla = self.s.tracks.iter().enumerate().find_map(|(ti, t)| t.clips.iter().find(|c| c.selected).map(|c| (ti, c.start, c.end())));
+                        if body_r.clicked() && mods.shift && !mods.command && ancla.is_some() {
+                            let (ia, sa, ea) = ancla.unwrap_or_default();
+                            let c = &self.s.tracks[i].clips[j];
+                            let (desde, hasta) = (sa.min(c.start), ea.max(c.end()));
+                            for t in self.s.tracks[ia.min(i)..=ia.max(i)].iter_mut() {
+                                t.clips.iter_mut().filter(|c| c.start < hasta && c.end() > desde).for_each(|c| c.selected = true);
+                            }
+                        } else if body_r.clicked() && (mods.command || mods.shift) {
                             self.s.tracks[i].clips[j].selected = !selected;
                         } else if !selected {
                             if !mods.command && !mods.shift {

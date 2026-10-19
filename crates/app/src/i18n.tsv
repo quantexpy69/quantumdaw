@@ -868,3 +868,9 @@ Analizador y ventana de loudness del master	Analyzer and master loudness window	
 Arreglo despejado para grabar tomas	Clean arrangement for recording takes	Arranjo limpo para gravar takes
 Editor de audio abajo para cortar y procesar	Audio editor below to cut and process	Editor de áudio embaixo para cortar e processar
 Pantalla inicial (panel)	Home screen (dashboard)	Tela inicial (painel)
+escucha · PRE	listens · PRE	escuta · PRE
+La pista elegida baja esta pista al sonar (por ejemplo, el bombo agacha el bajo)	The chosen track lowers this one when it plays (for example, the kick ducks the bass)	A faixa escolhida abaixa esta quando toca (por exemplo, o bumbo abaixa o baixo)
+La puerta se abre cuando suena la pista elegida (por ejemplo, un golpe de batería)	The gate opens when the chosen track plays (for example, a drum hit)	O gate abre quando a faixa escolhida toca (por exemplo, um golpe de bateria)
+Metrónomo (K) · clic derecho: volumen y acento	Metronome (K) · right-click: volume and accent	Metrônomo (K) · clique direito: volume e acento
+Volumen del clic	Click volume	Volume do clique
+Acento del primer tiempo	First-beat accent	Acento do primeiro tempo
