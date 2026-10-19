@@ -408,6 +408,7 @@ impl App {
                             self.s.tracks[i].clips[j].selected = true;
                         }
                         (self.ctx_region, self.ctx_lane) = (Some((i, j)), Some((i, at)));
+                        self.abrir_pie_region(p, i, j, false);
                     }
                     None if body_r.secondary_clicked() => (self.ctx_region, self.ctx_lane) = (None, lane_at(p.y).map(|i| (i, at))),
                     Some((i, j, _)) if self.tool == Tool::Blade && body_r.clicked() => {
@@ -469,10 +470,27 @@ impl App {
                 }
             }
         }
-        body_r.context_menu(|ui| {
-            widgets::menu_style(ui);
-            self.region_menu(ui);
-        });
+        // Sobre una región se abre el menú circular; en un lugar vacío, el menú clásico.
+        if self.pie.is_none() && self.ctx_region.is_none() {
+            body_r.context_menu(|ui| {
+                widgets::menu_style(ui);
+                self.region_menu(ui);
+            });
+        }
+        // Q mantenida sobre una región: menú rápido (se elige al soltar la tecla).
+        if self.pie.is_none()
+            && !ui.ctx().egui_wants_keyboard_input()
+            && ui.input(|i| i.key_pressed(Key::Q) && i.modifiers.is_none())
+            && let Some(p) = body_r.hover_pos()
+            && let Some((i, j, _)) = zone_at(&self.s, p)
+        {
+            if !self.s.tracks[i].clips[j].selected {
+                self.deselect_clips();
+                self.s.tracks[i].clips[j].selected = true;
+            }
+            self.ctx_region = Some((i, j));
+            self.abrir_pie_region(p, i, j, true);
+        }
         if body_r.dragged() || ruler_r.dragged() || tempo_r.dragged() {
             let p = ptr.unwrap_or_default();
             let at = frame_at(p.x);
@@ -1197,7 +1215,7 @@ impl App {
     }
 
     /// Menú contextual del timeline: herramientas de región o acciones en el espacio vacío.
-    fn region_menu(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn region_menu(&mut self, ui: &mut egui::Ui) {
         let run = |app: &mut Self, op: RegionOp| {
             let r = app.region_op(op);
             app.report("Listo", r);

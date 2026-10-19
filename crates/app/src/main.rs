@@ -20,6 +20,7 @@ mod mastering;
 mod midi_archivo;
 mod mixer;
 mod paleta;
+mod pie;
 mod partitura;
 mod pianoroll;
 mod plugins;
@@ -664,6 +665,9 @@ struct App {
     partitura_sp: f32,
     /// Partitura de todas las pistas MIDI (si no, solo de las seleccionadas).
     partitura_todas: bool,
+    /// Menú circular abierto y menú clásico de la región («Más opciones»).
+    pie: Option<pie::Pie>,
+    menu_region: Option<egui::Pos2>,
     /// Inspector de la pista seleccionada (panel izquierdo).
     show_inspector: bool,
     /// Texto buscado en la biblioteca.
@@ -796,6 +800,8 @@ impl App {
             mastering: Default::default(),
             partitura_todas: true,
             partitura_sp: 8.0,
+            pie: None,
+            menu_region: None,
             show_inspector: false,
             lib_buscar: String::new(),
             generador: Default::default(),
@@ -2238,6 +2244,7 @@ impl eframe::App for App {
         self.ventana_recuperar(&ctx);
         self.ventana_mastering(&ctx);
         self.ventana_generador(&ctx);
+        self.ventana_pie(&ctx);
         // Autoguardado cada minuto si hay cambios (no mientras se graba).
         if self.cambios && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > Duration::from_secs(60) {
             self.autoguardado = std::time::Instant::now();

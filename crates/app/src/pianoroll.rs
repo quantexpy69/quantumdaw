@@ -331,6 +331,34 @@ impl App {
         });
     }
 
+    /// Acciones del menú circular de notas.
+    pub fn pie_notas(&mut self, a: pie::Accion) {
+        use pie::Accion;
+        let beat = self.engine.beat_frames();
+        let (div, patron, ms, abajo, sr) = (self.roll.arp_div, self.roll.arp_patron, self.roll.strum_ms, self.roll.strum_abajo, self.engine.sample_rate as f32);
+        let paso = beat / self.roll.grid as f64;
+        match a {
+            Accion::Cuantizar => {
+                if !self.roll.has_selection()
+                    && let Some((i, j)) = self.roll_clip()
+                {
+                    self.roll.sel = (0..self.s.tracks[i].clips[j].notes().map_or(0, |n| n.len())).collect();
+                }
+                self.transformar_seleccion(|n| n.iter().map(|x| Note { start: ((x.start as f64 / paso).round() * paso) as u64, ..*x }).collect());
+            }
+            Accion::OctavaArriba => self.transformar_seleccion(|n| n.iter().map(|x| Note { key: x.key.saturating_add(12).min(127), ..*x }).collect()),
+            Accion::OctavaAbajo => self.transformar_seleccion(|n| n.iter().map(|x| Note { key: x.key.saturating_sub(12), ..*x }).collect()),
+            Accion::Arpegiar => self.transformar_seleccion(|n| creativo::arpegiar(n, (beat / div as f64) as u64, patron, 7)),
+            Accion::Rasguear => self.transformar_seleccion(|n| creativo::rasguear(n, (ms * sr / 1000.0) as u64, abajo)),
+            Accion::BorrarNotas => self.roll_delete_selected(),
+            Accion::DuplicarNotas => self.transformar_seleccion(|n| {
+                let (a, b) = (n.iter().map(|x| x.start).min().unwrap_or(0), n.iter().map(|x| x.start + x.len).max().unwrap_or(0));
+                n.iter().copied().chain(n.iter().map(|x| Note { start: x.start + (b - a), ..*x })).collect()
+            }),
+            _ => {}
+        }
+    }
+
     /// Escribe una melodía nueva desde el cursor en la tonalidad y escala elegidas.
     fn generar_melodia(&mut self, semilla: u64) {
         let Some((i, j)) = self.roll_clip() else { return };
@@ -861,11 +889,16 @@ impl App {
         if gr.hovered() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::A)) {
             self.roll.sel = (0..notes.len()).collect();
         }
+        // Clic derecho: menú circular de notas (sobre una nota, la selecciona si no lo estaba).
         if gr.secondary_clicked()
-            && let Some(k) = ptr.and_then(|p| notes.iter().rposition(|n| note_rect(n).contains(p)))
+            && let Some(p) = ptr
         {
-            self.roll.sel = vec![k];
-            self.roll_delete_selected();
+            if let Some(k) = notes.iter().rposition(|n| note_rect(n).contains(p))
+                && !self.roll.sel.contains(&k)
+            {
+                self.roll.sel = vec![k];
+            }
+            self.abrir_pie_notas(p);
         }
 
         // Teclado: clic para escuchar.
