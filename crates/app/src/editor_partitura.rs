@@ -880,6 +880,13 @@ impl App {
                     pt::pintar(&p, s, r.min.to_vec2() + vec2(0.0, k as f32 * diseno.alto), Color32::from_gray(20));
                 }
                 self.doc_interaccion(ui, &resp, r, &diseno, &doc_vista);
+                // Al escuchar: cursor y notas que suenan resaltadas, y la vista sigue la lectura.
+                if let Some((inicio, ..)) = &self.partitura_app.sonando {
+                    let t = inicio.elapsed().as_secs_f64() * doc_vista.tempo.max(20.0) as f64 / 60.0;
+                    if let Some(c) = pt::pintar_reproduccion(&p, &diseno, r.min, t, doc_vista.negras_compas(), sp) {
+                        ui.scroll_to_rect(c, Some(egui::Align::Center));
+                    }
+                }
             });
         });
         self.doc_editor_anotacion(ui.ctx());

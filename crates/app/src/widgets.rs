@@ -292,12 +292,17 @@ pub fn draw_scissors(p: &Painter, r: Rect, c: Color32) {
 
 /// Perilla de panorama: anillo de fondo, arco de color desde el centro, marcas L/C/R y disco con brillo.
 pub fn pan_knob(ui: &mut egui::Ui, v: &mut f32) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(56.0, 48.0), Sense::click_and_drag());
+    let (rect, mut resp) = ui.allocate_exact_size(vec2(56.0, 48.0), Sense::click_and_drag());
+    let antes = *v;
     if resp.dragged() {
         *v = (*v - resp.drag_delta().y / 120.0).clamp(-1.0, 1.0);
     }
     if resp.double_clicked() {
         *v = 0.0;
+    }
+    // Avisa el cambio: las cabeceras de pista y el inspector solo aplican el panorama si cambió.
+    if *v != antes {
+        resp.mark_changed();
     }
     let (c, r) = (rect.center() - vec2(0.0, 2.0), 16.0);
     let angle = |x: f32| (x * 135.0).to_radians();

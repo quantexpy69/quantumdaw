@@ -79,6 +79,8 @@ pub struct MapaSistema {
     pub compases: Vec<MapaCompas>,
     /// Cabezas de nota: (posición, parte, identificador).
     pub cabezas: Vec<(Pos2, usize, usize)>,
+    /// Cuándo suena cada cabeza (inicio y duración en negras), en el mismo orden que `cabezas`.
+    pub sonido: Vec<(f64, f64)>,
     /// Anotaciones: (rectángulo del texto, índice).
     pub anotaciones: Vec<(egui::Rect, usize)>,
 }
@@ -199,10 +201,10 @@ impl App {
     }
 
     /// Diseña las pistas MIDI como partitura (vista PARTITURA e impresión).
-    pub fn disenar_partitura(&self, ancho: f32, sp: f32) -> (Vec<Vec<Elem>>, f32) {
+    pub fn disenar_partitura(&self, ancho: f32, sp: f32) -> Diseno {
         let partes = self.partes();
         if partes.is_empty() {
-            return (vec![], 0.0);
+            return Diseno { sistemas: vec![], alto: 0.0, mapas: vec![] };
         }
         let den = self.engine.unit.load(Relaxed).max(1);
         let a_negras = 4.0 / den as f64;
@@ -214,8 +216,12 @@ impl App {
             compases_min: 1,
             anotaciones: vec![],
         };
-        let d = disenar(&partes, &conf, ancho, sp);
-        (d.sistemas, d.alto)
+        disenar(&partes, &conf, ancho, sp)
+    }
+
+    /// Posición del cursor de reproducción en negras (para seguirlo en la partitura).
+    pub fn negras_en_cursor(&self) -> f64 {
+        self.beats(self.pos() as f64) * 4.0 / self.engine.unit.load(Relaxed).max(1) as f64
     }
 
     /// Vista de la partitura (pestaña del panel inferior).
@@ -237,15 +243,24 @@ impl App {
         egui::Frame::new().fill(Color32::from_rgb(0xFA, 0xF8, 0xF2)).corner_radius(widgets::rr(6.0)).inner_margin(sp * 2.0).show(ui, |ui| {
             egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
                 let ancho = ui.available_width().max(400.0);
-                let (sistemas, alto) = self.disenar_partitura(ancho, sp);
-                if sistemas.is_empty() {
+                let d = self.disenar_partitura(ancho, sp);
+                if d.sistemas.is_empty() {
                     ui.label(egui::RichText::new(tr("No hay notas MIDI para escribir. Selecciona pistas MIDI con notas.")).color(Color32::from_gray(90)));
                     return;
                 }
-                let (r, _) = ui.allocate_exact_size(vec2(ancho, alto * sistemas.len() as f32), egui::Sense::hover());
+                let (r, _) = ui.allocate_exact_size(vec2(ancho, d.alto * d.sistemas.len() as f32), egui::Sense::hover());
                 let p = ui.painter_at(r);
-                for (k, s) in sistemas.iter().enumerate() {
-                    pintar(&p, s, r.min.to_vec2() + vec2(0.0, k as f32 * alto), Color32::from_gray(20));
+                for (k, s) in d.sistemas.iter().enumerate() {
+                    pintar(&p, s, r.min.to_vec2() + vec2(0.0, k as f32 * d.alto), Color32::from_gray(20));
+                }
+                // Lo que suena: cursor y notas resaltadas; al reproducir, la vista sigue al cursor.
+                let compas = self.engine.beats.load(Relaxed).max(1) as f64 * 4.0 / self.engine.unit.load(Relaxed).max(1) as f64;
+                let cursor = pintar_reproduccion(&p, &d, r.min, self.negras_en_cursor(), compas, sp);
+                if self.playing() {
+                    if let Some(c) = cursor {
+                        ui.scroll_to_rect(c, Some(egui::Align::Center));
+                    }
+                    ui.ctx().request_repaint();
                 }
             });
         });
@@ -255,10 +270,7 @@ impl App {
     fn imprimir_partitura(&mut self) -> anyhow::Result<()> {
         let titulo = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
         let compositor = self.meta.composer.clone();
-        let html = pagina_html(&titulo, &compositor, |ancho, sp| {
-            let (sistemas, alto) = self.disenar_partitura(ancho, sp);
-            Diseno { sistemas, alto, mapas: vec![] }
-        })?;
+        let html = pagina_html(&titulo, &compositor, |ancho, sp| self.disenar_partitura(ancho, sp))?;
         self.abrir_html_partitura(&titulo, html)
     }
 
@@ -493,6 +505,7 @@ pub fn disenar(partes: &[Parte], conf: &Conf, ancho: f32, sp: f32) -> Diseno {
                             let y = y_pos(pos);
                             ys.push(y);
                             mapa.cabezas.push((pos2(xe + sp * 0.6, y), pi, alturas[n_alt].2));
+                            mapa.sonido.push((m as f64 * compas + t_rel, dur));
                             el.push(Elem::Glifo(pos2(xe, y), if x_cab { CABEZA_X } else { cabeza_ch }, sp * 4.0));
                             if let Some(s) = signo {
                                 el.push(Elem::Glifo(pos2(xe - sp * 1.3, y), s, sp * 4.0));
@@ -621,6 +634,34 @@ pub(crate) fn pagina_html(titulo: &str, compositor: &str, disenar: impl FnOnce(f
     }
     html += "</body></html>";
     Ok(html)
+}
+
+/// Dibuja lo que suena en el tiempo `t` (en negras): una línea a lo largo del sistema y las notas que
+/// están sonando resaltadas. Devuelve el rectángulo del cursor (para que la vista lo siga).
+pub fn pintar_reproduccion(p: &egui::Painter, d: &Diseno, origen: Pos2, t: f64, compas: f64, sp: f32) -> Option<egui::Rect> {
+    let color = Color32::from_rgb(0x1E, 0x88, 0xE5);
+    let m = (t / compas).floor().max(0.0) as usize;
+    let mut cursor = None;
+    for (k, mapa) in d.mapas.iter().enumerate() {
+        let dy = origen.y + k as f32 * d.alto;
+        for (j, &(c, _, _)) in mapa.cabezas.iter().enumerate() {
+            if let Some(&(a, dur)) = mapa.sonido.get(j)
+                && t >= a - 1e-6
+                && t < a + dur - 1e-6
+            {
+                let q = pos2(origen.x + c.x, dy + c.y);
+                p.circle_filled(q, sp * 1.1, color.gamma_multiply(0.35));
+                p.circle_stroke(q, sp * 0.9, egui::Stroke::new(sp * 0.22, color));
+            }
+        }
+        let Some(c) = mapa.compases.iter().find(|c| c.0 == m) else { continue };
+        let (Some(arriba), Some(abajo)) = (mapa.partes.first(), mapa.partes.last()) else { continue };
+        let x = origen.x + tiempo_a_x(&c.3, c.1, c.2, compas, t - m as f64 * compas) - sp * 0.3;
+        let (y0, y1) = (dy + arriba.0 - sp * 6.0, dy + abajo.0 + sp * 2.0);
+        p.line_segment([pos2(x, y0), pos2(x, y1)], egui::Stroke::new(sp * 0.3, color.gamma_multiply(0.85)));
+        cursor = Some(egui::Rect::from_min_max(pos2(x - sp * 4.0, y0), pos2(x + sp * 4.0, y1)));
+    }
+    cursor
 }
 
 /// Alto de un sistema con su margen arriba (acordes y números de compás) y abajo.
