@@ -381,7 +381,7 @@ impl App {
             (NOMBRES[pt::FIGURAS_BASE.iter().position(|&x| x == b).unwrap_or(6)], "<dot/>".repeat(n))
         };
         let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n<score-partwise version=\"4.0\">\n");
-        x += &format!("<work><work-title>{}</work-title></work><identification><creator type=\"composer\">{}</creator><encoding><software>Quantum DAW {}</software></encoding></identification>\n<part-list>", pt::html_escapar(&doc.titulo), pt::html_escapar(&doc.compositor), welcome::VERSION);
+        x += &format!("<work><work-title>{}</work-title></work><identification><creator type=\"composer\">{}</creator><encoding><software>QUANTUM {}</software></encoding></identification>\n<part-list>", pt::html_escapar(&doc.titulo), pt::html_escapar(&doc.compositor), welcome::VERSION);
         for (k, p) in doc.pentagramas.iter().enumerate() {
             if p.llave && k + 1 < doc.pentagramas.len() {
                 x += &format!("<part-group type=\"start\" number=\"{}\"><group-symbol>brace</group-symbol><group-barline>yes</group-barline></part-group>", k + 1);

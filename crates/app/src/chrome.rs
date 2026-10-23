@@ -576,7 +576,7 @@ impl App {
     pub fn title_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
-            ui.add(welcome::logo(22.0)).on_hover_text(format!("QUANTUM DAW v{}", welcome::VERSION));
+            ui.add(welcome::logo(22.0)).on_hover_text(format!("QUANTUM v{}", welcome::VERSION));
             // Menús en la misma fila que el logo (más espacio para el arreglo).
             self.menu_bar(ui);
         });

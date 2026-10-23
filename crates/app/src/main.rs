@@ -243,7 +243,7 @@ impl Config {
 fn main() -> eframe::Result {
     match std::env::args().nth(1).as_deref() {
         Some("--version" | "-V") => {
-            println!("Quantum DAW {}", welcome::VERSION);
+            println!("QUANTUM {}", welcome::VERSION);
             return Ok(());
         }
         Some("--help" | "-h") => {
@@ -258,7 +258,7 @@ fn main() -> eframe::Result {
     let dir = std::env::args().nth(1).map(PathBuf::from).or_else(|| config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));
     widgets::ROUND.store(!config.square, Relaxed);
     i18n::set(config.lang);
-    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1500.0, 940.0]).with_app_id("quantum-daw").with_title("Quantum DAW");
+    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1500.0, 940.0]).with_app_id("quantum-daw").with_title("QUANTUM");
     if let Some(icon) = logo_icon() {
         viewport = viewport.with_icon(icon);
     }
@@ -268,7 +268,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions { viewport, glow_options: eframe::egui_glow::GlowConfiguration { vsync: false, ..Default::default() }, ..Default::default() };
     // glow (OpenGL): con wgpu el redibujado se detenía en Wayland durante la reproducción.
     eframe::run_native(
-        "Quantum DAW",
+        "QUANTUM",
         options,
         Box::new(move |cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
@@ -1009,7 +1009,7 @@ impl App {
         (self.undo, self.redo, self.dirty, self.time_sel, self.fx_window, self.route_window) = (vec![], vec![], true, None, None, None);
         self.roll.close();
         let name = self.dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-        self.ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("Quantum DAW — {name}")));
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("QUANTUM — {name}")));
         self.config.recent.retain(|d| d != &self.dir);
         self.config.recent.insert(0, self.dir.clone());
         self.config.recent.truncate(10);

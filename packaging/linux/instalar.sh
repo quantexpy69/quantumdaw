@@ -12,7 +12,7 @@ case "${1:-}" in
   --desinstalar)
     rm -f "$PREFIX/bin/quantum-daw" "$PREFIX/share/applications/quantum-daw.desktop" \
       "$PREFIX/share/icons/hicolor/scalable/apps/quantum-daw.svg" "$PREFIX/share/metainfo/com.quantumdaw.QuantumDAW.metainfo.xml"
-    echo "Quantum DAW desinstalado (tus proyectos en ~/Documentos/Quantum DAW no se tocan)."
+    echo "QUANTUM desinstalado (tus proyectos en ~/Documentos/Quantum DAW no se tocan)."
     exit 0 ;;
 esac
 
@@ -42,4 +42,4 @@ if ((${#faltan[@]})); then
   esac
   echo "  (ALSA es necesaria para el audio; el resto solo para video e instrumentos descargables)."
 fi
-echo "Listo: busca «Quantum DAW» en el menú de aplicaciones o ejecuta: $PREFIX/bin/quantum-daw"
+echo "Listo: busca «QUANTUM» en el menú de aplicaciones o ejecuta: $PREFIX/bin/quantum-daw"

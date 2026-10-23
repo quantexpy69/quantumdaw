@@ -56,7 +56,7 @@ impl App {
         let (mut abierta, mut alternar) = (true, false);
         let separada = self.separada(id);
         if separada {
-            let mut builder = egui::ViewportBuilder::default().with_title(format!("{titulo} — Quantum DAW")).with_inner_size(tam).with_min_inner_size([240.0, 160.0]).with_app_id("quantum-daw");
+            let mut builder = egui::ViewportBuilder::default().with_title(format!("{titulo} — QUANTUM")).with_inner_size(tam).with_min_inner_size([240.0, 160.0]).with_app_id("quantum-daw");
             if let Some(icono) = icono_ventana() {
                 builder = builder.with_icon(icono);
             }
@@ -66,7 +66,7 @@ impl App {
                         ui.label(RichText::new(&titulo).strong().size(14.0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let b = egui::Button::new(RichText::new(tr("Acoplar al programa")).color(BG()).strong()).fill(ACCENT());
-                            if ui.add(b).on_hover_text(tr("Vuelve a mostrar esta ventana dentro de Quantum DAW")).clicked() {
+                            if ui.add(b).on_hover_text(tr("Vuelve a mostrar esta ventana dentro de QUANTUM")).clicked() {
                                 alternar = true;
                             }
                         });

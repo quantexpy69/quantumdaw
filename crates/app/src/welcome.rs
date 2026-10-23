@@ -243,7 +243,7 @@ impl App {
                 lado.horizontal(|ui| {
                     ui.add(logo(40.0));
                     ui.vertical(|ui| {
-                        ui.label(RichText::new(tr("QUANTUM DAW")).size(18.0).strong().color(TEXT()));
+                        ui.label(RichText::new("QUANTUM").size(18.0).strong().color(TEXT()));
                         ui.label(RichText::new(format!("v{VERSION}")).size(11.0).color(TEXT_DIM()));
                     });
                 });
@@ -455,7 +455,7 @@ impl App {
                     5 => self.panel_interfaz(ui),
                     6 => self.panel_espacios(ui, &mut close),
                     _ => {
-                            ui.label(RichText::new(format!("Quantum DAW {VERSION}")).size(20.0).strong());
+                            ui.label(RichText::new(format!("QUANTUM {VERSION}")).size(20.0).strong());
                             ui.label(RichText::new(tr("Estación de audio digital escrita en Rust.")).size(14.0));
                             ui.label(RichText::new(tr("Desarrollado por QUANTEX")).size(14.0).strong().color(ACCENT()));
                             ui.label(RichText::new(tr("Código disponible bajo la Business Source License 1.1: úsalo para hacer y vender tu música; los plugins QUANTUM Pro tienen su propia licencia.")).size(12.0).color(TEXT_DIM()));

@@ -44,7 +44,7 @@ pub fn iniciar() {
         let _ = fs::rename(&log, dir.join("quantum-daw.anterior.log"));
     }
     *LOG.lock().unwrap_or_else(|e| e.into_inner()) = OpenOptions::new().create(true).append(true).open(&log).ok();
-    registrar("INICIO", &format!("Quantum DAW {VERSION} · {}", sistema()));
+    registrar("INICIO", &format!("QUANTUM {VERSION} · {}", sistema()));
     let previo = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let hilo = std::thread::current().name().unwrap_or("sin nombre").to_string();
@@ -110,7 +110,7 @@ pub fn guardar(tipo: &str, resumen: &str, detalle: &str) {
     let log = fs::read_to_string(carpeta().join("quantum-daw.log")).unwrap_or_default();
     let cola: Vec<&str> = log.lines().rev().take(60).collect();
     let texto = format!(
-        "Quantum DAW {VERSION} — informe de {tipo}\nFecha: {}\nSistema: {}\n{ctx}Resumen: {resumen}\n\n{detalle}\n\nÚltimas líneas del registro:\n{}\n",
+        "QUANTUM {VERSION} — informe de {tipo}\nFecha: {}\nSistema: {}\n{ctx}Resumen: {resumen}\n\n{detalle}\n\nÚltimas líneas del registro:\n{}\n",
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
         sistema(),
         cola.into_iter().rev().collect::<Vec<_>>().join("\n")
@@ -256,9 +256,9 @@ impl App {
         let Some(p) = &mut self.informe else { return };
         let (mut cerrar, mut abrir) = (None, false);
         let titulo = match p.tipo.as_str() {
-            "fallo" => tr("Quantum DAW tuvo un fallo"),
+            "fallo" => tr("QUANTUM tuvo un fallo"),
             "error" => tr("Informe de error"),
-            _ => tr("Quantum DAW dejó de responder"),
+            _ => tr("QUANTUM dejó de responder"),
         };
         egui::Window::new(egui::RichText::new(titulo).strong()).id(egui::Id::new("informe")).collapsible(false).default_size([640.0, 520.0]).show(ctx, |ui| {
             ui.label(tr("Se guardó un informe con lo que estaba pasando. Enviarlo nos ayuda a encontrar y corregir el problema. Solo se envía este texto (sin tus audios ni proyectos)."));

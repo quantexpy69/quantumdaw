@@ -279,7 +279,7 @@ fn keep(name: &str) -> bool {
 /// Mapeo SFZ desde los nombres: con nota → zonas cromáticas entre notas vecinas; sin nota →
 /// una tecla por articulación desde Do3 (percusión). Las capas de velocidad se reparten.
 fn generate_sfz(files: &[(String, String)]) -> String {
-    let mut out = String::from("// Mapeo generado por Quantum DAW\n<global>\n ampeg_release=0.5\n");
+    let mut out = String::from("// Mapeo generado por QUANTUM\n<global>\n ampeg_release=0.5\n");
     let parsed: Vec<(Option<u8>, u32, String, String)> = files
         .iter()
         .map(|(folder, p)| {

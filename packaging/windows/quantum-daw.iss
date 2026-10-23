@@ -9,13 +9,13 @@
 
 [Setup]
 AppId={{6E1C2A5B-3F0D-4E8A-9B7C-51D2A0F4C9E3}
-AppName=Quantum DAW
+AppName=QUANTUM
 AppVersion={#Version}
 AppPublisher=QUANTEX
 AppPublisherURL=https://www.quantumdaw.com
 AppSupportURL=https://github.com/quantexpy69/quantumdaw
 DefaultDirName={autopf}\Quantum DAW
-DefaultGroupName=Quantum DAW
+DefaultGroupName=QUANTUM
 LicenseFile=..\..\LICENSE
 SetupIconFile=..\..\assets\windows\quantum-daw.ico
 UninstallDisplayIcon={app}\quantum-daw.exe
@@ -43,9 +43,9 @@ Source: "{#Binario}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"
 
 [Icons]
-Name: "{group}\Quantum DAW"; Filename: "{app}\quantum-daw.exe"
-Name: "{group}\{cm:UninstallProgram,Quantum DAW}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Quantum DAW"; Filename: "{app}\quantum-daw.exe"; Tasks: escritorio
+Name: "{group}\QUANTUM"; Filename: "{app}\quantum-daw.exe"
+Name: "{group}\{cm:UninstallProgram,QUANTUM}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\QUANTUM"; Filename: "{app}\quantum-daw.exe"; Tasks: escritorio
 
 [Run]
-Filename: "{app}\quantum-daw.exe"; Description: "{cm:LaunchProgram,Quantum DAW}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\quantum-daw.exe"; Description: "{cm:LaunchProgram,QUANTUM}"; Flags: nowait postinstall skipifsilent

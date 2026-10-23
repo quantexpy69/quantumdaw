@@ -13,7 +13,7 @@ for t in aarch64-apple-darwin x86_64-apple-darwin; do
   cargo build --release --locked -p quantum-daw --target "$t" ${PRO[@]+"${PRO[@]}"}
 done
 mkdir -p dist
-APP="dist/Quantum DAW.app"
+APP="dist/QUANTUM.app"
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create -output "$APP/Contents/MacOS/quantum-daw" target/aarch64-apple-darwin/release/quantum-daw target/x86_64-apple-darwin/release/quantum-daw
 sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
@@ -27,6 +27,6 @@ lipo -info "$APP/Contents/MacOS/quantum-daw"
 STAGE=$(mktemp -d)
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Aplicaciones"
-hdiutil create -volname "Quantum DAW $VERSION" -srcfolder "$STAGE" -ov -format UDZO dist/quantum-daw-macos-universal.dmg
+hdiutil create -volname "QUANTUM $VERSION" -srcfolder "$STAGE" -ov -format UDZO dist/quantum-daw-macos-universal.dmg
 rm -rf "$STAGE"
 ls -lh dist

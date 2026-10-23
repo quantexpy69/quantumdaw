@@ -36,4 +36,4 @@ mkdir -p "$HOME/.local/share/applications"
 sed "s|@BIN@|$BIN|" assets/quantum-daw.desktop > "$HOME/.local/share/applications/quantum-daw.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 gtk-update-icon-cache -q "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-echo "Listo: busca «Quantum DAW» en el menú de aplicaciones. Vuelve a ejecutar ./install.sh tras cada cambio."
+echo "Listo: busca «QUANTUM» en el menú de aplicaciones. Vuelve a ejecutar ./install.sh tras cada cambio."
