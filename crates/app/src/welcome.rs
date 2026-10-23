@@ -55,9 +55,6 @@ pub struct Welcome {
     author: String,
     /// Proyectos y canciones encontrados (se leen al abrir la pestaña «Abrir»).
     listing: Option<Vec<Listed>>,
-    /// Inicio rápido: pistas de instrumento y de audio de la canción nueva.
-    inst_tracks: u32,
-    audio_tracks: u32,
 }
 
 /// Espacios de trabajo: (nombre, para quién, biblioteca, panel inferior (None = oculto), automatización).
@@ -130,8 +127,6 @@ impl Default for Welcome {
             collection: String::new(),
             author: String::new(),
             listing: None,
-            inst_tracks: 1,
-            audio_tracks: 1,
         }
     }
 }
@@ -636,24 +631,6 @@ fn color_de(nombre: &str) -> Color32 {
     C[nombre.bytes().fold(7usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % C.len()]
 }
 
-/// Contador con botones − y + (pistas, tempo).
-fn contador(ui: &mut egui::Ui, etiqueta: &str, valor: &mut f32, min: f32, max: f32) {
-    ui.vertical(|ui| {
-        ui.label(RichText::new(tr(etiqueta)).size(10.5).strong().color(TEXT_DIM()));
-        egui::Frame::new().fill(ELEVATED()).corner_radius(rr(8.0)).stroke(egui::Stroke::new(1.0, BORDER())).inner_margin(egui::Margin::symmetric(6, 4)).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(RichText::new("−").size(16.0)).frame(false).min_size(vec2(26.0, 26.0))).clicked() {
-                    *valor = (*valor - 1.0).max(min);
-                }
-                ui.add_sized([46.0, 26.0], egui::Label::new(RichText::new(format!("{valor:.0}")).size(15.0).strong()));
-                if ui.add(egui::Button::new(RichText::new("+").size(16.0)).frame(false).min_size(vec2(26.0, 26.0))).clicked() {
-                    *valor = (*valor + 1.0).min(max);
-                }
-            });
-        });
-    });
-}
-
 impl App {
     /// Aplica un espacio de trabajo (paneles visibles según la forma de trabajar).
     pub fn aplicar_espacio(&mut self, k: usize) {
@@ -675,275 +652,174 @@ impl App {
 
     /// Panel «Inicio»: saludo, demos, proyecto nuevo, recientes, inicio rápido e instrumentos.
     fn panel_inicio(&mut self, ui: &mut egui::Ui, w: &mut Welcome, action: &mut Option<Action>) {
-        // Banner con degradado azul → violeta → rosa.
         let ancho = ui.available_width();
-        let (banner, _) = ui.allocate_exact_size(vec2(ancho, 128.0), egui::Sense::hover());
-        let mut mesh = egui::Mesh::default();
-        let colores = [Color32::from_rgb(0x1E, 0x5F, 0xC8), Color32::from_rgb(0x6A, 0x3F, 0xC9), Color32::from_rgb(0xD0, 0x3A, 0x8C)];
-        for k in 0..2 {
-            let (a, b) = (banner.left() + banner.width() * k as f32 / 2.0, banner.left() + banner.width() * (k + 1) as f32 / 2.0);
-            let base = mesh.vertices.len() as u32;
-            for (x, y, c) in [(a, banner.top(), colores[k]), (b, banner.top(), colores[k + 1]), (b, banner.bottom(), colores[k + 1]), (a, banner.bottom(), colores[k])] {
-                mesh.colored_vertex(egui::pos2(x, y), c);
-            }
-            mesh.add_triangle(base, base + 1, base + 2);
-            mesh.add_triangle(base, base + 2, base + 3);
-        }
-        ui.painter().add(mesh);
-        // Luces suaves y el logo de fondo.
-        let pb = ui.painter().with_clip_rect(banner);
-        for (cx, r, a) in [(0.18, 120.0, 22), (0.62, 160.0, 16), (0.9, 90.0, 26)] {
-            pb.circle_filled(egui::pos2(banner.left() + banner.width() * cx, banner.top() + 20.0), r, Color32::from_white_alpha(a));
-        }
-        egui::Image::new(egui::include_image!("../../../assets/quantumlogo.svg")).tint(Color32::from_white_alpha(22)).paint_at(ui, egui::Rect::from_center_size(egui::pos2(banner.center().x + 60.0, banner.center().y), vec2(150.0, 150.0)));
-        ui.painter().rect_stroke(banner, rr(12.0), egui::Stroke::new(6.0, PANEL()), egui::StrokeKind::Outside);
-        let p = ui.painter();
+        // Saludo y accesos rápidos: seguir con el último proyecto o abrir otro.
+        ui.add_space(8.0);
         let nombre = self.config.author.split_whitespace().next().map(str::to_string).unwrap_or_else(|| user_name().split_whitespace().next().unwrap_or("").to_string());
         let nombre: String = nombre.chars().take(1).flat_map(char::to_uppercase).chain(nombre.chars().skip(1)).collect();
         let saludo_txt = if nombre.is_empty() { tr(saludo()).to_string() } else { format!("{}, {nombre}", tr(saludo())) };
-        p.text(banner.left_top() + vec2(30.0, 38.0), egui::Align2::LEFT_CENTER, saludo_txt, egui::FontId::proportional(28.0), Color32::WHITE);
-        p.text(banner.left_top() + vec2(30.0, 74.0), egui::Align2::LEFT_CENTER, tr("Sigue donde lo dejaste o empieza algo nuevo."), egui::FontId::proportional(14.0), Color32::from_white_alpha(220));
         let ultimo = self.config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned();
-        let mut botones = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(banner.right_top() + vec2(-420.0, 38.0), banner.right_bottom() - vec2(24.0, 38.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
-        if botones.add(egui::Button::new(RichText::new(tr("Abrir…")).size(14.0)).min_size(vec2(110.0, 46.0)).corner_radius(rr(8.0))).clicked() {
-            *action = Some(Box::new(|app: &mut Self| {
-                let r = app.open_dialog(false);
-                app.report("Proyecto abierto", r);
-            }));
-        }
-        if let Some(dir) = ultimo {
-            let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-            let b = egui::Button::new(RichText::new(format!("{}\n{nombre}  ▶", tr("CONTINUAR"))).size(13.5).strong().color(BG())).fill(ACCENT()).min_size(vec2(220.0, 46.0)).corner_radius(rr(8.0));
-            if botones.add(b).clicked() {
-                *action = Some(Box::new(move |app: &mut Self| {
-                    if app.dir != dir {
-                        let r = app.open_dir(dir);
-                        app.report("Proyecto abierto", r);
-                    }
-                }));
-            }
-        }
-        ui.add_space(14.0);
-        // Canciones demo.
-        titulo(ui, "CANCIONES DEMO", "Ábrela para escuchar y explorar.");
         ui.horizontal(|ui| {
-            let (r, resp) = ui.allocate_exact_size(vec2(230.0, 52.0), egui::Sense::click());
-            ui.painter().rect(r, rr(8.0), if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
-            ui.painter().circle_filled(r.left_center() + vec2(26.0, 0.0), 14.0, VERDE_PLAY);
-            widgets::draw_play(ui.painter(), egui::Rect::from_center_size(r.left_center() + vec2(27.0, 0.0), vec2(10.0, 12.0)), BG());
-            ui.painter().text(r.left_center() + vec2(50.0, -8.0), egui::Align2::LEFT_CENTER, "Demo", egui::FontId::proportional(14.0), TEXT());
-            ui.painter().text(r.left_center() + vec2(50.0, 10.0), egui::Align2::LEFT_CENTER, tr("Batería, bajo y pad"), egui::FontId::proportional(11.0), TEXT_DIM());
-            if resp.clicked() {
-                *action = Some(Box::new(|app: &mut Self| {
-                    let dir = projects_dir().join("Demo");
-                    let r = Project::open_or_demo(&dir).and_then(|p| app.reload(dir, p));
-                    app.report("Demo abierta", r);
-                }));
-            }
+            ui.vertical(|ui| {
+                ui.label(RichText::new(saludo_txt).size(28.0).color(TEXT()));
+                ui.label(RichText::new(tr("Sigue donde lo dejaste o empieza algo nuevo.")).size(14.0).color(TEXT_DIM()));
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new(RichText::new(tr("Abrir…")).size(14.0)).min_size(vec2(100.0, 40.0)).corner_radius(rr(8.0))).clicked() {
+                    *action = Some(Box::new(|app: &mut Self| {
+                        let r = app.open_dialog(false);
+                        app.report("Proyecto abierto", r);
+                    }));
+                }
+                if let Some(dir) = ultimo {
+                    let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let b = egui::Button::new(RichText::new(format!("{}  ·  {nombre}", tr("Continuar"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(0.0, 40.0)).corner_radius(rr(8.0));
+                    if ui.add(b).clicked() {
+                        *action = Some(Box::new(move |app: &mut Self| {
+                            if app.dir != dir {
+                                let r = app.open_dir(dir);
+                                app.report("Proyecto abierto", r);
+                            }
+                        }));
+                    }
+                }
+            });
         });
-        ui.add_space(10.0);
-        // Proyecto nuevo (plantillas) y recientes en dos columnas.
-        let col = (ancho - 20.0) * 0.6;
+        ui.add_space(28.0);
+        // Nuevo proyecto (plantillas) y recientes, lado a lado.
+        let col = (ancho - 32.0) * 0.6;
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(col);
-                titulo(ui, "EMPEZAR UN PROYECTO NUEVO", "");
-                let tarjeta = vec2((col - 20.0) / 3.0, 98.0);
-                for fila in TEMPLATES.iter().enumerate().collect::<Vec<_>>().chunks(3) {
-                    ui.horizontal(|ui| {
-                        for &(k, (nombre, desc, _)) in fila {
-                            let on = w.template == k;
-                            let (r0, resp) = ui.allocate_exact_size(tarjeta, egui::Sense::click());
-                            // Sombra y leve elevación al pasar el ratón.
-                            let r = if resp.hovered() { r0.translate(vec2(0.0, -2.0)) } else { r0 };
-                            ui.painter().rect_filled(r.translate(vec2(0.0, 4.0)), rr(14.0), Color32::from_black_alpha(if resp.hovered() { 70 } else { 40 }));
-                            ui.painter().rect(r, rr(14.0), if on { ACCENT().gamma_multiply(0.16) } else if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(if on { 2.0 } else { 1.0 }, if on { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
-                            let icono = egui::Rect::from_min_size(r.left_top() + vec2(14.0, 12.0), vec2(34.0, 34.0));
-                            ui.painter().rect_filled(icono, rr(10.0), ACCENT().gamma_multiply(if on { 0.35 } else { 0.14 }));
-                            icono_plantilla(ui.painter(), icono.center(), k, if on { Color32::WHITE } else { ACCENT() });
-                            ui.painter().text(r.left_bottom() + vec2(14.0, -32.0), egui::Align2::LEFT_CENTER, tr(nombre), egui::FontId::proportional(13.5), TEXT());
-                            ui.painter().with_clip_rect(r.shrink(4.0)).text(r.left_bottom() + vec2(14.0, -14.0), egui::Align2::LEFT_CENTER, tr(desc), egui::FontId::proportional(10.5), TEXT_DIM());
-                            if resp.clicked() {
-                                w.template = k;
-                            }
-                        }
-                    });
-                }
-                ui.add_space(8.0);
+                titulo(ui, "NUEVO PROYECTO", "");
+                ui.add_space(6.0);
+                let n = TEMPLATES.len() as f32;
+                let tarjeta = vec2((col - 10.0 * (n - 1.0)) / n, 104.0);
                 ui.horizontal(|ui| {
-                    let (mut ni, mut na, mut bpm) = (w.inst_tracks as f32, w.audio_tracks as f32, w.bpm);
-                    contador(ui, "PISTAS DE INSTRUMENTO", &mut ni, 0.0, 16.0);
-                    contador(ui, "PISTAS DE AUDIO", &mut na, 0.0, 16.0);
-                    contador(ui, "TEMPO (BPM)", &mut bpm, 20.0, 300.0);
-                    (w.inst_tracks, w.audio_tracks, w.bpm) = (ni as u32, na as u32, bpm);
-                    ui.vertical(|ui| {
-                        ui.add_space(16.0);
-                        let b = egui::Button::new(RichText::new(format!("+   {}", tr("Crear proyecto"))).size(15.0).strong().color(BG())).fill(ACCENT()).min_size(vec2((ui.available_width()).max(160.0), 38.0)).corner_radius(rr(8.0));
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    for (k, (nombre, desc, _)) in TEMPLATES.iter().enumerate() {
+                        let on = w.template == k;
+                        let (r, resp) = ui.allocate_exact_size(tarjeta, egui::Sense::click());
+                        let p = ui.painter();
+                        let fondo = if on { ACCENT().gamma_multiply(0.14) } else if resp.hovered() { ELEVATED() } else { PANEL() };
+                        p.rect(r, rr(12.0), fondo, egui::Stroke::new(if on { 1.5 } else { 1.0 }, if on { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
+                        let icono = egui::Rect::from_center_size(r.center_top() + vec2(0.0, 36.0), vec2(36.0, 36.0));
+                        p.rect_filled(icono, rr(10.0), ACCENT().gamma_multiply(if on { 0.3 } else { 0.12 }));
+                        icono_plantilla(p, icono.center(), k, if on { Color32::WHITE } else { ACCENT() });
+                        // Nombre centrado; los largos ocupan dos líneas.
+                        let mut job = egui::text::LayoutJob::simple(tr(nombre).to_string(), egui::FontId::proportional(12.5), TEXT(), r.width() - 12.0);
+                        job.halign = egui::Align::Center;
+                        job.wrap.max_rows = 2;
+                        let g = ui.painter().layout_job(job);
+                        let y = r.bottom() - 12.0 - g.size().y;
+                        p.galley(egui::pos2(r.center().x, y), g, TEXT());
+                        if resp.on_hover_text(tr(desc)).clicked() {
+                            w.template = k;
+                        }
+                    }
+                });
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(tr("Tempo")).size(12.0).color(TEXT_DIM()));
+                    ui.add(egui::DragValue::new(&mut w.bpm).range(20.0..=300.0).speed(0.5).suffix(" BPM"));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let b = egui::Button::new(RichText::new(format!("+  {}", tr("Crear proyecto"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(170.0, 36.0)).corner_radius(rr(8.0));
                         if ui.add(b).clicked() {
-                            let (ni, na, plantilla) = (w.inst_tracks, w.audio_tracks, w.template);
-                            let mut nueva = Welcome { name: tr("Mi canción").into(), author: w.author.clone(), bpm: w.bpm, template: plantilla, ..Default::default() };
+                            let mut nueva = Welcome { name: tr("Mi canción").into(), author: w.author.clone(), bpm: w.bpm, template: w.template, ..Default::default() };
                             nueva.folder = w.folder.clone();
                             *action = Some(Box::new(move |app: &mut Self| {
                                 let r = app.create_song(&nueva);
-                                if r.is_ok() {
-                                    // Pistas del inicio rápido además de las de la plantilla.
-                                    for k in 0..ni {
-                                        app.add_track(format!("{} {}", tr("Instrumento"), k + 1), TrackKind::Midi);
-                                    }
-                                    for k in 0..na {
-                                        app.add_track(format!("Audio {}", k + 1), TrackKind::AudioStereo);
-                                    }
-                                }
                                 app.report(tr("Proyecto creado"), r);
                             }));
                         }
                     });
                 });
             });
-            ui.add_space(20.0);
+            ui.add_space(32.0);
             ui.vertical(|ui| {
-                ui.set_width(ancho - col - 20.0);
-                let recientes: Vec<PathBuf> = self.config.recent.iter().filter(|d| d.join(project::FILE).exists()).take(6).cloned().collect();
+                ui.set_width(ancho - col - 32.0);
                 ui.horizontal(|ui| {
-                    titulo(ui, "PROYECTOS RECIENTES", "");
-                    ui.label(RichText::new(recientes.len().to_string()).size(10.5).color(ACCENT()));
+                    titulo(ui, "RECIENTES", "");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(RichText::new(tr("Ver todos…")).size(12.0)).frame(false)).clicked() {
+                        if ui.add(egui::Button::new(RichText::new(tr("Ver todos…")).size(12.0).color(TEXT_DIM())).frame(false)).clicked() {
                             w.tab = 2;
                         }
                     });
                 });
-                egui::Frame::new().fill(ELEVATED()).corner_radius(rr(10.0)).stroke(egui::Stroke::new(1.0, BORDER())).inner_margin(6.0).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    if recientes.is_empty() {
-                        ui.label(RichText::new(tr("Todavía no hay proyectos recientes.")).color(TEXT_DIM()));
+                ui.add_space(6.0);
+                let recientes: Vec<PathBuf> = self.config.recent.iter().filter(|d| d.join(project::FILE).exists()).take(4).cloned().collect();
+                if recientes.is_empty() {
+                    ui.label(RichText::new(tr("Todavía no hay proyectos recientes.")).color(TEXT_DIM()));
+                }
+                for dir in recientes {
+                    let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), egui::Sense::click());
+                    if resp.hovered() {
+                        ui.painter().rect_filled(r, rr(8.0), ELEVATED());
                     }
-                    for dir in recientes {
-                        let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-                        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), egui::Sense::click());
-                        if resp.hovered() {
-                            ui.painter().rect_filled(r, rr(6.0), BORDER());
-                        }
-                        let insignia = egui::Rect::from_min_size(r.left_top() + vec2(8.0, 9.0), vec2(32.0, 32.0));
-                        let c = color_de(&nombre);
-                        ui.painter().rect_filled(insignia, rr(10.0), c.gamma_multiply(0.25));
-                        let iniciales: String = nombre.chars().take(2).collect::<String>().to_uppercase();
-                        ui.painter().text(insignia.center(), egui::Align2::CENTER_CENTER, iniciales, egui::FontId::proportional(12.5), c);
-                        ui.painter().text(r.left_top() + vec2(48.0, 16.0), egui::Align2::LEFT_CENTER, &nombre, egui::FontId::proportional(13.5), TEXT());
-                        ui.painter().with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(70.0, 0.0))).text(r.left_top() + vec2(48.0, 34.0), egui::Align2::LEFT_CENTER, dir.parent().map(|p| p.display().to_string()).unwrap_or_default(), egui::FontId::proportional(10.5), TEXT_DIM());
-                        ui.painter().text(r.right_center() - vec2(8.0, 0.0), egui::Align2::RIGHT_CENTER, hace(&dir), egui::FontId::proportional(10.5), TEXT_DIM());
-                        if resp.on_hover_text(dir.display().to_string()).clicked() {
-                            *action = Some(Box::new(move |app: &mut Self| {
-                                let r = app.open_dir(dir);
-                                app.report("Proyecto abierto", r);
-                            }));
-                        }
+                    let insignia = egui::Rect::from_min_size(r.left_top() + vec2(8.0, 8.0), vec2(30.0, 30.0));
+                    let c = color_de(&nombre);
+                    ui.painter().rect_filled(insignia, rr(8.0), c.gamma_multiply(0.22));
+                    let iniciales: String = nombre.chars().take(2).collect::<String>().to_uppercase();
+                    ui.painter().text(insignia.center(), egui::Align2::CENTER_CENTER, iniciales, egui::FontId::proportional(12.0), c);
+                    ui.painter().with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(70.0, 0.0))).text(r.left_center() + vec2(48.0, 0.0), egui::Align2::LEFT_CENTER, &nombre, egui::FontId::proportional(14.0), TEXT());
+                    ui.painter().text(r.right_center() - vec2(10.0, 0.0), egui::Align2::RIGHT_CENTER, hace(&dir), egui::FontId::proportional(11.0), TEXT_DIM());
+                    if resp.on_hover_text(dir.display().to_string()).clicked() {
+                        *action = Some(Box::new(move |app: &mut Self| {
+                            let r = app.open_dir(dir);
+                            app.report("Proyecto abierto", r);
+                        }));
                     }
-                });
+                }
             });
         });
-        ui.add_space(12.0);
-        // Espacios de trabajo e instrumentos.
-        titulo(ui, "¿CÓMO TRABAJAS HOY?", "Elige un espacio de trabajo; puedes cambiarlo en Ver.");
-        ui.horizontal_wrapped(|ui| {
-            for (k, (nombre, desc, ..)) in ESPACIOS.iter().enumerate() {
-                if ui.add(egui::Button::new(RichText::new(tr(nombre)).size(13.0)).min_size(vec2(130.0, 32.0)).corner_radius(rr(16.0))).on_hover_text(tr(desc)).clicked() {
-                    *action = Some(Box::new(move |app: &mut Self| app.aplicar_espacio(k)));
-                }
-            }
-        });
-        ui.add_space(10.0);
-        // Novedades del blog y tienda de quantumdaw.com.
+        ui.add_space(32.0);
+        // Novedades del blog y tienda, en una sola fila de tarjetas.
         let web = web::contenido();
-        let abrir = |ui: &egui::Ui, url: String| ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         let base = web::base();
+        let abrir = |ui: &egui::Ui, url: String| ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         ui.horizontal(|ui| {
-            titulo(ui, "NOVEDADES", "Del blog de Quantum DAW.");
-            if web.as_ref().is_some_and(|c| !c.en_linea) {
-                ui.label(RichText::new(tr("(sin conexión: lo último guardado)")).size(10.5).color(TEXT_DIM()));
-            }
+            titulo(ui, "NOVEDADES", "");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(RichText::new(tr("Ver todas…")).size(12.0)).frame(false)).clicked() {
+                if ui.add(egui::Button::new(RichText::new(tr("Tienda")).size(12.0).color(TEXT_DIM())).frame(false)).clicked() {
+                    abrir(ui, format!("{base}/tienda.html"));
+                }
+                if ui.add(egui::Button::new(RichText::new(tr("Blog")).size(12.0).color(TEXT_DIM())).frame(false)).clicked() {
                     abrir(ui, format!("{base}/noticias.html"));
                 }
             });
         });
-        let noticias = web.as_ref().map(|c| c.noticias.clone()).unwrap_or_default();
-        if noticias.is_empty() {
+        ui.add_space(6.0);
+        let (noticias, productos) = web.as_ref().map(|c| (c.noticias.clone(), c.productos.clone())).unwrap_or_default();
+        if noticias.is_empty() && productos.is_empty() {
             let texto = match &web {
                 None => tr("Cargando novedades…"),
                 Some(c) if !c.en_linea => tr("Sin conexión con quantumdaw.com por ahora."),
                 Some(_) => tr("Todavía no hay novedades publicadas."),
             };
             ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
-        } else {
-            let tam = vec2((ancho - 32.0) / 3.0, 262.0);
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
-                for n in noticias.iter().take(3) {
-                    let img = web::imagen(ui.ctx(), n.imagen.as_deref());
-                    let t = Tarjeta { imagen: img, portada: Portada::Noticia, arriba: &n.fecha, titulo: &n.titulo, texto: &n.resumen, pie: (tr("Leer la noticia"), ACCENT()), etiqueta: None };
-                    if tarjeta_imagen(ui, tam, t) {
-                        abrir(ui, format!("{base}/noticia.php?n={}", n.slug));
-                    }
-                }
-            });
+            return;
         }
-        ui.add_space(10.0);
+        // Hasta cuatro: las noticias más recientes y luego la tienda.
+        let n = ((ancho + 16.0) / 250.0).floor().clamp(1.0, 4.0) as usize;
+        let tam = vec2((ancho - 16.0 * (n as f32 - 1.0)) / n as f32, 250.0);
+        let n_noticias = noticias.len().min(n.div_ceil(2)).max(n.saturating_sub(productos.len())).min(noticias.len());
         ui.horizontal(|ui| {
-            titulo(ui, "TIENDA QUANTUM", "Plugins, instrumentos y sonidos para tu estudio.");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(RichText::new(tr("Ir a la tienda…")).size(12.0)).frame(false)).clicked() {
-                    abrir(ui, format!("{base}/tienda.html"));
+            ui.spacing_mut().item_spacing.x = 16.0;
+            for nt in noticias.iter().take(n_noticias) {
+                let img = web::imagen(ui.ctx(), nt.imagen.as_deref());
+                let t = Tarjeta { imagen: img, portada: Portada::Noticia, arriba: &nt.fecha, titulo: &nt.titulo, texto: &nt.resumen, pie: (tr("Leer la noticia"), ACCENT()), etiqueta: None };
+                if tarjeta_imagen(ui, tam, t) {
+                    abrir(ui, format!("{base}/noticia.php?n={}", nt.slug));
                 }
-            });
-        });
-        let productos = web.as_ref().map(|c| c.productos.clone()).unwrap_or_default();
-        if productos.is_empty() {
-            let texto = match &web {
-                None => tr("Cargando la tienda…"),
-                Some(c) if !c.en_linea && c.productos.is_empty() => tr("Sin conexión con quantumdaw.com por ahora."),
-                Some(_) => tr("Muy pronto: plugins, instrumentos y sonidos para Quantum DAW."),
-            };
-            ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
-        } else {
-            let n = ((ancho + 16.0) / 250.0).floor().max(1.0) as usize;
-            let tam = vec2((ancho - 16.0 * (n as f32 - 1.0)) / n as f32, 270.0);
-            for fila in productos.chunks(n).take(2) {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 16.0;
-                    for p in fila {
-                        let precio = web::precio(p);
-                        let img = web::imagen(ui.ctx(), p.imagen.as_deref());
-                        let tipo = p.tipo.to_uppercase();
-                        let t = Tarjeta { imagen: img, portada: Portada::Producto(&p.tipo), arriba: &tipo, titulo: &p.nombre, texto: &p.resumen, pie: (&precio, if p.gratis { VERDE_PLAY } else { ACCENT() }), etiqueta: p.etiqueta.as_deref() };
-                        if tarjeta_imagen(ui, tam, t) {
-                            abrir(ui, p.enlace.clone().unwrap_or_else(|| format!("{base}/tienda.html#{}", p.slug)));
-                        }
-                    }
-                });
-                ui.add_space(12.0);
             }
-        }
-        ui.add_space(10.0);
-        titulo(ui, "AMPLÍA TU ESTUDIO", "Instrumentos reales gratuitos y libres para descargar.");
-        // Tarjetas del mismo tamaño, tantas como entren en una fila.
-        let n = ((ancho + 10.0) / 230.0).floor().max(1.0) as usize;
-        let tarjeta = vec2((ancho - 10.0 * (n as f32 - 1.0)) / n as f32, 86.0);
-        ui.horizontal(|ui| {
-            for e in instruments::CATALOG.iter().take(n) {
-                let instalado = instruments::installed(e.id);
-                let (r, resp) = ui.allocate_exact_size(tarjeta, egui::Sense::click());
-                // Franja de color arriba (como la portada de un paquete de sonidos).
-                ui.painter().rect(r, rr(10.0), if resp.hovered() { BORDER() } else { ELEVATED() }, egui::Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
-                ui.painter().rect_filled(egui::Rect::from_min_size(r.min, vec2(r.width(), 6.0)), egui::CornerRadius { nw: rr(10.0) as u8, ne: rr(10.0) as u8, sw: 0, se: 0 }, ACCENT().gamma_multiply(0.7));
-                let pc = ui.painter().with_clip_rect(r.shrink(6.0));
-                pc.text(r.left_top() + vec2(12.0, 24.0), egui::Align2::LEFT_CENTER, e.name, egui::FontId::proportional(13.5), TEXT());
-                pc.text(r.left_top() + vec2(12.0, 44.0), egui::Align2::LEFT_CENTER, format!("{} · {} MB · {}", e.family, e.mb, e.license), egui::FontId::proportional(10.5), TEXT_DIM());
-                let (texto, color) = if instalado { (tr("Instalado"), VERDE_PLAY) } else { (tr("Descargar en la biblioteca"), ACCENT()) };
-                pc.text(r.left_bottom() + vec2(12.0, -14.0), egui::Align2::LEFT_CENTER, texto, egui::FontId::proportional(11.5), color);
-                if resp.clicked() && !instalado {
-                    *action = Some(Box::new(|app: &mut Self| app.show_lib = true));
+            for pr in productos.iter().take(n - n_noticias) {
+                let precio = web::precio(pr);
+                let img = web::imagen(ui.ctx(), pr.imagen.as_deref());
+                let tipo = pr.tipo.to_uppercase();
+                let t = Tarjeta { imagen: img, portada: Portada::Producto(&pr.tipo), arriba: &tipo, titulo: &pr.nombre, texto: &pr.resumen, pie: (&precio, if pr.gratis { VERDE_PLAY } else { ACCENT() }), etiqueta: pr.etiqueta.as_deref() };
+                if tarjeta_imagen(ui, tam, t) {
+                    abrir(ui, pr.enlace.clone().unwrap_or_else(|| format!("{base}/tienda.html#{}", pr.slug)));
                 }
             }
         });
