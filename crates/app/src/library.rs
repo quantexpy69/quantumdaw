@@ -370,7 +370,7 @@ impl App {
                         self.report(format!("Importado: {}", path.display()), r);
                     }
                 }
-                if let Some(i) = self.s.tracks.iter().position(|t| t.selected && !t.midi())
+                if let Some(i) = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video)
                     && !video::is_video(path)
                     && ui.button(tr("Importar en la pista seleccionada")).clicked()
                 {
@@ -499,7 +499,7 @@ impl App {
         nombres.extend(FX_CATEGORIES.iter().map(|c| tr(c.0).to_string()));
         nombres.push(format!("★ {}", tr("Favoritos")));
         self.chips(ui, &nombres);
-        let target = self.s.tracks.iter().position(|t| t.selected && !t.midi());
+        let target = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video);
         let destino = target.map_or_else(|| tr("ninguna pista seleccionada").to_string(), |i| self.s.tracks[i].name.clone());
         ui.label(RichText::new(format!("{} {destino} · {}", tr("Doble clic añade a:"), tr("o arrastra a una pista"))).size(11.0).color(TEXT_DIM()));
         let favoritos = nombres.len() - 1;
@@ -524,7 +524,7 @@ impl App {
 
     /// Efectos en tarjetas (tantas columnas como entren).
     fn fx_grid(&mut self, ui: &mut egui::Ui, lista: &[FxKind]) {
-        let target = self.s.tracks.iter().position(|t| t.selected && !t.midi());
+        let target = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video);
         let cols = ((ui.available_width() + 6.0) / 150.0).floor().max(1.0) as usize;
         let w = (ui.available_width() - 6.0 * (cols as f32 - 1.0)) / cols as f32;
         for fila in lista.chunks(cols) {
@@ -573,7 +573,7 @@ impl App {
                     resp.dnd_set_drag_payload(LibItem::Fx(k));
                     resp.context_menu(|ui| {
                         widgets::menu_style(ui);
-                        let targets: Vec<usize> = (0..self.s.tracks.len()).filter(|&i| self.s.tracks[i].selected && !self.s.tracks[i].midi()).collect();
+                        let targets: Vec<usize> = (0..self.s.tracks.len()).filter(|&i| self.s.tracks[i].selected && self.admite_efectos(i)).collect();
                         if ui.add_enabled(!targets.is_empty(), egui::Button::new(tr("Añadir a las pistas seleccionadas"))).clicked() {
                             targets.into_iter().for_each(|i| self.add_fx(i, k));
                         }
@@ -796,9 +796,10 @@ impl App {
     /// Suelta un elemento de la biblioteca: efecto o instrumento en la pista, o un archivo en `at`.
     pub fn drop_item(&mut self, item: &LibItem, track: Option<usize>, at: u64) {
         match item {
-            LibItem::Fx(k) => match track.filter(|&i| !self.s.tracks[i].midi()) {
+            // Los efectos van en cualquier pista: audio o instrumento (después del sonido del instrumento).
+            LibItem::Fx(k) => match track.filter(|&i| self.admite_efectos(i)) {
                 Some(i) => self.add_fx(i, *k),
-                None => self.status = "Suelta el efecto sobre una pista de audio".into(),
+                None => self.status = tr("Suelta el efecto sobre una pista o un canal").into(),
             },
             LibItem::Instrument(id) => match track.filter(|&i| self.s.tracks[i].midi()) {
                 Some(i) => self.set_instrument(i, id),

@@ -703,6 +703,14 @@ struct App {
     lib_buscar: String,
     /// Filtro (chip) elegido en la pestaña abierta de la biblioteca (0 = todo).
     lib_filtro: usize,
+    /// Ventana flotante que hay que traer al frente en el próximo cuadro (por ejemplo «fx»).
+    enfocar_ventana: Option<&'static str>,
+    /// Proyecto tal como se abrió o guardó por última vez (para saber si hay algo sin guardar al cerrar).
+    foto_guardada: Option<serde_json::Value>,
+    /// Aviso al cerrar con cambios: nombre del proyecto en edición y el error del último intento.
+    cerrar: Option<(String, String)>,
+    /// Ya se decidió (guardar o no): la ventana se puede cerrar.
+    cerrar_ok: bool,
     /// Ventana de licencias: abierta, clave que se escribe y resultado de la última activación.
     licencias_abierta: bool,
     licencia_texto: String,
@@ -843,6 +851,10 @@ impl App {
             show_inspector: false,
             lib_buscar: String::new(),
             lib_filtro: 0,
+            enfocar_ventana: None,
+            foto_guardada: None,
+            cerrar: None,
+            cerrar_ok: false,
             licencias_abierta: false,
             licencia_texto: String::new(),
             licencia_estado: String::new(),
@@ -1019,6 +1031,7 @@ impl App {
             (_, Some(err)) => format!("Proyecto «{name}» cargado · sin entrada de audio: {err}"),
             _ => format!("Proyecto «{name}» cargado · {}", self.dir.display()),
         };
+        self.foto_guardada = serde_json::to_value(self.to_project()).ok();
     }
 
     fn to_project(&self) -> Project {
@@ -1116,6 +1129,9 @@ impl App {
         self.meta.saved_at = now_text();
         let r = self.to_project().save(&self.dir);
         self.cambios &= r.is_err();
+        if r.is_ok() {
+            self.foto_guardada = serde_json::to_value(self.to_project()).ok();
+        }
         self.report(format!("Proyecto guardado en {}", self.dir.display()), r);
     }
 
@@ -1215,7 +1231,111 @@ impl App {
     fn add_fx(&mut self, i: usize, kind: FxKind) {
         self.edit();
         self.s.tracks[i].fx.push(Arc::new(Fx::new(kind, self.engine.sample_rate)));
+        self.abrir_efectos(i);
+    }
+
+    /// Abre la ventana de instrumento y efectos de la pista y la trae al frente.
+    fn abrir_efectos(&mut self, i: usize) {
         self.fx_window = Some(i);
+        self.enfocar_ventana = Some("fx");
+    }
+
+    /// Quita el instrumento propio de una pista MIDI: vuelve a sonar el QUANTUM Synth.
+    fn quitar_instrumento(&mut self, i: usize) {
+        self.edit();
+        let t = &mut self.s.tracks[i];
+        let id = t.id;
+        (t.instrument, t.sampler) = (String::new(), None);
+        self.pending_inst.retain(|p| p.0 != id);
+        self.loading.retain(|p| p.0 != id);
+        self.dirty = true;
+    }
+
+    /// ¿Hay algo sin guardar? Ediciones, y también mezcla, panorama, metrónomo o bucle (todo lo que
+    /// guarda el proyecto), comparando con cómo estaba al abrirlo o guardarlo.
+    fn hay_cambios_sin_guardar(&self) -> bool {
+        self.cambios || self.foto_guardada.as_ref().is_none_or(|f| serde_json::to_value(self.to_project()).ok().as_ref() != Some(f))
+    }
+
+    /// Guarda con el nombre elegido (si cambió, se renombra la carpeta del proyecto) y cierra.
+    fn guardar_y_cerrar(&mut self, nombre: &str) -> anyhow::Result<()> {
+        let nombre = safe(nombre.trim());
+        anyhow::ensure!(!nombre.is_empty(), "{}", tr("Escribe un nombre para el proyecto"));
+        if self.dir.file_name().is_none_or(|n| n.to_string_lossy() != nombre) {
+            let destino = self.dir.with_file_name(&nombre);
+            anyhow::ensure!(!destino.exists(), "{} «{nombre}»", tr("Ya existe un proyecto llamado"));
+            fs::rename(&self.dir, &destino)?;
+            let anterior = std::mem::replace(&mut self.dir, destino.clone());
+            self.config.recent.retain(|d| d != &anterior && d != &destino);
+            self.config.recent.insert(0, destino);
+            self.config.save();
+        }
+        self.meta.saved_at = now_text();
+        self.to_project().save(&self.dir)?;
+        self.cambios = false;
+        Ok(())
+    }
+
+    /// Aviso al cerrar con cambios sin guardar: guardar (con su nombre), no guardar o seguir.
+    fn dialogo_cerrar(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.cerrar_ok && !self.recording() && self.hay_cambios_sin_guardar() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if self.cerrar.is_none() {
+                self.cerrar = Some((self.dir.file_name().unwrap_or_default().to_string_lossy().to_string(), String::new()));
+            }
+        }
+        let Some((mut nombre, error)) = self.cerrar.clone() else { return };
+        let (mut guardar, mut no_guardar, mut cancelar) = (false, false, false);
+        let carpeta = self.dir.parent().map(|p| p.display().to_string()).unwrap_or_default();
+        egui::Modal::new(egui::Id::new("cerrar")).show(ctx, |ui| {
+            ui.set_width(440.0);
+            ui.label(egui::RichText::new(tr("¿Deseas guardar este proyecto antes de cerrar?")).size(18.0).strong());
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new(tr("Tiene cambios que todavía no se guardaron.")).color(TEXT_DIM()));
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new(tr("Nombre del proyecto")).size(12.0).color(TEXT_DIM()));
+            let r = ui.add(egui::TextEdit::singleline(&mut nombre).desired_width(f32::INFINITY).font(egui::TextStyle::Heading));
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                guardar = true;
+            }
+            ui.label(egui::RichText::new(format!("{} {carpeta}", tr("Se guarda en"))).size(11.0).color(TEXT_DIM()));
+            if !error.is_empty() {
+                ui.label(egui::RichText::new(&error).color(METER[2]));
+            }
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                let b = egui::Button::new(egui::RichText::new(tr("Sí, guardar y cerrar")).strong().color(BG())).fill(ACCENT()).min_size(egui::vec2(170.0, 34.0));
+                guardar |= ui.add(b).clicked();
+                no_guardar = ui.add(egui::Button::new(egui::RichText::new(tr("No, cerrar sin guardar")).color(METER[2])).min_size(egui::vec2(0.0, 34.0))).clicked();
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    cancelar = ui.add(egui::Button::new(tr("Cancelar")).min_size(egui::vec2(0.0, 34.0))).clicked();
+                });
+            });
+        });
+        cancelar |= ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if guardar {
+            match self.guardar_y_cerrar(&nombre) {
+                Ok(()) => {
+                    (self.cerrar, self.cerrar_ok) = (None, true);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                Err(e) => self.cerrar = Some((nombre, e.to_string())),
+            }
+        } else if no_guardar {
+            // Sin guardar: tampoco queda el autoguardado para recuperar.
+            Project::borrar_autoguardado(&self.dir);
+            (self.cerrar, self.cerrar_ok) = (None, true);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        } else if cancelar {
+            self.cerrar = None;
+        } else {
+            self.cerrar = Some((nombre, error));
+        }
+    }
+
+    /// ¿Admite efectos la pista? (todas menos las de video)
+    fn admite_efectos(&self, i: usize) -> bool {
+        self.s.tracks.get(i).is_some_and(|t| t.kind != TrackKind::Video)
     }
 
     fn export_range(&self, range: u8) -> (u64, u64) {
@@ -2294,6 +2414,7 @@ impl eframe::App for App {
         self.floating_windows(&ctx);
         self.fx_window(&ctx);
         self.ventana_licencias(&ctx);
+        self.dialogo_cerrar(&ctx);
         self.route_window(&ctx);
         self.dialogs(&ctx);
         self.uninstall_dialog(&ctx);

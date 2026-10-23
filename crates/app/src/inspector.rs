@@ -124,9 +124,20 @@ impl App {
             if self.s.tracks[i].midi() {
                 seccion(ui, "instrumento", "INSTRUMENTO", |ui| {
                     self.instrument_combo(ui, i);
-                    if ui.button(tr("Ver instrumento")).clicked() {
-                        self.roll.instrumento = true;
+                    let propio = !self.s.tracks[i].instrument.is_empty();
+                    let r = ui.button(tr("Abrir instrumento")).on_hover_text(tr("Clic: abrir la ventana del instrumento · clic derecho: más opciones"));
+                    if r.clicked() {
+                        self.abrir_efectos(i);
                     }
+                    r.context_menu(|ui| {
+                        widgets::menu_style(ui);
+                        if ui.button(tr("Abrir instrumento")).clicked() {
+                            self.abrir_efectos(i);
+                        }
+                        if ui.add_enabled(propio, egui::Button::new(RichText::new(tr("Quitar instrumento (volver al QUANTUM Synth)")).color(METER[2]))).clicked() {
+                            self.quitar_instrumento(i);
+                        }
+                    });
                 });
             }
             seccion(ui, "efectos", "EFECTOS", |ui| {
@@ -134,19 +145,56 @@ impl App {
                 if efectos.is_empty() {
                     ui.label(RichText::new(tr("Sin efectos. Arrastra uno desde la biblioteca.")).size(12.0).color(TEXT_DIM()));
                 }
-                for (nombre, fx) in efectos {
+                let mut quitar = None;
+                for (j, (nombre, fx)) in efectos.into_iter().enumerate() {
                     ui.horizontal(|ui| {
                         let mut activo = !fx.bypass.load(Relaxed);
-                        if ui.checkbox(&mut activo, "").changed() {
+                        if ui.checkbox(&mut activo, "").on_hover_text(tr("Activar o desactivar (bypass)")).changed() {
                             fx.bypass.store(!activo, Relaxed);
                         }
-                        let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
-                        ui.painter().circle_filled(r.center(), 4.0, plugins::kind_color(Some(fx.kind)));
-                        ui.label(nombre);
+                        // Fila del efecto: clic la abre, clic derecho da sus opciones.
+                        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), egui::Sense::click());
+                        if resp.hovered() {
+                            ui.painter().rect_filled(r, widgets::rr(5.0), ELEVATED());
+                        }
+                        ui.painter().circle_filled(r.left_center() + vec2(8.0, 0.0), 4.0, plugins::kind_color(Some(fx.kind)));
+                        ui.painter().text(r.left_center() + vec2(18.0, 0.0), egui::Align2::LEFT_CENTER, nombre, egui::FontId::proportional(13.0), if activo { TEXT() } else { TEXT_DIM() });
+                        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Clic: abrir el efecto · clic derecho: más opciones"));
+                        if resp.clicked() {
+                            self.abrir_efectos(i);
+                        }
+                        resp.context_menu(|ui| {
+                            widgets::menu_style(ui);
+                            if ui.button(tr("Abrir efecto")).clicked() {
+                                self.abrir_efectos(i);
+                            }
+                            if ui.button(tr(if activo { "Desactivar (bypass)" } else { "Activar" })).clicked() {
+                                fx.bypass.store(activo, Relaxed);
+                            }
+                            ui.separator();
+                            if ui.button(RichText::new(tr("Eliminar efecto")).color(METER[2])).clicked() {
+                                quitar = Some(j);
+                            }
+                        });
                     });
                 }
-                if ui.button(tr("Abrir efectos de la pista…")).clicked() {
-                    self.fx_window = Some(i);
+                if let Some(j) = quitar {
+                    self.edit();
+                    self.s.tracks[i].fx.remove(j);
+                    self.dirty = true;
+                }
+                // Zona para soltar efectos arrastrados desde la biblioteca.
+                let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), egui::Sense::click());
+                let arrastrando = resp.dnd_hover_payload::<library::LibItem>().is_some();
+                ui.painter().rect_stroke(r, widgets::rr(6.0), egui::Stroke::new(if arrastrando { 2.0 } else { 1.0 }, if arrastrando || resp.hovered() { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
+                let texto = if arrastrando { tr("Suelta aquí para agregar el efecto") } else { tr("Abrir efectos de la pista…") };
+                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, texto, egui::FontId::proportional(12.5), if arrastrando { ACCENT() } else { TEXT() });
+                if resp.clicked() {
+                    self.abrir_efectos(i);
+                }
+                if let Some(item) = resp.dnd_release_payload::<library::LibItem>() {
+                    let pos = self.pos();
+                    self.drop_item(&item, Some(i), pos);
                 }
             });
         });

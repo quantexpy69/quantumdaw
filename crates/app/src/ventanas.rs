@@ -60,7 +60,12 @@ impl App {
             if let Some(icono) = icono_ventana() {
                 builder = builder.with_icon(icono);
             }
-            ctx.show_viewport_immediate(egui::ViewportId::from_hash_of(("ventana", id)), builder, |ui, _| {
+            let vid = egui::ViewportId::from_hash_of(("ventana", id));
+            if self.enfocar_ventana == Some(id) {
+                self.enfocar_ventana = None;
+                ctx.send_viewport_cmd_to(vid, egui::ViewportCommand::Focus);
+            }
+            ctx.show_viewport_immediate(vid, builder, |ui, _| {
                 egui::Panel::top(egui::Id::new(("barra-ventana", id))).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&titulo).strong().size(14.0));
@@ -91,6 +96,10 @@ impl App {
             // Las ventanas separadas se dibujan junto con la principal: que la principal siga refrescando.
             ctx.request_repaint_of(egui::ViewportId::ROOT);
         } else {
+            if self.enfocar_ventana == Some(id) {
+                self.enfocar_ventana = None;
+                ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+            }
             let mut ventana = egui::Window::new(RichText::new(&titulo).strong()).id(egui::Id::new(id)).open(&mut abierta).default_size(vec2(tam[0], tam[1]));
             if scroll {
                 ventana = ventana.vscroll(true);
