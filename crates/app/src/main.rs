@@ -16,6 +16,7 @@ mod informes;
 mod icons;
 mod inspector;
 mod instruments;
+mod kits;
 mod keys;
 mod library;
 mod licencias;
@@ -708,6 +709,8 @@ struct App {
     /// Pistas que la app puso a escuchar el teclado (piano roll, patrón, partitura…), para apagarlas
     /// al pasar a otra; el monitoreo que activa el usuario no se toca.
     monitor_auto: Vec<u64>,
+    /// Creador de kits de batería propios (desde una carpeta de muestras).
+    kit_editor: Option<kits::KitEditor>,
     /// QUANTUM Drummer Pro (módulo privado): ritmos por estilo que se escriben en una pista.
     #[cfg(feature = "pro")]
     drummer: pro::drummer::Drummer,
@@ -859,6 +862,7 @@ impl App {
             lib_filtro: 0,
             enfocar_ventana: None,
             monitor_auto: vec![],
+            kit_editor: None,
             #[cfg(feature = "pro")]
             drummer: Default::default(),
             foto_guardada: None,
@@ -1015,7 +1019,7 @@ impl App {
         self.xfade_ms = p.comp_xfade_ms;
         // Los instrumentos reales se cargan en segundo plano (o se descargan si faltan).
         self.loading.clear();
-        self.pending_inst = tracks.iter().filter_map(|t| Some((t.id, instruments::find(&t.instrument)?.id))).collect();
+        self.pending_inst = tracks.iter().filter_map(|t| Some((t.id, instruments::id_estatico(&t.instrument)?))).collect();
         let groups = p.groups.iter().map(|g| Group { name: g.name.clone(), color: rgb(g.color), edit: g.edit }).collect();
         let tempo = match p.tempo_map.is_empty() {
             true => vec![(0, p.bpm)],
@@ -1451,7 +1455,7 @@ impl App {
                 },
                 fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
                 // Con un instrumento real (batería, piano…) no suena el sintetizador, ni mientras se carga.
-                synth: if proxy.is_some() || instruments::find(&t.instrument).is_some() { None } else { t.synth.clone() },
+                synth: if proxy.is_some() || instruments::es_real(&t.instrument) { None } else { t.synth.clone() },
                 sampler: if proxy.is_some() { None } else { t.sampler.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),
                 vol_auto: t.vol_auto.clone(),
@@ -1492,7 +1496,10 @@ impl App {
         for (track, id) in std::mem::take(&mut self.pending_inst) {
             if instruments::installed(id) {
                 self.loading.push((track, instruments::load(id, rate)));
-                self.status = format!("Cargando {}…", instruments::find(id).map_or(id, |e| e.name));
+                self.status = format!("Cargando {}…", instruments::nombre(id));
+            } else if instruments::find(id).is_none() {
+                // Un kit propio que ya no está (se borró su carpeta).
+                self.status = format!("{} {id}", tr("No se encontró el kit"));
             } else {
                 let status = self.downloads.entry(id).or_insert_with(|| {
                     let s = Arc::new(std::sync::Mutex::new(String::new()));
@@ -2454,6 +2461,7 @@ impl eframe::App for App {
         self.ventana_licencias(&ctx);
         #[cfg(feature = "pro")]
         self.ventana_drummer(&ctx);
+        self.ventana_kits(&ctx);
         self.dialogo_cerrar(&ctx);
         self.route_window(&ctx);
         self.dialogs(&ctx);

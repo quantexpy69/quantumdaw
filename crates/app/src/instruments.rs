@@ -132,6 +132,74 @@ pub fn find(id: &str) -> Option<&'static Entry> {
     CATALOG.iter().find(|e| e.id == id)
 }
 
+/// Kits de batería propios: carpeta `kit-<nombre>` entre los instrumentos, con `kit.sfz` (que apunta a
+/// las muestras del usuario, sin copiarlas) y `kit.json` con su nombre.
+pub fn es_kit(id: &str) -> bool {
+    id.starts_with("kit-")
+}
+
+/// ¿Es un instrumento con muestras (del catálogo o un kit propio)?
+pub fn es_real(id: &str) -> bool {
+    find(id).is_some() || es_kit(id)
+}
+
+/// Kits propios guardados: (id, nombre).
+pub fn kits() -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = fs::read_dir(data_dir().join("instruments"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let id = e.file_name().to_string_lossy().to_string();
+            let datos: serde_json::Value = serde_json::from_str(&fs::read_to_string(e.path().join("kit.json")).ok()?).ok()?;
+            es_kit(&id).then(|| (id.clone(), datos["nombre"].as_str().unwrap_or(&id).to_string()))
+        })
+        .collect();
+    v.sort_by_key(|k| k.1.to_lowercase());
+    v
+}
+
+/// Nombre visible de un instrumento (del catálogo o kit propio).
+pub fn nombre(id: &str) -> String {
+    find(id).map(|e| e.name.to_string()).or_else(|| kits().into_iter().find(|k| k.0 == id).map(|k| k.1)).unwrap_or_else(|| id.to_string())
+}
+
+/// Identificador con vida estática (los kits propios se crean en tiempo de ejecución).
+pub fn id_estatico(id: &str) -> Option<&'static str> {
+    static KITS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    if let Some(e) = find(id) {
+        return Some(e.id);
+    }
+    if !es_kit(id) {
+        return None;
+    }
+    let mut k = KITS.lock().ok()?;
+    if let Some(s) = k.iter().find(|s| **s == id) {
+        return Some(s);
+    }
+    let s: &'static str = Box::leak(id.to_string().into_boxed_str());
+    k.push(s);
+    Some(s)
+}
+
+/// Guarda un kit propio: (nombre de la pieza, nota General MIDI, muestra) por pieza. Devuelve su id.
+pub fn guardar_kit(nombre: &str, carpeta: &Path, piezas: &[(&str, u8, PathBuf)]) -> anyhow::Result<String> {
+    let base: String = nombre.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
+    let id = format!("kit-{}", base.trim_matches('-'));
+    anyhow::ensure!(id.len() > 4, "el kit necesita un nombre");
+    anyhow::ensure!(!piezas.is_empty(), "elige al menos un sonido");
+    let d = dir(&id);
+    fs::create_dir_all(&d)?;
+    let mut sfz = format!("// Kit propio creado por QUANTUM desde {}\n<global>\n amp_veltrack=70\n ampeg_release=0.4\n", carpeta.display());
+    for (pieza, nota, muestra) in piezas {
+        sfz += &format!("// {pieza}\n<group> key={nota}\n<region> sample={}\n", muestra.display());
+    }
+    fs::write(d.join("kit.sfz"), sfz)?;
+    fs::write(d.join("kit.json"), serde_json::json!({ "nombre": nombre, "carpeta": carpeta, "piezas": piezas.iter().map(|p| serde_json::json!({ "pieza": p.0, "nota": p.1, "muestra": p.2 })).collect::<Vec<_>>() }).to_string())?;
+    fs::write(d.join(".listo"), "")?;
+    Ok(id)
+}
+
 pub fn dir(id: &str) -> PathBuf {
     data_dir().join("instruments").join(id)
 }

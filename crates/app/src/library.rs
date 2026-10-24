@@ -641,6 +641,32 @@ impl App {
         if lista.is_empty() {
             ui.label(RichText::new(tr(if f == favoritos { "Marca instrumentos con la estrella para tenerlos aquí." } else { "No hay instrumentos en este filtro." })).size(11.5).color(TEXT_DIM()));
         }
+        // Kits de batería propios (de las muestras del usuario).
+        if f == 0 || familias.get(f.wrapping_sub(1)).is_some_and(|x| x.contains("Bater")) {
+            grupo(ui, "MIS KITS", instruments::kits().len());
+            for (id, nombre) in instruments::kits() {
+                let r = row(ui, 40.0, 0.0, false, |p, r| {
+                    p.text(pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, &nombre, FontId::proportional(13.5), TEXT());
+                    p.text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, tr("Kit propio"), FontId::proportional(10.5), METER[0]);
+                });
+                if let Some(sid) = instruments::id_estatico(&id) {
+                    r.dnd_set_drag_payload(LibItem::Instrument(sid));
+                    if r.on_hover_text(tr("Clic: usar en la pista MIDI seleccionada (o en una nueva) · arrastrar: sobre una pista MIDI")).clicked() {
+                        let i = match self.s.tracks.iter().position(|t| t.selected && t.midi()) {
+                            Some(i) => i,
+                            None => {
+                                self.add_track(nombre.clone(), TrackKind::Midi);
+                                self.s.tracks.len() - 1
+                            }
+                        };
+                        self.set_instrument(i, sid);
+                    }
+                }
+            }
+            if ui.button(tr("+ Crear kit de batería desde una carpeta…")).clicked() {
+                self.abrir_kits();
+            }
+        }
         ui.label(RichText::new(tr("Clic: usar en la pista MIDI seleccionada (o descargar) · arrastrar: sobre una pista MIDI")).size(11.0).color(TEXT_DIM()));
         self.inst_rows(ui, &lista);
     }

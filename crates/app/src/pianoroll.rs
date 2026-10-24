@@ -177,12 +177,13 @@ impl App {
             Real(&'static str),
         }
         let t = &self.s.tracks[i];
-        let current = match (instruments::find(&t.instrument), t.instrument.strip_prefix("synth:")) {
-            (Some(e), _) if t.sampler.is_some() => e.name.to_string(),
-            (Some(e), _) => format!("{} (preparando…)", e.name),
-            (None, Some(p)) => format!("Synth · {p}"),
+        let current = match (instruments::es_real(&t.instrument), t.instrument.strip_prefix("synth:")) {
+            (true, _) if t.sampler.is_some() => instruments::nombre(&t.instrument),
+            (true, _) => format!("{} (preparando…)", instruments::nombre(&t.instrument)),
+            (false, Some(p)) => format!("Synth · {p}"),
             _ => "QUANTUM Synth".into(),
         };
+        let mut crear_kit = false;
         let mut pick = None;
         egui::ComboBox::from_id_salt(("inst", i)).width(200.0).height(520.0).selected_text(current).show_ui(ui, |ui| {
             ui.label(RichText::new(tr("INSTRUMENTOS REALES · gratis y libres")).size(10.0).color(TEXT_DIM()));
@@ -205,6 +206,18 @@ impl App {
                 }
             }
             ui.separator();
+            ui.label(RichText::new(tr("MIS KITS")).size(10.0).color(TEXT_DIM()));
+            for (id, nombre) in instruments::kits() {
+                if ui.selectable_label(self.s.tracks[i].instrument == id, &nombre).on_hover_text(tr("Kit de batería propio")).clicked()
+                    && let Some(id) = instruments::id_estatico(&id)
+                {
+                    pick = Some(Pick::Real(id));
+                }
+            }
+            if ui.button(tr("+ Crear kit desde una carpeta…")).clicked() {
+                crear_kit = true;
+            }
+            ui.separator();
             ui.label(RichText::new(tr("QUANTUM SYNTH")).size(10.0).color(TEXT_DIM()));
             for (k, (name, _)) in PRESETS.iter().enumerate() {
                 if ui.selectable_label(self.s.tracks[i].instrument == format!("synth:{name}"), *name).clicked() {
@@ -212,6 +225,9 @@ impl App {
                 }
             }
         });
+        if crear_kit {
+            self.abrir_kits();
+        }
         if pick.is_some() {
             self.roll.instrumento = true;
         }

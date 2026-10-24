@@ -1286,3 +1286,29 @@ Escribir en la pista	Write to track	Escrever na faixa
 ▶  Escuchar la canción	▶  Play song	▶  Ouvir a música
 Modo demo: se escribieron los primeros 4 compases. Con la licencia se escribe la canción entera.	Demo mode: the first 4 bars were written. With a license the whole song is written.	Modo demo: foram escritos os 4 primeiros compassos. Com a licença, a música inteira é escrita.
 Arma la canción primero (por ejemplo con «Estructura típica»)	Build the song first (for example with «Typical structure»)	Monte a música primeiro (por exemplo com «Estrutura típica»)
+Crear kit de batería	Create drum kit	Criar kit de bateria
+Crear kit de batería desde una carpeta…	Create drum kit from a folder…	Criar kit de bateria a partir de uma pasta…
++ Crear kit de batería desde una carpeta…	+ Create drum kit from a folder…	+ Criar kit de bateria a partir de uma pasta…
++ Crear kit desde una carpeta…	+ Create kit from a folder…	+ Criar kit a partir de uma pasta…
+MIS KITS	MY KITS	MEUS KITS
+Kit propio	Own kit	Kit próprio
+Kit de batería propio	Own drum kit	Kit de bateria próprio
+Elige una carpeta con tus muestras de batería: QUANTUM reconoce cada pieza por el nombre de la carpeta o del archivo. Las muestras no se copian: el kit las usa desde donde están.	Choose a folder with your drum samples: QUANTUM recognizes each piece by the folder or file name. Samples aren't copied: the kit uses them where they are.	Escolha uma pasta com suas amostras de bateria: o QUANTUM reconhece cada peça pelo nome da pasta ou do arquivo. As amostras não são copiadas: o kit as usa onde estão.
+Elegir carpeta…	Choose folder…	Escolher pasta…
+ninguna carpeta elegida	no folder chosen	nenhuma pasta escolhida
+Carpeta con las muestras de batería	Folder with the drum samples	Pasta com as amostras de bateria
+Nombre del kit	Kit name	Nome do kit
+muestras encontradas	samples found	amostras encontradas
+nota	note	nota
+(sin sonido)	(no sound)	(sem som)
+RECONOCIDAS	RECOGNIZED	RECONHECIDAS
+TODAS	ALL	TODAS
+Guardar y usar en la pista elegida	Save and use on the selected track	Salvar e usar na faixa escolhida
+Guardar y crear una pista	Save and create a track	Salvar e criar uma faixa
+Solo guardar	Save only	Só salvar
+Kit guardado:	Kit saved:	Kit salvo:
+No se encontró el kit	Kit not found	Kit não encontrado
+El kit queda en «Mis kits» (biblioteca y selector de instrumento) y en QUANTUM Drummer. Si mueves la carpeta de las muestras, vuelve a crearlo.	The kit goes to «My kits» (library and instrument selector) and to QUANTUM Drummer. If you move the samples folder, create it again.	O kit fica em «Meus kits» (biblioteca e seletor de instrumento) e no QUANTUM Drummer. Se você mover a pasta das amostras, crie-o de novo.
+No hay audios en esa carpeta (WAV, FLAC, OGG, MP3 o AIFF).	There's no audio in that folder (WAV, FLAC, OGG, MP3 or AIFF).	Não há áudios nessa pasta (WAV, FLAC, OGG, MP3 ou AIFF).
+Mi kit	My kit	Meu kit
+Clic: usar en la pista MIDI seleccionada (o en una nueva) · arrastrar: sobre una pista MIDI	Click: use on the selected MIDI track (or a new one) · drag: onto a MIDI track	Clique: usar na faixa MIDI selecionada (ou numa nova) · arrastar: sobre uma faixa MIDI
