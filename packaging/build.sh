@@ -42,6 +42,10 @@ PKG="dist/quantum-daw-$VERSION"
 mkdir -p "$PKG"
 cp "$BIN" packaging/linux/instalar.sh packaging/linux/quantum-daw.desktop packaging/linux/com.quantumdaw.QuantumDAW.metainfo.xml LICENSE README.md "$PKG/"
 cp assets/quantumlogo.svg "$PKG/quantum-daw.svg"
+mkdir -p "$PKG/iconos"
+for t in 16:icon_16x16 32:icon_32x32 64:icon_32x32@2x 128:icon_128x128 256:icon_256x256 512:icon_512x512; do
+  cp "assets/macos/QuantumDAW.iconset/${t#*:}.png" "$PKG/iconos/${t%%:*}.png"
+done
 tar -C dist -czf dist/quantum-daw-linux-x86_64.tar.gz "quantum-daw-$VERSION"
 rm -rf "$PKG"
 
@@ -55,6 +59,10 @@ rm -rf "$APPDIR" && mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" 
 cp "$BIN" "$APPDIR/usr/bin/"
 cp packaging/linux/quantum-daw.desktop "$APPDIR/" && cp packaging/linux/quantum-daw.desktop "$APPDIR/usr/share/applications/"
 cp assets/quantumlogo.svg "$APPDIR/quantum-daw.svg" && cp assets/quantumlogo.svg "$APPDIR/usr/share/icons/hicolor/scalable/apps/quantum-daw.svg"
+cp assets/macos/QuantumDAW.iconset/icon_256x256.png "$APPDIR/.DirIcon"
+for t in 16:icon_16x16 32:icon_32x32 64:icon_32x32@2x 128:icon_128x128 256:icon_256x256 512:icon_512x512; do
+  install -Dm644 "assets/macos/QuantumDAW.iconset/${t#*:}.png" "$APPDIR/usr/share/icons/hicolor/${t%%:*}x${t%%:*}/apps/quantum-daw.png"
+done
 cp packaging/linux/com.quantumdaw.QuantumDAW.metainfo.xml "$APPDIR/usr/share/metainfo/"
 ln -sf usr/bin/quantum-daw "$APPDIR/AppRun"
 TOOL="$CACHE/appimagetool-x86_64.AppImage"

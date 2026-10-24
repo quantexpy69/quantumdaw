@@ -11,17 +11,22 @@ case "${1:-}" in
   --sistema) PREFIX=/usr/local ;;
   --desinstalar)
     rm -f "$PREFIX/bin/quantum-daw" "$PREFIX/share/applications/quantum-daw.desktop" \
-      "$PREFIX/share/icons/hicolor/scalable/apps/quantum-daw.svg" "$PREFIX/share/metainfo/com.quantumdaw.QuantumDAW.metainfo.xml"
+      "$PREFIX/share/icons/hicolor/scalable/apps/quantum-daw.svg" "$PREFIX/share/metainfo/com.quantumdaw.QuantumDAW.metainfo.xml" \
+      "$PREFIX"/share/icons/hicolor/*x*/apps/quantum-daw.png
     echo "QUANTUM desinstalado (tus proyectos en ~/Documentos/Quantum DAW no se tocan)."
     exit 0 ;;
 esac
 
 install -Dm755 quantum-daw "$PREFIX/bin/quantum-daw"
 install -Dm644 quantum-daw.svg "$PREFIX/share/icons/hicolor/scalable/apps/quantum-daw.svg"
+for t in 16 32 64 128 256 512; do
+  [ -f "iconos/$t.png" ] && install -Dm644 "iconos/$t.png" "$PREFIX/share/icons/hicolor/${t}x${t}/apps/quantum-daw.png"
+done
 install -Dm644 com.quantumdaw.QuantumDAW.metainfo.xml "$PREFIX/share/metainfo/com.quantumdaw.QuantumDAW.metainfo.xml"
 sed "s|^Exec=quantum-daw|Exec=$PREFIX/bin/quantum-daw|" quantum-daw.desktop | install -Dm644 /dev/stdin "$PREFIX/share/applications/quantum-daw.desktop"
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
-gtk-update-icon-cache -q "$PREFIX/share/icons/hicolor" 2>/dev/null || true
+touch "$PREFIX/share/icons/hicolor"
+gtk-update-icon-cache -q -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 
 # Dependencias: ALSA es obligatoria; ffmpeg (video), 7z y curl (instrumentos) son opcionales.
 . /etc/os-release 2>/dev/null || true

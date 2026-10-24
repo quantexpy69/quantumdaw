@@ -31,9 +31,16 @@ PRO=()
 cargo build --release ${PRO[@]+"${PRO[@]}"}
 BIN="$HOME/.local/bin/quantum-daw"
 install -Dm755 target/release/quantum-daw "$BIN"
-install -Dm644 assets/quantumlogo.svg "$HOME/.local/share/icons/hicolor/scalable/apps/quantum-daw.svg"
+# Icono: SVG y PNG de cada tamaño (algunos paneles y docks prefieren PNG).
+ICONOS="$HOME/.local/share/icons/hicolor"
+install -Dm644 assets/quantumlogo.svg "$ICONOS/scalable/apps/quantum-daw.svg"
+for t in 16:icon_16x16 32:icon_32x32 64:icon_32x32@2x 128:icon_128x128 256:icon_256x256 512:icon_512x512; do
+  install -Dm644 "assets/macos/QuantumDAW.iconset/${t#*:}.png" "$ICONOS/${t%%:*}x${t%%:*}/apps/quantum-daw.png"
+done
 mkdir -p "$HOME/.local/share/applications"
 sed "s|@BIN@|$BIN|" assets/quantum-daw.desktop > "$HOME/.local/share/applications/quantum-daw.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
-gtk-update-icon-cache -q "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+# El escritorio guarda los iconos en caché: se le avisa que cambiaron (sin index.theme hace falta -t).
+touch "$ICONOS"
+gtk-update-icon-cache -q -f -t "$ICONOS" 2>/dev/null || true
 echo "Listo: busca «QUANTUM» en el menú de aplicaciones. Vuelve a ejecutar ./install.sh tras cada cambio."

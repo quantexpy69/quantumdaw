@@ -1,6 +1,6 @@
 [package]
 name = "quantum-daw"
-version = "0.41.0"
+version = "0.42.0"
 edition = "2024"
 license = "BUSL-1.1"
 authors = ["Ivan Cheaib <ivanchepy@gmail.com>"]
@@ -14,8 +14,8 @@ eframe = { version = "0.36.2", default-features = false, features = ["accesskit"
 egui_extras = { version = "0.36.2", features = ["svg"] }
 ed25519-dalek = "2.2.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
-engine = { version = "0.41.0", path = "../engine" }
-project = { version = "0.41.0", path = "../project" }
+engine = { version = "0.42.0", path = "../engine" }
+project = { version = "0.42.0", path = "../project" }
 resvg = { version = "0.45.1", default-features = false }
 rfd = "0.17.2"
 rustfft = "6.4.1"
@@ -48,6 +48,12 @@ assets = [
     ["../../packaging/linux/quantum-daw.desktop", "usr/share/applications/", "644"],
     ["../../packaging/linux/com.quantumdaw.QuantumDAW.metainfo.xml", "usr/share/metainfo/", "644"],
     ["../../assets/quantumlogo.svg", "usr/share/icons/hicolor/scalable/apps/quantum-daw.svg", "644"],
+    ["../../assets/macos/QuantumDAW.iconset/icon_16x16.png", "usr/share/icons/hicolor/16x16/apps/quantum-daw.png", "644"],
+    ["../../assets/macos/QuantumDAW.iconset/icon_32x32.png", "usr/share/icons/hicolor/32x32/apps/quantum-daw.png", "644"],
+    ["../../assets/macos/QuantumDAW.iconset/icon_32x32@2x.png", "usr/share/icons/hicolor/64x64/apps/quantum-daw.png", "644"],
+    ["../../assets/macos/QuantumDAW.iconset/icon_128x128.png", "usr/share/icons/hicolor/128x128/apps/quantum-daw.png", "644"],
+    ["../../assets/macos/QuantumDAW.iconset/icon_256x256.png", "usr/share/icons/hicolor/256x256/apps/quantum-daw.png", "644"],
+    ["../../assets/macos/QuantumDAW.iconset/icon_512x512.png", "usr/share/icons/hicolor/512x512/apps/quantum-daw.png", "644"],
     ["../../LICENSE", "usr/share/doc/quantum-daw/", "644"],
 ]
 
@@ -61,6 +67,12 @@ assets = [
     { source = "../../packaging/linux/quantum-daw.desktop", dest = "/usr/share/applications/quantum-daw.desktop", mode = "644" },
     { source = "../../packaging/linux/com.quantumdaw.QuantumDAW.metainfo.xml", dest = "/usr/share/metainfo/com.quantumdaw.QuantumDAW.metainfo.xml", mode = "644" },
     { source = "../../assets/quantumlogo.svg", dest = "/usr/share/icons/hicolor/scalable/apps/quantum-daw.svg", mode = "644" },
+    { source = "../../assets/macos/QuantumDAW.iconset/icon_16x16.png", dest = "/usr/share/icons/hicolor/16x16/apps/quantum-daw.png", mode = "644" },
+    { source = "../../assets/macos/QuantumDAW.iconset/icon_32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/quantum-daw.png", mode = "644" },
+    { source = "../../assets/macos/QuantumDAW.iconset/icon_32x32@2x.png", dest = "/usr/share/icons/hicolor/64x64/apps/quantum-daw.png", mode = "644" },
+    { source = "../../assets/macos/QuantumDAW.iconset/icon_128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/quantum-daw.png", mode = "644" },
+    { source = "../../assets/macos/QuantumDAW.iconset/icon_256x256.png", dest = "/usr/share/icons/hicolor/256x256/apps/quantum-daw.png", mode = "644" },
+    { source = "../../assets/macos/QuantumDAW.iconset/icon_512x512.png", dest = "/usr/share/icons/hicolor/512x512/apps/quantum-daw.png", mode = "644" },
     { source = "../../LICENSE", dest = "/usr/share/licenses/quantum-daw/LICENSE", mode = "644", doc = true },
 ]
 # Dependencias declaradas a mano (la detección automática genera requisitos de glibc que dnf no acepta).
