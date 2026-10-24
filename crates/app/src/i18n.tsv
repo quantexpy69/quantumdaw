@@ -1312,3 +1312,13 @@ El kit queda en «Mis kits» (biblioteca y selector de instrumento) y en QUANTUM
 No hay audios en esa carpeta (WAV, FLAC, OGG, MP3 o AIFF).	There's no audio in that folder (WAV, FLAC, OGG, MP3 or AIFF).	Não há áudios nessa pasta (WAV, FLAC, OGG, MP3 ou AIFF).
 Mi kit	My kit	Meu kit
 Clic: usar en la pista MIDI seleccionada (o en una nueva) · arrastrar: sobre una pista MIDI	Click: use on the selected MIDI track (or a new one) · drag: onto a MIDI track	Clique: usar na faixa MIDI selecionada (ou numa nova) · arrastar: sobre uma faixa MIDI
+BATERISTA	DRUMMER	BATERISTA
+Clic: abrir con la pista MIDI elegida · arrastrar: sobre una pista (o al espacio vacío para crear una)	Click: open with the selected MIDI track · drag: onto a track (or empty space to create one)	Clique: abrir com a faixa MIDI escolhida · arrastar: sobre uma faixa (ou no espaço vazio para criar uma)
+Clic: usar en la pista MIDI seleccionada (o en una nueva) y abrir QUANTUM Drummer · arrastrar: sobre una pista MIDI	Click: use on the selected MIDI track (or a new one) and open QUANTUM Drummer · drag: onto a MIDI track	Clique: usar na faixa MIDI selecionada (ou numa nova) e abrir o QUANTUM Drummer · arrastar: sobre uma faixa MIDI
+Al escuchar o escribir se crea la pista de batería con el kit elegido abajo.	When playing or writing, the drum track is created with the kit chosen below.	Ao ouvir ou escrever, a faixa de bateria é criada com o kit escolhido abaixo.
+KIT	KIT	KIT
+cargando…	loading…	carregando…
+Cambiar kit	Change kit	Trocar kit
+Editar kit…	Edit kit…	Editar kit…
++ Kit desde una carpeta…	+ Kit from a folder…	+ Kit a partir de uma pasta…
+Clic en una pieza para escucharla	Click a piece to hear it	Clique numa peça para ouvi-la

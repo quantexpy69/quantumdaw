@@ -1045,6 +1045,9 @@ impl App {
             _ => format!("Proyecto «{name}» cargado · {}", self.dir.display()),
         };
         self.foto_guardada = serde_json::to_value(self.to_project()).ok();
+        // Pistas MIDI que quedaron escuchando el teclado (versiones anteriores las dejaban así): al
+        // abrir el piano roll de otra se apagan, para que al tocar suene un solo instrumento.
+        self.monitor_auto = self.s.tracks.iter().filter(|t| t.midi() && t.params.monitor.load(Relaxed)).map(|t| t.id).collect();
     }
 
     fn to_project(&self) -> Project {
@@ -1356,6 +1359,27 @@ impl App {
     fn abrir_drummer(&mut self, pista: Option<usize>) {
         #[cfg(feature = "pro")]
         self.abrir_drummer_en(pista);
+    }
+
+    /// QUANTUM Drummer sobre una pista: si es MIDI le pone un kit de batería (el propio si hay, si no la
+    /// batería real) cuando no tiene uno, y abre el plugin con ella. Sin pista, crea una.
+    fn soltar_drummer(&mut self, pista: Option<usize>) {
+        let i = match pista.filter(|&i| self.s.tracks.get(i).is_some_and(|t| t.midi())) {
+            Some(i) => i,
+            None => {
+                self.add_track(tr("Batería").to_string(), TrackKind::Midi);
+                self.s.tracks.len() - 1
+            }
+        };
+        let t = &self.s.tracks[i];
+        let es_bateria = instruments::es_kit(&t.instrument) || t.instrument == "bateria" || t.instrument == "percusion" || t.instrument.ends_with(pianoroll::CAJA_RITMOS);
+        if !es_bateria {
+            let kit = instruments::kits().first().map(|k| k.0.clone()).unwrap_or_else(|| "bateria".into());
+            if let Some(id) = instruments::id_estatico(&kit) {
+                self.set_instrument(i, id);
+            }
+        }
+        self.abrir_drummer(Some(i));
     }
 
     /// ¿Admite efectos la pista? (todas menos las de video)

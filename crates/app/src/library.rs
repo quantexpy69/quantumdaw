@@ -10,6 +10,8 @@ pub enum LibItem {
     Fx(FxKind),
     File(PathBuf),
     Instrument(&'static str),
+    /// QUANTUM Drummer: sobre una pista MIDI le pone el kit y abre el plugin (en vacío crea la pista).
+    Drummer,
 }
 
 /// Sección de la biblioteca que se arrastra para reordenar.
@@ -538,9 +540,10 @@ impl App {
         p.line_segment([tile.center() + vec2(-12.0, -10.0), tile.center() + vec2(2.0, -12.0)], Stroke::new(1.8, color));
         p.text(pos2(tile.right() + 10.0, r.top() + 19.0), Align2::LEFT_CENTER, "QUANTUM Drummer", FontId::proportional(13.5), TEXT());
         p.text(pos2(tile.right() + 10.0, r.top() + 37.0), Align2::LEFT_CENTER, recortar(p, tr("Ritmos por estilo, variaciones y rellenos"), 10.5, r.right() - tile.right() - 20.0), FontId::proportional(10.5), TEXT_DIM());
-        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        resp.dnd_set_drag_payload(LibItem::Drummer);
+        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Clic: abrir con la pista MIDI elegida · arrastrar: sobre una pista (o al espacio vacío para crear una)")).clicked() {
             let pista = self.s.tracks.iter().position(|t| t.selected && t.midi());
-            self.abrir_drummer(pista);
+            self.soltar_drummer(pista);
         }
     }
 
@@ -643,6 +646,10 @@ impl App {
         }
         // Kits de batería propios (de las muestras del usuario).
         if f == 0 || familias.get(f.wrapping_sub(1)).is_some_and(|x| x.contains("Bater")) {
+            if Self::drummer_disponible() {
+                grupo(ui, "BATERISTA", 1);
+                self.tarjeta_drummer(ui);
+            }
             grupo(ui, "MIS KITS", instruments::kits().len());
             for (id, nombre) in instruments::kits() {
                 let r = row(ui, 40.0, 0.0, false, |p, r| {
@@ -651,7 +658,7 @@ impl App {
                 });
                 if let Some(sid) = instruments::id_estatico(&id) {
                     r.dnd_set_drag_payload(LibItem::Instrument(sid));
-                    if r.on_hover_text(tr("Clic: usar en la pista MIDI seleccionada (o en una nueva) · arrastrar: sobre una pista MIDI")).clicked() {
+                    if r.on_hover_text(tr("Clic: usar en la pista MIDI seleccionada (o en una nueva) y abrir QUANTUM Drummer · arrastrar: sobre una pista MIDI")).clicked() {
                         let i = match self.s.tracks.iter().position(|t| t.selected && t.midi()) {
                             Some(i) => i,
                             None => {
@@ -660,6 +667,9 @@ impl App {
                             }
                         };
                         self.set_instrument(i, sid);
+                        if Self::drummer_disponible() {
+                            self.abrir_drummer(Some(i));
+                        }
                     }
                 }
             }
@@ -853,6 +863,7 @@ impl App {
                 Some(i) => self.set_instrument(i, id),
                 None => self.status = "Suelta el instrumento sobre una pista MIDI".into(),
             },
+            LibItem::Drummer => self.soltar_drummer(track),
             LibItem::File(path) if video::is_video(path) => self.import_video(path.clone(), at),
             LibItem::File(path) => {
                 let r = self.import_one(path, at, track);

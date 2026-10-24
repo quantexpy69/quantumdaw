@@ -138,6 +138,24 @@ impl KitEditor {
 }
 
 impl App {
+    #[cfg_attr(not(feature = "pro"), allow(dead_code))]
+    /// Abre el creador con un kit ya guardado: su carpeta, su nombre y los sonidos que tenía.
+    pub fn editar_kit(&mut self, id: &str) {
+        let Ok(datos) = fs::read_to_string(instruments::dir(id).join("kit.json")).map(|s| serde_json::from_str::<serde_json::Value>(&s).unwrap_or_default()) else { return };
+        let mut k = KitEditor { nombre: datos["nombre"].as_str().unwrap_or_default().to_string(), ..Default::default() };
+        if let Some(c) = datos["carpeta"].as_str() {
+            k.cargar(PathBuf::from(c));
+        }
+        for p in datos["piezas"].as_array().into_iter().flatten() {
+            let (Some(nota), Some(m)) = (p["nota"].as_u64(), p["muestra"].as_str()) else { continue };
+            if let (Some(pi), Some(ai)) = (PIEZAS.iter().position(|x| x.1 as u64 == nota), k.archivos.iter().position(|a| a == Path::new(m))) {
+                k.eleccion[pi] = Some(ai);
+            }
+        }
+        self.kit_editor = Some(k);
+        self.enfocar_ventana = Some("kits");
+    }
+
     pub fn abrir_kits(&mut self) {
         if self.kit_editor.is_none() {
             self.kit_editor = Some(KitEditor::default());
@@ -236,6 +254,11 @@ impl App {
                     let carpeta = k.carpeta.clone().unwrap_or_default();
                     match instruments::guardar_kit(k.nombre.trim(), &carpeta, &piezas) {
                         Ok(id) => {
+                            // Las pistas que ya usaban este kit lo vuelven a cargar con los cambios.
+                            let usan: Vec<usize> = (0..app.s.tracks.len()).filter(|&j| app.s.tracks[j].instrument == id).collect();
+                            if let Some(sid) = instruments::id_estatico(&id) {
+                                usan.into_iter().for_each(|j| app.set_instrument(j, sid));
+                            }
                             if let Some(id) = instruments::id_estatico(&id) {
                                 let i = match pista.filter(|_| usar) {
                                     Some(i) => Some(i),
