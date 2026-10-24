@@ -1538,7 +1538,7 @@ impl App {
         if ui.button(tr("Instrumento y efectos…")).clicked() {
             self.abrir_efectos(i);
         }
-        if Self::drummer_disponible() && self.s.tracks[i].midi() && ui.button(tr("Ritmos con QUANTUM Drummer…")).clicked() {
+        if Self::drummer_disponible() && self.s.tracks[i].midi() && ui.button(tr("Abrir Q Drums…")).clicked() {
             self.abrir_drummer(Some(i));
             ui.close();
         }

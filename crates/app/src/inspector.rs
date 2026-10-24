@@ -127,12 +127,12 @@ impl App {
                     let propio = !self.s.tracks[i].instrument.is_empty();
                     let r = ui.button(tr("Abrir instrumento")).on_hover_text(tr("Clic: abrir la ventana del instrumento · clic derecho: más opciones"));
                     if r.clicked() {
-                        self.abrir_efectos(i);
+                        self.abrir_instrumento(i);
                     }
                     r.context_menu(|ui| {
                         widgets::menu_style(ui);
                         if ui.button(tr("Abrir instrumento")).clicked() {
-                            self.abrir_efectos(i);
+                            self.abrir_instrumento(i);
                         }
                         if ui.add_enabled(propio, egui::Button::new(RichText::new(tr("Quitar instrumento (volver al QUANTUM Synth)")).color(METER[2]))).clicked() {
                             self.quitar_instrumento(i);

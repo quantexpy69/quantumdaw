@@ -61,9 +61,22 @@ impl App {
                 builder = builder.with_icon(icono);
             }
             let vid = egui::ViewportId::from_hash_of(("ventana", id));
+            // Traerla al frente: el escritorio suele ignorar el pedido de foco de una ventana que ya
+            // existe (puede quedar detrás de la principal), así que se cierra un cuadro y se vuelve a
+            // crear: una ventana nueva aparece adelante.
             if self.enfocar_ventana == Some(id) {
                 self.enfocar_ventana = None;
-                ctx.send_viewport_cmd_to(vid, egui::ViewportCommand::Focus);
+                if ctx.embed_viewports() {
+                    ctx.send_viewport_cmd_to(vid, egui::ViewportCommand::Focus);
+                } else {
+                    self.recrear_ventana = Some(id);
+                    ctx.request_repaint();
+                    return true;
+                }
+            }
+            if self.recrear_ventana == Some(id) {
+                self.recrear_ventana = None;
+                ctx.request_repaint();
             }
             ctx.show_viewport_immediate(vid, builder, |ui, _| {
                 egui::Panel::top(egui::Id::new(("barra-ventana", id))).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {

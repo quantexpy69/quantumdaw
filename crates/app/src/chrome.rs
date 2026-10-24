@@ -274,7 +274,7 @@ impl App {
                 if item(ui, tr("Crear kit de batería desde una carpeta…"), "") {
                     self.abrir_kits();
                 }
-                if Self::drummer_disponible() && item(ui, tr("QUANTUM Drummer…"), "") {
+                if Self::drummer_disponible() && item(ui, tr("Q Drums…"), "") {
                     self.abrir_drummer(None);
                 }
                 if item(ui, tr("Licencias QUANTUM Pro…"), "") {

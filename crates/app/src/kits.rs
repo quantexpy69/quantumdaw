@@ -286,7 +286,7 @@ impl App {
                     guardar(false, &mut k, self);
                 }
             });
-            ui.label(RichText::new(tr("El kit queda en «Mis kits» (biblioteca y selector de instrumento) y en QUANTUM Drummer. Si mueves la carpeta de las muestras, vuelve a crearlo.")).size(11.0).color(TEXT_DIM()));
+            ui.label(RichText::new(tr("El kit queda en «Mis kits» (biblioteca y selector de instrumento) y en Q Drums. Si mueves la carpeta de las muestras, vuelve a crearlo.")).size(11.0).color(TEXT_DIM()));
         } else if !k.error.is_empty() {
             ui.label(RichText::new(&k.error).color(METER[2]));
         }

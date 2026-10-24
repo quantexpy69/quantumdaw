@@ -630,7 +630,7 @@ impl App {
             ui.label(tr("Instrumento"));
             self.instrument_combo(ui, i);
             if ui.button(tr("Editar sonido")).clicked() {
-                self.fx_window = Some(i);
+                self.abrir_instrumento(i);
             }
             let typing = egui::Button::selectable(self.roll.typing, "Teclado del PC");
             if ui.add(typing).on_hover_text(tr("Toca con A W S E D F T G Y H U J K O L P · Z/X cambian de octava · con R y grabación activa, las notas se escriben en la pista")).clicked() {

@@ -231,7 +231,9 @@ impl App {
             Up(usize),
             MyPlugins,
             Licencias,
+            Drums,
         }
+        let bateria = Self::drummer_disponible() && self.es_pista_bateria(i);
         let (mut act, sr) = (None, self.engine.sample_rate as f32);
         let title = format!("QUANTUM · {}", self.s.tracks[i].name);
         let open = self.ventana(ctx, "fx", title, [860.0, 900.0], true, |app, ui| {
@@ -334,7 +336,13 @@ impl App {
                     let e = instruments::find(&t.instrument);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(tr("QUANTUM")).size(10.0).strong().color(ACCENT()));
-                        ui.label(RichText::new(e.map_or(s.name.as_str(), |e| e.name)).size(16.0).strong());
+                        ui.label(RichText::new(if instruments::es_kit(&t.instrument) { instruments::nombre(&t.instrument) } else { e.map_or(s.name.clone(), |e| e.name.to_string()) }).size(16.0).strong());
+                        if bateria {
+                            let b = egui::Button::new(RichText::new(tr("Abrir Q Drums")).strong().color(BG())).fill(Color32::from_rgb(0xFF, 0x6B, 0x3D));
+                            if ui.add(b).on_hover_text(tr("Ritmos, kit y piezas de la batería")).clicked() {
+                                act = Some(Act::Drums);
+                            }
+                        }
                     });
                     let mut db = widgets::db(s.gain.get());
                     if ui.add(egui::Slider::new(&mut db, -30.0..=12.0).suffix(" dB").text(tr("Volumen"))).changed() {
@@ -376,6 +384,7 @@ impl App {
             Some(Act::Sincronizar) => self.dirty = true,
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),
             Some(Act::Licencias) => self.licencias_abierta = true,
+            Some(Act::Drums) => self.abrir_drummer(Some(i)),
             Some(Act::Remove(j)) => {
                 self.edit();
                 self.s.tracks[i].fx.remove(j);

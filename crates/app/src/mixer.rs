@@ -132,10 +132,10 @@ impl App {
                     Some(i) if self.s.tracks[i].kind == TrackKind::Click => _ = ui.label(RichText::new(tr("Clic (metrónomo)")).size(11.0).color(TEXT_DIM())),
                     Some(i) if self.s.tracks[i].midi() => {
                         let t = &self.s.tracks[i];
-                        let name = instruments::find(&t.instrument).map_or("QUANTUM Synth", |e| e.name);
+                        let name = if instruments::es_real(&t.instrument) { instruments::nombre(&t.instrument) } else { "QUANTUM Synth".to_string() };
                         let b = egui::Button::new(RichText::new(name).size(11.0)).fill(color.gamma_multiply(0.5)).min_size(vec2(STRIP_W - 8.0, 20.0)).truncate();
                         if ui.add(b).on_hover_text(tr("Instrumento")).clicked() {
-                            self.fx_window = Some(i);
+                            self.abrir_instrumento(i);
                         }
                         self.fx_slots(ui, i);
                     }

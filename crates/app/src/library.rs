@@ -538,7 +538,7 @@ impl App {
         // Bombo y platillo dibujados.
         p.circle_stroke(tile.center() + vec2(0.0, 4.0), 9.0, Stroke::new(1.8, color));
         p.line_segment([tile.center() + vec2(-12.0, -10.0), tile.center() + vec2(2.0, -12.0)], Stroke::new(1.8, color));
-        p.text(pos2(tile.right() + 10.0, r.top() + 19.0), Align2::LEFT_CENTER, "QUANTUM Drummer", FontId::proportional(13.5), TEXT());
+        p.text(pos2(tile.right() + 10.0, r.top() + 19.0), Align2::LEFT_CENTER, "Q Drums", FontId::proportional(13.5), TEXT());
         p.text(pos2(tile.right() + 10.0, r.top() + 37.0), Align2::LEFT_CENTER, recortar(p, tr("Ritmos por estilo, variaciones y rellenos"), 10.5, r.right() - tile.right() - 20.0), FontId::proportional(10.5), TEXT_DIM());
         resp.dnd_set_drag_payload(LibItem::Drummer);
         if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Clic: abrir con la pista MIDI elegida · arrastrar: sobre una pista (o al espacio vacío para crear una)")).clicked() {
@@ -658,7 +658,7 @@ impl App {
                 });
                 if let Some(sid) = instruments::id_estatico(&id) {
                     r.dnd_set_drag_payload(LibItem::Instrument(sid));
-                    if r.on_hover_text(tr("Clic: usar en la pista MIDI seleccionada (o en una nueva) y abrir QUANTUM Drummer · arrastrar: sobre una pista MIDI")).clicked() {
+                    if r.on_hover_text(tr("Clic: usar en la pista MIDI seleccionada (o en una nueva) y abrir Q Drums · arrastrar: sobre una pista MIDI")).clicked() {
                         let i = match self.s.tracks.iter().position(|t| t.selected && t.midi()) {
                             Some(i) => i,
                             None => {

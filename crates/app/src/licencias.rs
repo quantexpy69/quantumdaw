@@ -95,7 +95,7 @@ pub fn url_compra_slug(slug: &str) -> String {
 /// Productos Pro: (nombre, bit de licencia, identificador en la tienda, precio en US$, color).
 pub fn productos_pro() -> Vec<(&'static str, u32, &'static str, u32, Color32)> {
     let mut v: Vec<_> = FxKind::PRO.iter().filter_map(|&k| k.pro().map(|(bit, slug, precio)| (k.name(), bit, slug, precio, plugins::kind_color(Some(k))))).collect();
-    v.push(("QUANTUM Drummer Pro", engine::pro::BIT_DRUMMER, "drummer-pro", 8, Color32::from_rgb(0xFF, 0x6B, 0x3D)));
+    v.push(("Q Drums Pro", engine::pro::BIT_DRUMMER, "drummer-pro", 8, Color32::from_rgb(0xFF, 0x6B, 0x3D)));
     v
 }
 

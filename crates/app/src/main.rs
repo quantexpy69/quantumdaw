@@ -706,6 +706,8 @@ struct App {
     lib_filtro: usize,
     /// Ventana flotante que hay que traer al frente en el próximo cuadro (por ejemplo «fx»).
     enfocar_ventana: Option<&'static str>,
+    /// Ventana separada que se vuelve a crear (cerrada un cuadro) para que aparezca adelante.
+    recrear_ventana: Option<&'static str>,
     /// Pistas que la app puso a escuchar el teclado (piano roll, patrón, partitura…), para apagarlas
     /// al pasar a otra; el monitoreo que activa el usuario no se toca.
     monitor_auto: Vec<u64>,
@@ -861,6 +863,7 @@ impl App {
             lib_buscar: String::new(),
             lib_filtro: 0,
             enfocar_ventana: None,
+            recrear_ventana: None,
             monitor_auto: vec![],
             kit_editor: None,
             #[cfg(feature = "pro")]
@@ -1380,6 +1383,21 @@ impl App {
             }
         }
         self.abrir_drummer(Some(i));
+    }
+
+    /// ¿Es una pista de batería? (kit propio, batería o percusión reales, o caja de ritmos)
+    fn es_pista_bateria(&self, i: usize) -> bool {
+        self.s.tracks.get(i).is_some_and(|t| t.midi() && (instruments::es_kit(&t.instrument) || matches!(t.instrument.as_str(), "bateria" | "percusion") || t.instrument.ends_with(pianoroll::CAJA_RITMOS)))
+    }
+
+    /// Abre el instrumento de la pista: en las de batería, Q Drums; en las demás, su ventana de
+    /// instrumento y efectos.
+    fn abrir_instrumento(&mut self, i: usize) {
+        if Self::drummer_disponible() && self.es_pista_bateria(i) {
+            self.abrir_drummer(Some(i));
+        } else {
+            self.abrir_efectos(i);
+        }
     }
 
     /// ¿Admite efectos la pista? (todas menos las de video)
@@ -2131,12 +2149,22 @@ impl App {
     // ---------- Transporte ----------
 
     fn toggle_play(&mut self) {
-        if self.playing() { self.stop() } else { self.engine.playing.store(true, Relaxed) }
+        if self.playing() {
+            self.stop()
+        } else {
+            // La escucha de Q Drums se detiene: suena el proyecto.
+            #[cfg(feature = "pro")]
+            self.detener_drummer();
+            self.engine.playing.store(true, Relaxed)
+        }
     }
 
     fn stop(&mut self) {
         self.engine.playing.store(false, Relaxed);
         self.finish_recording();
+        // Parar también detiene la escucha de Q Drums.
+        #[cfg(feature = "pro")]
+        self.detener_drummer();
     }
 
     fn go(&mut self, frame: u64) {
