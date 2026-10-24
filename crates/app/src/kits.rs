@@ -8,7 +8,7 @@ use std::sync::mpsc;
 
 /// Piezas del kit: (nombre, nota General MIDI, palabras que la reconocen en la ruta). El orden
 /// importa: las más específicas primero.
-const PIEZAS: [(&str, u8, &[&str]); 19] = [
+const PIEZAS: [(&str, u8, &[&str]); 21] = [
     ("Bombo", 36, &["kick", "bombo", "bassdrum", "bass drum"]),
     ("Caja", 38, &["snare", "caja"]),
     ("Aro", 37, &["rim", "stick", "aro", "sidestick", "cross"]),
@@ -20,6 +20,8 @@ const PIEZAS: [(&str, u8, &[&str]); 19] = [
     ("Tom medio", 47, &["mid tom", "midtom", "tom medio"]),
     ("Tom alto", 50, &["high tom", "hi tom", "hitom", "tom alto"]),
     ("Crash", 49, &["crash"]),
+    ("Crash 2", 57, &["crash 2", "crash2"]),
+    ("China", 52, &["china"]),
     ("Ride", 51, &["ride"]),
     ("Campana del ride", 53, &["ride bell", "bell ride", "campana"]),
     ("Splash", 55, &["splash"]),
@@ -106,6 +108,12 @@ impl KitEditor {
         let profundidad = |p: &Path| p.components().count();
         for k in 0..PIEZAS.len() {
             self.eleccion[k] = self.candidatos(k).into_iter().min_by_key(|&i| profundidad(&self.archivos[i]));
+        }
+        // Crash 2: si no hay uno propio, otro crash distinto del primero.
+        let crash = PIEZAS.iter().position(|p| p.1 == 49).unwrap_or(0);
+        let crash2 = PIEZAS.iter().position(|p| p.1 == 57).unwrap_or(0);
+        if self.eleccion[crash2].is_none() {
+            self.eleccion[crash2] = self.candidatos(crash).get(1).copied();
         }
         // Hi-hat: cerrado el más corto, de pie el siguiente y abierto el más largo.
         let mut hats: Vec<usize> = self.candidatos(4);

@@ -35,6 +35,8 @@ struct Zone {
     /// Grupo de corte: una nota de un grupo apaga las voces cuyo `off_by` es ese grupo (hi-hat).
     group: u32,
     off_by: u32,
+    /// Curva de velocidad (amp_velcurve_N): ganancia para cada fuerza de golpe, si la hay.
+    curva: Option<Arc<[f32; 128]>>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -199,11 +201,17 @@ impl Sampler {
                 one_shot: r.get("loop_mode").is_some_and(|m| m == "one_shot"),
                 group: num("group", 0.0) as u32,
                 off_by: num("off_by", 0.0) as u32,
+                curva: curva_velocidad(r),
             });
         }
         anyhow::ensure!(!zones.is_empty(), "el instrumento no tiene muestras");
         let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
         Ok(Self { name, gain: AtomicF32::new(1.0), key_names, zones, state: Mutex::new(State { rng: 0x9E37_79B9, ..Default::default() }) })
+    }
+
+    /// Voces sonando ahora (para el contador de la interfaz).
+    pub fn voces_activas(&self) -> usize {
+        self.state.try_lock().map_or(0, |st| st.voices.iter().filter(|v| v.active).count())
     }
 
     pub fn render(&self, out: &mut [[f32; 2]], events: &[(usize, MidiEvent)], sr: f32, offline: bool, pos: u64, playing: bool) {
@@ -278,7 +286,7 @@ impl Sampler {
                     }
                 }
                 let slot = (0..VOICES).find(|&i| !st.voices[i].active).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| st.voices[i].age).unwrap_or(0));
-                let vel_gain = (1.0 - z.veltrack) + z.veltrack * (vel as f32 / 127.0).powi(2);
+                let vel_gain = z.curva.as_ref().map_or_else(|| (1.0 - z.veltrack) + z.veltrack * (vel as f32 / 127.0).powi(2), |c| c[vel as usize]);
                 let nota_gain = st.cc_gain.take().map_or(1.0, crate::ganancia_nota);
                 let ataque = st.cc_attack.take().map_or(0.0, crate::ataque_ms);
                 st.voices[slot] = Voice {
@@ -306,6 +314,30 @@ impl Sampler {
             _ => {}
         }
     }
+}
+
+/// Curva de velocidad SFZ (`amp_velcurve_N=ganancia`, N de 1 a 127): se interpola entre los puntos
+/// dados, con 0 en fuerza 0 y 1 en 127 si no se dan.
+fn curva_velocidad(r: &HashMap<String, String>) -> Option<Arc<[f32; 128]>> {
+    let mut puntos: Vec<(usize, f32)> = r.iter().filter_map(|(k, v)| Some((k.strip_prefix("amp_velcurve_")?.parse::<usize>().ok()?.min(127), v.parse::<f32>().ok()?))).collect();
+    if puntos.is_empty() {
+        return None;
+    }
+    if !puntos.iter().any(|p| p.0 == 0) {
+        puntos.push((0, 0.0));
+    }
+    if !puntos.iter().any(|p| p.0 == 127) {
+        puntos.push((127, 1.0));
+    }
+    puntos.sort_by_key(|p| p.0);
+    let mut t = [0f32; 128];
+    for w in puntos.windows(2) {
+        let ((a, ga), (b, gb)) = (w[0], w[1]);
+        for (v, g) in t.iter_mut().enumerate().take(b + 1).skip(a) {
+            *g = ga + (gb - ga) * (v - a) as f32 / (b - a).max(1) as f32;
+        }
+    }
+    Some(Arc::new(t))
 }
 
 #[cfg(test)]

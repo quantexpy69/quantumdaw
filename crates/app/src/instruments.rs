@@ -202,11 +202,29 @@ pub struct PiezaKit {
     pub sensibilidad: f32,
     pub silenciada: bool,
     pub solo: bool,
+    /// Curva de velocidad (`CURVAS`): cómo crece el volumen con la fuerza del golpe.
+    pub curva: usize,
+}
+
+/// Curvas de velocidad: natural (la del instrumento), lineal, suave, fuerte y en S.
+#[cfg_attr(not(feature = "pro"), allow(dead_code))]
+pub const CURVAS: [&str; 5] = ["Natural", "Lineal", "Suave", "Fuerte", "Curva S"];
+
+/// Ganancia de la curva `c` para una fuerza `x` de 0 a 1 (con `piso`: lo mínimo que suena).
+pub fn curva_ganancia(c: usize, x: f32, piso: f32) -> f32 {
+    let f = match c {
+        1 => x,
+        2 => x * x,
+        3 => x.sqrt(),
+        4 => x * x * (3.0 - 2.0 * x),
+        _ => x * x,
+    };
+    piso + (1.0 - piso) * f
 }
 
 impl Default for PiezaKit {
     fn default() -> Self {
-        Self { pieza: String::new(), nota: 36, muestras: vec![], muestra: None, vol: 0.0, afinar: 0.0, pan: 0.0, caida: 0.0, sensibilidad: 70.0, silenciada: false, solo: false }
+        Self { pieza: String::new(), nota: 36, muestras: vec![], muestra: None, vol: 0.0, afinar: 0.0, pan: 0.0, caida: 0.0, sensibilidad: 70.0, silenciada: false, solo: false, curva: 0 }
     }
 }
 
@@ -246,7 +264,14 @@ fn sfz_kit(k: &Kit) -> String {
             _ => "",
         };
         let caida = if p.caida > 0.0 { format!(" ampeg_decay={:.3}", p.caida) } else { String::new() };
-        sfz += &format!("// {}\n<group> key={} volume={:.2} tune={:.0} pan={:.0} amp_veltrack={:.0}{caida}{corte}\n", p.pieza, p.nota, p.vol, p.afinar * 100.0, p.pan, p.sensibilidad);
+        // Curva de velocidad elegida (la sensibilidad fija lo que suena el golpe más suave).
+        let curva = if p.curva > 0 {
+            let piso = 1.0 - p.sensibilidad / 100.0;
+            (1..=8).map(|k| k * 16 - 1).map(|v| format!(" amp_velcurve_{v}={:.3}", curva_ganancia(p.curva, v as f32 / 127.0, piso))).collect::<String>()
+        } else {
+            String::new()
+        };
+        sfz += &format!("// {}\n<group> key={} volume={:.2} tune={:.0} pan={:.0} amp_veltrack={:.0}{caida}{corte}{curva}\n", p.pieza, p.nota, p.vol, p.afinar * 100.0, p.pan, p.sensibilidad);
         let n = p.muestras.len();
         for (j, m) in p.muestras.iter().enumerate() {
             let (a, b) = (j as f32 / n as f32, (j + 1) as f32 / n as f32);
