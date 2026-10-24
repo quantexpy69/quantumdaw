@@ -381,7 +381,7 @@ impl App {
         }
         // Las notas suenan en la pista MIDI elegida (se activa su monitoreo).
         if let Some(i) = pista {
-            self.s.tracks[i].params.monitor.store(true, Relaxed);
+            self.escuchar_en(i);
         }
         let seg_compas = self.engine.beat_frames() * self.engine.beats.load(Relaxed).max(1) as f64 / self.sr();
         let g = &self.generador;

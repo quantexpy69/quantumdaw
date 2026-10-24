@@ -516,9 +516,31 @@ impl App {
             }
             grupo(ui, cat, lista.len());
             self.fx_grid(ui, &lista);
+            if kinds.iter().any(|x| x.pro().is_some()) && Self::drummer_disponible() && self.lib_filtro != favoritos {
+                self.tarjeta_drummer(ui);
+            }
         }
         if self.lib_filtro == favoritos && self.config.lib_favoritos.iter().all(|f| !f.starts_with("fx:")) {
             ui.label(RichText::new(tr("Marca efectos con la estrella para tenerlos aquí.")).size(11.5).color(TEXT_DIM()));
+        }
+    }
+
+    /// Tarjeta de QUANTUM Drummer Pro (abre su ventana con la pista MIDI elegida).
+    fn tarjeta_drummer(&mut self, ui: &mut egui::Ui) {
+        let color = Color32::from_rgb(0xFF, 0x6B, 0x3D);
+        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 56.0), Sense::click());
+        let p = ui.painter();
+        p.rect(r, rr(10.0), if resp.hovered() { BORDER() } else { ELEVATED() }, Stroke::new(1.0, if resp.hovered() { color } else { BORDER() }), StrokeKind::Inside);
+        let tile = Rect::from_min_size(r.left_top() + vec2(8.0, 9.0), vec2(38.0, 38.0));
+        p.rect_filled(tile, rr(8.0), color.gamma_multiply(0.22));
+        // Bombo y platillo dibujados.
+        p.circle_stroke(tile.center() + vec2(0.0, 4.0), 9.0, Stroke::new(1.8, color));
+        p.line_segment([tile.center() + vec2(-12.0, -10.0), tile.center() + vec2(2.0, -12.0)], Stroke::new(1.8, color));
+        p.text(pos2(tile.right() + 10.0, r.top() + 19.0), Align2::LEFT_CENTER, "QUANTUM Drummer", FontId::proportional(13.5), TEXT());
+        p.text(pos2(tile.right() + 10.0, r.top() + 37.0), Align2::LEFT_CENTER, recortar(p, tr("Ritmos por estilo, variaciones y rellenos"), 10.5, r.right() - tile.right() - 20.0), FontId::proportional(10.5), TEXT_DIM());
+        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            let pista = self.s.tracks.iter().position(|t| t.selected && t.midi());
+            self.abrir_drummer(pista);
         }
     }
 

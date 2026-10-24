@@ -472,7 +472,7 @@ impl App {
             self.status = tr("Crea una pista MIDI para escuchar la partitura").into();
             return;
         };
-        self.s.tracks[i].params.monitor.store(true, Relaxed);
+        self.escuchar_en(i);
         let seg = 60.0 / self.partitura_app.doc.tempo.max(20.0) as f64;
         let mut ev: Vec<(f64, bool, u8)> = self.partitura_app.doc.pentagramas.iter().flat_map(|p| p.notas.iter().flat_map(|n| [(n.inicio * seg, true, n.altura), ((n.inicio + n.dur) * seg - 0.01, false, n.altura)])).collect();
         ev.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));

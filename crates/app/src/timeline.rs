@@ -1536,7 +1536,11 @@ impl App {
 
     pub fn track_menu(&mut self, ui: &mut egui::Ui, i: usize) {
         if ui.button(tr("Instrumento y efectos…")).clicked() {
-            self.fx_window = Some(i);
+            self.abrir_efectos(i);
+        }
+        if Self::drummer_disponible() && self.s.tracks[i].midi() && ui.button(tr("Ritmos con QUANTUM Drummer…")).clicked() {
+            self.abrir_drummer(Some(i));
+            ui.close();
         }
         if ui.button(tr("Ruteo (ROUTE)…")).clicked() {
             self.route_window = Some(i);

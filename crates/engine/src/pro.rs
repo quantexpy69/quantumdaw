@@ -44,6 +44,14 @@ pub fn activar(bits: u32) {
     LICENCIAS.store(bits, Relaxed);
 }
 
+/// Licencia de QUANTUM Drummer Pro (no es un efecto: escribe ritmos en una pista).
+pub const BIT_DRUMMER: u32 = 16;
+
+/// ¿Está activa la licencia de ese bit?
+pub fn tiene_licencia(bit: u32) -> bool {
+    LICENCIAS.load(Relaxed) & bit != 0
+}
+
 pub fn licenciado(kind: FxKind) -> bool {
     kind.pro().is_none_or(|(bit, ..)| LICENCIAS.load(Relaxed) & bit != 0)
 }

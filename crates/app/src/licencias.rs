@@ -82,8 +82,21 @@ pub fn panel_pro(ui: &mut egui::Ui, fx: &engine::Fx) -> Option<PedidoPro> {
 }
 
 /// Página de compra de un plugin.
+#[cfg_attr(not(feature = "pro"), allow(dead_code))]
 pub fn url_compra(kind: FxKind) -> String {
-    format!("{}/tienda.html#{}", web::base(), kind.pro().map_or("", |p| p.1))
+    url_compra_slug(kind.pro().map_or("", |p| p.1))
+}
+
+/// Página de compra de un producto por su identificador en la tienda.
+pub fn url_compra_slug(slug: &str) -> String {
+    format!("{}/tienda.html#{slug}", web::base())
+}
+
+/// Productos Pro: (nombre, bit de licencia, identificador en la tienda, precio en US$, color).
+pub fn productos_pro() -> Vec<(&'static str, u32, &'static str, u32, Color32)> {
+    let mut v: Vec<_> = FxKind::PRO.iter().filter_map(|&k| k.pro().map(|(bit, slug, precio)| (k.name(), bit, slug, precio, plugins::kind_color(Some(k))))).collect();
+    v.push(("QUANTUM Drummer Pro", engine::pro::BIT_DRUMMER, "drummer-pro", 8, Color32::from_rgb(0xFF, 0x6B, 0x3D)));
+    v
 }
 
 impl App {
@@ -120,7 +133,7 @@ impl App {
                     self.licencia_estado = match self.agregar_licencia(&texto) {
                         Ok(l) => {
                             self.licencia_texto.clear();
-                            let nombres: Vec<&str> = FxKind::PRO.iter().filter(|k| k.pro().is_some_and(|p| l.p & p.0 != 0)).map(|k| k.name()).collect();
+                            let nombres: Vec<&str> = productos_pro().into_iter().filter(|p| l.p & p.1 != 0).map(|p| p.0).collect();
                             format!("✔ {} {} · {}", tr("Activado:"), nombres.join(", "), l.n)
                         }
                         Err(e) => tr(e).to_string(),
@@ -133,18 +146,16 @@ impl App {
             });
             ui.separator();
             let activos = bits(&self.config.licencias);
-            for k in FxKind::PRO {
-                let Some((bit, _, precio)) = k.pro() else { continue };
+            for (nombre, bit, slug, precio, color) in productos_pro() {
                 ui.horizontal(|ui| {
-                    let color = plugins::kind_color(Some(k));
                     ui.label(RichText::new("●").color(color));
-                    ui.label(RichText::new(tr(k.name())).strong());
+                    ui.label(RichText::new(tr(nombre)).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if activos & bit != 0 {
                             ui.label(RichText::new(tr("Con licencia")).color(METER[0]));
                         } else {
                             if ui.button(format!("{} · {precio} US$", tr("Comprar"))).clicked() {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab(url_compra(k)));
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(url_compra_slug(slug)));
                             }
                             ui.label(RichText::new(tr("Modo demo")).color(METER[1]));
                         }

@@ -136,7 +136,7 @@ impl App {
         self.s.tracks[i].clips.push(Clip::new(Source::Midi(Arc::new(vec![])), at, largo));
         let j = self.s.tracks[i].clips.len() - 1;
         self.roll.open(i, j);
-        self.s.tracks[i].params.monitor.store(true, Relaxed);
+        self.escuchar_en(i);
         self.dirty = true;
     }
 
@@ -200,7 +200,7 @@ impl App {
                         self.set_loop(a, b);
                         self.engine.looping.store(true, Relaxed);
                         self.go(a);
-                        self.s.tracks[i].params.monitor.store(true, Relaxed);
+                        self.escuchar_en(i);
                         self.toggle_play();
                     }
                 }
@@ -268,7 +268,7 @@ impl App {
                 let rc = ui.interact(cab_r, egui::Id::new(("carril", li)), Sense::click());
                 if rc.clicked() {
                     self.patron.carril = li;
-                    self.s.tracks[i].params.monitor.store(true, Relaxed);
+                    self.escuchar_en(i);
                     self.engine.send_midi([0x90, *key, 110]);
                     self.engine.send_midi([0x80, *key, 0]);
                 }

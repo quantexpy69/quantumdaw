@@ -705,6 +705,12 @@ struct App {
     lib_filtro: usize,
     /// Ventana flotante que hay que traer al frente en el próximo cuadro (por ejemplo «fx»).
     enfocar_ventana: Option<&'static str>,
+    /// Pistas que la app puso a escuchar el teclado (piano roll, patrón, partitura…), para apagarlas
+    /// al pasar a otra; el monitoreo que activa el usuario no se toca.
+    monitor_auto: Vec<u64>,
+    /// QUANTUM Drummer Pro (módulo privado): ritmos por estilo que se escriben en una pista.
+    #[cfg(feature = "pro")]
+    drummer: pro::drummer::Drummer,
     /// Proyecto tal como se abrió o guardó por última vez (para saber si hay algo sin guardar al cerrar).
     foto_guardada: Option<serde_json::Value>,
     /// Aviso al cerrar con cambios: nombre del proyecto en edición y el error del último intento.
@@ -852,6 +858,9 @@ impl App {
             lib_buscar: String::new(),
             lib_filtro: 0,
             enfocar_ventana: None,
+            monitor_auto: vec![],
+            #[cfg(feature = "pro")]
+            drummer: Default::default(),
             foto_guardada: None,
             cerrar: None,
             cerrar_ok: false,
@@ -1333,6 +1342,18 @@ impl App {
         }
     }
 
+    /// ¿Incluye esta compilación QUANTUM Drummer Pro?
+    fn drummer_disponible() -> bool {
+        cfg!(feature = "pro")
+    }
+
+    /// Abre QUANTUM Drummer (con la pista de batería indicada, si hay).
+    #[cfg_attr(not(feature = "pro"), allow(unused_variables))]
+    fn abrir_drummer(&mut self, pista: Option<usize>) {
+        #[cfg(feature = "pro")]
+        self.abrir_drummer_en(pista);
+    }
+
     /// ¿Admite efectos la pista? (todas menos las de video)
     fn admite_efectos(&self, i: usize) -> bool {
         self.s.tracks.get(i).is_some_and(|t| t.kind != TrackKind::Video)
@@ -1429,7 +1450,8 @@ impl App {
                     (None, None) => t.clips.clone(),
                 },
                 fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
-                synth: if proxy.is_some() { None } else { t.synth.clone() },
+                // Con un instrumento real (batería, piano…) no suena el sintetizador, ni mientras se carga.
+                synth: if proxy.is_some() || instruments::find(&t.instrument).is_some() { None } else { t.synth.clone() },
                 sampler: if proxy.is_some() { None } else { t.sampler.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),
                 vol_auto: t.vol_auto.clone(),
@@ -1857,8 +1879,24 @@ impl App {
     fn open_roll(&mut self, i: usize, j: usize) {
         self.roll.open(i, j);
         (self.show_mixer, self.bottom_tab) = (true, 1);
-        // El teclado del piano roll y los controladores MIDI suenan en esta pista.
-        self.s.tracks[i].params.monitor.store(true, Relaxed);
+        // El teclado del piano roll y los controladores MIDI suenan en esta pista (solo en esta).
+        self.escuchar_en(i);
+    }
+
+    /// El teclado y los controladores MIDI pasan a sonar en la pista `i`: se apaga el monitoreo que la
+    /// app había encendido en otras pistas (si no, al tocar sonaban también sus instrumentos).
+    fn escuchar_en(&mut self, i: usize) {
+        let Some(id) = self.s.tracks.get(i).map(|t| t.id) else { return };
+        for t in self.s.tracks.iter().filter(|t| t.id != id && self.monitor_auto.contains(&t.id)) {
+            t.params.monitor.store(false, Relaxed);
+        }
+        self.monitor_auto.retain(|&x| x == id);
+        let p = &self.s.tracks[i].params;
+        if !p.monitor.load(Relaxed) {
+            p.monitor.store(true, Relaxed);
+            self.monitor_auto.push(id);
+        }
+        self.dirty = true;
     }
 
     /// Lápiz: escribe un punto y borra los que quedan entre el trazo anterior y este.
@@ -2414,6 +2452,8 @@ impl eframe::App for App {
         self.floating_windows(&ctx);
         self.fx_window(&ctx);
         self.ventana_licencias(&ctx);
+        #[cfg(feature = "pro")]
+        self.ventana_drummer(&ctx);
         self.dialogo_cerrar(&ctx);
         self.route_window(&ctx);
         self.dialogs(&ctx);
