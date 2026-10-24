@@ -26,6 +26,15 @@ struct Zone {
     release: f32,
     gain: f32,
     veltrack: f32,
+    /// Panorama (-1 izquierda, 1 derecha).
+    pan: f32,
+    /// Caída hasta el silencio en segundos (0 = el sonido natural de la muestra).
+    decay: f32,
+    /// Suena entera aunque la nota termine antes (golpes de batería).
+    one_shot: bool,
+    /// Grupo de corte: una nota de un grupo apaga las voces cuyo `off_by` es ese grupo (hi-hat).
+    group: u32,
+    off_by: u32,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -43,6 +52,9 @@ struct Voice {
     /// Ataque propio de la nota: coeficiente por muestra (1 = inmediato).
     att: f32,
     attacking: bool,
+    /// Caída por muestra (1 = sin caída) y ganancias de panorama.
+    dec: f32,
+    lr: [f32; 2],
 }
 
 #[derive(Default)]
@@ -182,6 +194,11 @@ impl Sampler {
                 release: num("ampeg_release", 0.05).clamp(0.01, 10.0),
                 gain: 10f32.powf(num("volume", 0.0) / 20.0),
                 veltrack: num("amp_veltrack", 100.0) / 100.0,
+                pan: (num("pan", 0.0) / 100.0).clamp(-1.0, 1.0),
+                decay: num("ampeg_decay", 0.0).max(0.0),
+                one_shot: r.get("loop_mode").is_some_and(|m| m == "one_shot"),
+                group: num("group", 0.0) as u32,
+                off_by: num("off_by", 0.0) as u32,
             });
         }
         anyhow::ensure!(!zones.is_empty(), "el instrumento no tiene muestras");
@@ -220,15 +237,15 @@ impl Sampler {
                         (v.env, v.attacking) = (1.0, false);
                     }
                 }
-                if v.releasing {
-                    v.env *= v.rel;
+                if v.releasing || v.dec < 1.0 {
+                    v.env *= if v.releasing { v.rel } else { v.dec };
                     if v.env < 1e-4 {
                         v.active = false;
                         continue;
                     }
                 }
                 let gain = v.gain * v.env * g;
-                *o = [o[0] + s(0) * gain, o[1] + s(1) * gain];
+                *o = [o[0] + s(0) * gain * v.lr[0], o[1] + s(1) * gain * v.lr[1]];
                 v.pos += v.step;
                 if let Some((ls, le)) = z.looped.filter(|(_, le)| v.pos >= *le as f64) {
                     v.pos -= (le - ls) as f64;
@@ -253,6 +270,13 @@ impl Sampler {
                     .or_else(|| self.zones.iter().position(|z| (z.lokey..=z.hikey).contains(&e[1])));
                 let Some(zone) = zone else { return };
                 let z = &self.zones[zone];
+                // Grupo de corte: el hi-hat cerrado apaga al abierto (con un fundido muy corto).
+                if z.group > 0 {
+                    let rapido = (-1.0 / (0.004 * sr)).exp();
+                    for v in st.voices.iter_mut().filter(|v| v.active && self.zones[v.zone].off_by == z.group) {
+                        (v.releasing, v.rel) = (true, rapido);
+                    }
+                }
                 let slot = (0..VOICES).find(|&i| !st.voices[i].active).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| st.voices[i].age).unwrap_or(0));
                 let vel_gain = (1.0 - z.veltrack) + z.veltrack * (vel as f32 / 127.0).powi(2);
                 let nota_gain = st.cc_gain.take().map_or(1.0, crate::ganancia_nota);
@@ -270,13 +294,70 @@ impl Sampler {
                     attacking: ataque > 0.0,
                     rel: (-1.0 / (z.release * sr)).exp(),
                     age: st.clock,
+                    // Caída: -40 dB al cabo de `decay` segundos.
+                    dec: if z.decay > 0.0 { (-4.6 / (z.decay * sr)).exp() } else { 1.0 },
+                    lr: [(1.0 - z.pan).min(1.0), (1.0 + z.pan).min(1.0)],
                 };
             }
-            (0x80 | 0x90, _) => st.voices.iter_mut().filter(|v| v.active && v.key == e[1]).for_each(|v| v.releasing = true),
+            (0x80 | 0x90, _) => st.voices.iter_mut().filter(|v| v.active && v.key == e[1] && !self.zones[v.zone].one_shot).for_each(|v| v.releasing = true),
             (0xB0, _) if e[1] == crate::CC_GANANCIA => st.cc_gain = Some(e[2]),
             (0xB0, _) if e[1] == crate::CC_ATAQUE => st.cc_attack = Some(e[2]),
             (0xB0, _) if e[1] >= 120 => st.voices.iter_mut().for_each(|v| v.releasing = true),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas_bateria {
+    use super::*;
+
+    /// WAV de 16 bits mono con un tono constante (para probar el sampler sin archivos externos).
+    fn wav(ruta: &Path, n: usize) {
+        let mut b: Vec<u8> = vec![];
+        let datos = (n * 2) as u32;
+        b.extend(b"RIFF");
+        b.extend((36 + datos).to_le_bytes());
+        b.extend(b"WAVEfmt ");
+        b.extend(16u32.to_le_bytes());
+        b.extend(1u16.to_le_bytes());
+        b.extend(1u16.to_le_bytes());
+        b.extend(48_000u32.to_le_bytes());
+        b.extend(96_000u32.to_le_bytes());
+        b.extend(2u16.to_le_bytes());
+        b.extend(16u16.to_le_bytes());
+        b.extend(b"data");
+        b.extend(datos.to_le_bytes());
+        for i in 0..n {
+            b.extend((((i as f32 * 0.05).sin() * 16_000.0) as i16).to_le_bytes());
+        }
+        std::fs::write(ruta, b).unwrap();
+    }
+
+    fn pico(s: &Sampler, ev: &[(usize, MidiEvent)]) -> f32 {
+        let mut out = vec![[0f32; 2]; 4800];
+        s.render(&mut out, ev, 48_000.0, true, 0, true);
+        out.iter().map(|x| x[0].abs().max(x[1].abs())).fold(0.0, f32::max)
+    }
+
+    #[test]
+    fn golpe_entero_y_corte_del_hihat() {
+        let dir = std::env::temp_dir().join(format!("qdaw-sampler-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        wav(&dir.join("a.wav"), 48_000);
+        std::fs::write(dir.join("k.sfz"), "<global> loop_mode=one_shot\n<group> key=42 group=2\n<region> sample=a.wav\n<group> key=46 group=1 off_by=2 pan=-100\n<region> sample=a.wav\n").unwrap();
+        let s = Sampler::load(&dir.join("k.sfz"), 48_000).unwrap();
+        // Hi-hat abierto (todo a la izquierda): soltar la nota no lo corta.
+        let mut out = vec![[0f32; 2]; 4800];
+        s.render(&mut out, &[(0, [0x90, 46, 120]), (10, [0x80, 46, 0])], 48_000.0, true, 0, true);
+        assert!(out[4000][1].abs() < 1e-6, "panorama a la izquierda");
+        assert!(pico(&s, &[]) > 0.1, "one shot: sigue sonando");
+        // El cerrado corta al abierto.
+        s.render(&mut vec![[0f32; 2]; 4800], &[(0, [0x90, 42, 1])], 48_000.0, true, 0, true);
+        let mut out = vec![[0f32; 2]; 4800];
+        s.render(&mut out, &[], 48_000.0, true, 0, true);
+        let izquierda = out.iter().map(|x| x[0].abs() - x[1].abs()).fold(0.0, f32::max);
+        assert!(izquierda < 0.01, "el hi-hat abierto se cortó: {izquierda}");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

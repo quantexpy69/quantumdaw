@@ -138,6 +138,16 @@ impl KitEditor {
 }
 
 impl App {
+    /// Vuelve a cargar un kit propio en las pistas que lo usan (tras cambiar sus ajustes).
+    #[cfg_attr(not(feature = "pro"), allow(dead_code))]
+    pub fn recargar_kit(&mut self, id: &str) {
+        let Some(sid) = instruments::id_estatico(id) else { return };
+        let usan: Vec<usize> = (0..self.s.tracks.len()).filter(|&j| self.s.tracks[j].instrument == id).collect();
+        for j in usan {
+            self.set_instrument(j, sid);
+        }
+    }
+
     #[cfg_attr(not(feature = "pro"), allow(dead_code))]
     /// Abre el creador con un kit ya guardado: su carpeta, su nombre y los sonidos que tenía.
     pub fn editar_kit(&mut self, id: &str) {
@@ -146,9 +156,9 @@ impl App {
         if let Some(c) = datos["carpeta"].as_str() {
             k.cargar(PathBuf::from(c));
         }
-        for p in datos["piezas"].as_array().into_iter().flatten() {
-            let (Some(nota), Some(m)) = (p["nota"].as_u64(), p["muestra"].as_str()) else { continue };
-            if let (Some(pi), Some(ai)) = (PIEZAS.iter().position(|x| x.1 as u64 == nota), k.archivos.iter().position(|a| a == Path::new(m))) {
+        for p in instruments::leer_kit(id).map(|k| k.piezas).unwrap_or_default() {
+            let Some(m) = p.muestras.first() else { continue };
+            if let (Some(pi), Some(ai)) = (PIEZAS.iter().position(|x| x.1 == p.nota), k.archivos.iter().position(|a| a == m)) {
                 k.eleccion[pi] = Some(ai);
             }
         }
@@ -250,9 +260,24 @@ impl App {
             let pista = self.s.tracks.iter().position(|t| t.selected && t.midi());
             ui.horizontal(|ui| {
                 let guardar = |usar: bool, k: &mut KitEditor, app: &mut App| {
-                    let piezas: Vec<(&str, u8, PathBuf)> = PIEZAS.iter().enumerate().filter_map(|(p, (n, nota, _))| Some((*n, *nota, k.archivos.get(k.eleccion[p]?)?.clone()))).collect();
-                    let carpeta = k.carpeta.clone().unwrap_or_default();
-                    match instruments::guardar_kit(k.nombre.trim(), &carpeta, &piezas) {
+                    // Se conservan los ajustes que ya tenía el kit (volumen, afinación…) de cada pieza.
+                    let base = format!("kit-{}", k.nombre.trim().to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-'));
+                    let previo = instruments::leer_kit(&base).unwrap_or_default();
+                    let piezas: Vec<instruments::PiezaKit> = PIEZAS
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(p, (n, nota, _))| {
+                            let muestra = k.archivos.get(k.eleccion[p]?)?.clone();
+                            let mut pieza = previo.piezas.iter().find(|x| x.nota == *nota).cloned().unwrap_or_default();
+                            (pieza.pieza, pieza.nota) = (n.to_string(), *nota);
+                            if !pieza.muestras.contains(&muestra) {
+                                pieza.muestras = vec![muestra];
+                            }
+                            Some(pieza)
+                        })
+                        .collect();
+                    let kit = instruments::Kit { nombre: k.nombre.trim().to_string(), carpeta: k.carpeta.clone().unwrap_or_default(), piezas };
+                    match instruments::guardar_kit(None, &kit) {
                         Ok(id) => {
                             // Las pistas que ya usaban este kit lo vuelven a cargar con los cambios.
                             let usan: Vec<usize> = (0..app.s.tracks.len()).filter(|&j| app.s.tracks[j].instrument == id).collect();

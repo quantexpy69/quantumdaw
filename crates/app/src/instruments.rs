@@ -182,20 +182,105 @@ pub fn id_estatico(id: &str) -> Option<&'static str> {
     Some(s)
 }
 
-/// Guarda un kit propio: (nombre de la pieza, nota General MIDI, muestra) por pieza. Devuelve su id.
-pub fn guardar_kit(nombre: &str, carpeta: &Path, piezas: &[(&str, u8, PathBuf)]) -> anyhow::Result<String> {
-    let base: String = nombre.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
-    let id = format!("kit-{}", base.trim_matches('-'));
+/// Una pieza de un kit propio con sus ajustes (los edita Q Drums).
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct PiezaKit {
+    pub pieza: String,
+    pub nota: u8,
+    /// Muestras de la pieza: con varias, cada golpe elige una al azar (suena más natural).
+    pub muestras: Vec<PathBuf>,
+    /// Kits anteriores guardaban una sola muestra.
+    #[serde(skip_serializing)]
+    pub muestra: Option<PathBuf>,
+    /// Volumen (dB), afinación (semitonos), panorama (-100 a 100), caída (s; 0 = natural) y
+    /// sensibilidad a la fuerza del golpe (0 a 100).
+    pub vol: f32,
+    pub afinar: f32,
+    pub pan: f32,
+    pub caida: f32,
+    pub sensibilidad: f32,
+    pub silenciada: bool,
+    pub solo: bool,
+}
+
+impl Default for PiezaKit {
+    fn default() -> Self {
+        Self { pieza: String::new(), nota: 36, muestras: vec![], muestra: None, vol: 0.0, afinar: 0.0, pan: 0.0, caida: 0.0, sensibilidad: 70.0, silenciada: false, solo: false }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default, Debug)]
+#[serde(default)]
+pub struct Kit {
+    pub nombre: String,
+    pub carpeta: PathBuf,
+    pub piezas: Vec<PiezaKit>,
+}
+
+/// Lee un kit propio (con sus ajustes).
+pub fn leer_kit(id: &str) -> Option<Kit> {
+    let mut k: Kit = serde_json::from_str(&fs::read_to_string(dir(id).join("kit.json")).ok()?).ok()?;
+    for p in k.piezas.iter_mut() {
+        if p.muestras.is_empty()
+            && let Some(m) = p.muestra.take()
+        {
+            p.muestras.push(m);
+        }
+    }
+    Some(k)
+}
+
+/// SFZ de un kit: una zona por pieza (las muestras se alternan al azar), golpes enteros, ajustes
+/// por pieza y el hi-hat cerrado o de pie que corta al abierto.
+fn sfz_kit(k: &Kit) -> String {
+    let mut sfz = format!("// Kit propio creado por QUANTUM desde {}\n<global>\n loop_mode=one_shot\n ampeg_release=0.08\n", k.carpeta.display());
+    let hay_solo = k.piezas.iter().any(|p| p.solo);
+    for p in &k.piezas {
+        if p.muestras.is_empty() || p.silenciada || (hay_solo && !p.solo) {
+            continue;
+        }
+        let corte = match p.nota {
+            42 | 44 => " group=2",
+            46 => " group=1 off_by=2",
+            _ => "",
+        };
+        let caida = if p.caida > 0.0 { format!(" ampeg_decay={:.3}", p.caida) } else { String::new() };
+        sfz += &format!("// {}\n<group> key={} volume={:.2} tune={:.0} pan={:.0} amp_veltrack={:.0}{caida}{corte}\n", p.pieza, p.nota, p.vol, p.afinar * 100.0, p.pan, p.sensibilidad);
+        let n = p.muestras.len();
+        for (j, m) in p.muestras.iter().enumerate() {
+            let (a, b) = (j as f32 / n as f32, (j + 1) as f32 / n as f32);
+            sfz += &format!("<region> lorand={a:.4} hirand={b:.4} sample={}\n", m.display());
+        }
+    }
+    sfz
+}
+
+/// Rehace el SFZ de los kits creados con versiones anteriores (golpes enteros, corte del hi-hat).
+pub fn actualizar_kits() {
+    for (id, _) in kits() {
+        let viejo = fs::read_to_string(dir(&id).join("kit.sfz")).is_ok_and(|s| !s.contains("loop_mode=one_shot"));
+        if viejo && let Some(k) = leer_kit(&id) {
+            let _ = guardar_kit(Some(&id), &k);
+        }
+    }
+}
+
+/// Guarda un kit propio (nuevo o el mismo id) y devuelve su id.
+pub fn guardar_kit(id: Option<&str>, k: &Kit) -> anyhow::Result<String> {
+    let id = match id {
+        Some(id) => id.to_string(),
+        None => {
+            let base: String = k.nombre.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
+            format!("kit-{}", base.trim_matches('-'))
+        }
+    };
     anyhow::ensure!(id.len() > 4, "el kit necesita un nombre");
-    anyhow::ensure!(!piezas.is_empty(), "elige al menos un sonido");
+    anyhow::ensure!(k.piezas.iter().any(|p| !p.muestras.is_empty()), "elige al menos un sonido");
     let d = dir(&id);
     fs::create_dir_all(&d)?;
-    let mut sfz = format!("// Kit propio creado por QUANTUM desde {}\n<global>\n amp_veltrack=70\n ampeg_release=0.4\n", carpeta.display());
-    for (pieza, nota, muestra) in piezas {
-        sfz += &format!("// {pieza}\n<group> key={nota}\n<region> sample={}\n", muestra.display());
-    }
-    fs::write(d.join("kit.sfz"), sfz)?;
-    fs::write(d.join("kit.json"), serde_json::json!({ "nombre": nombre, "carpeta": carpeta, "piezas": piezas.iter().map(|p| serde_json::json!({ "pieza": p.0, "nota": p.1, "muestra": p.2 })).collect::<Vec<_>>() }).to_string())?;
+    fs::write(d.join("kit.sfz"), sfz_kit(k))?;
+    fs::write(d.join("kit.json"), serde_json::to_string_pretty(k)?)?;
     fs::write(d.join(".listo"), "")?;
     Ok(id)
 }

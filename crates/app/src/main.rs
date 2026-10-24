@@ -882,6 +882,7 @@ impl App {
         #[cfg(feature = "pro")]
         pro::registrar();
         app.aplicar_licencias();
+        instruments::actualizar_kits();
         app.apply_project(p);
         Ok(app)
     }
