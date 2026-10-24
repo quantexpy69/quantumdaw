@@ -22,12 +22,14 @@ impl App {
         false
     }
 
-    /// Orden de proceso: cada canal antes que los canales a los que envía (orden topológico).
-    /// Pistas que dependen de la pista `i`: los destinos de sus envíos y las que la usan como sidechain.
+    /// Pistas que dependen de la pista `i`: los destinos de sus envíos, las que la usan como sidechain
+    /// y sus canales de batería.
     fn dependientes(&self, i: usize) -> Vec<usize> {
         let id = self.s.tracks[i].id;
         let mut v: Vec<usize> = self.s.tracks[i].sends.iter().filter_map(|s| self.index_of(s.0)).collect();
         v.extend((0..self.s.tracks.len()).filter(|&j| j != i && self.s.tracks[j].fx.iter().any(|f| f.sidechain.load(Relaxed) == id)));
+        // Los canales de una batería se procesan después de la pista que los alimenta.
+        v.extend((0..self.s.tracks.len()).filter(|&j| j != i && self.s.tracks[j].bateria.as_ref().is_some_and(|b| b.0 == id)));
         v
     }
 

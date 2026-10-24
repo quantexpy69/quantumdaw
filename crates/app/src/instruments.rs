@@ -249,16 +249,37 @@ pub fn leer_kit(id: &str) -> Option<Kit> {
     Some(k)
 }
 
+/// Articulaciones que un kit puede no traer y la pieza con que suenan entonces: (nota, nombre, pieza
+/// de origen, volumen en dB, afinación en cents y opcodes extra).
+const RESPALDOS: [(u8, &str, u8, f32, f32, &str); 12] = [
+    (40, "Caja (borde)", 38, 3.0, 100.0, ""),
+    (37, "Aro", 38, -10.0, 500.0, " ampeg_decay=0.25"),
+    (44, "Hi-hat de pie", 42, -6.0, 0.0, ""),
+    (53, "Campana del ride", 51, 2.0, 300.0, ""),
+    (59, "Ride 2", 51, 0.0, -100.0, ""),
+    (52, "China", 49, 0.0, -200.0, ""),
+    (55, "Splash", 49, -3.0, 500.0, " ampeg_decay=0.9"),
+    (57, "Crash 2", 49, 0.0, -150.0, ""),
+    (35, "Bombo 2", 36, 0.0, 0.0, ""),
+    (48, "Tom alto 2", 50, 0.0, -100.0, ""),
+    (45, "Tom medio 2", 47, 0.0, -100.0, ""),
+    (41, "Tom de piso 2", 43, 0.0, -150.0, ""),
+];
+
+/// Versión del SFZ que se genera (los kits con otra se rehacen al abrir QUANTUM).
+const VERSION_SFZ: &str = "(v2)";
+/// Margen de los kits: las muestras suelen venir normalizadas a 0 dB y varios golpes juntos saturan.
+const MARGEN_DB: f32 = 6.0;
+
 /// SFZ de un kit: una zona por pieza (las muestras se alternan al azar), golpes enteros, ajustes
-/// por pieza y el hi-hat cerrado o de pie que corta al abierto.
+/// por pieza, el hi-hat cerrado o de pie que corta al abierto y las articulaciones que falten
+/// (borde de la caja, campana del ride, platillos extra…) con la pieza más parecida.
 fn sfz_kit(k: &Kit) -> String {
-    let mut sfz = format!("// Kit propio creado por QUANTUM desde {}\n<global>\n loop_mode=one_shot\n ampeg_release=0.08\n", k.carpeta.display());
+    let mut sfz = format!("// Kit propio creado por QUANTUM {VERSION_SFZ} desde {}\n<global>\n loop_mode=one_shot\n ampeg_release=0.08\n", k.carpeta.display());
     let hay_solo = k.piezas.iter().any(|p| p.solo);
-    for p in &k.piezas {
-        if p.muestras.is_empty() || p.silenciada || (hay_solo && !p.solo) {
-            continue;
-        }
-        let corte = match p.nota {
+    let suena = |p: &&PiezaKit| !p.muestras.is_empty() && !p.silenciada && (!hay_solo || p.solo);
+    let grupo = |p: &PiezaKit, nota: u8, nombre: &str, vol: f32, cents: f32, extra: &str| {
+        let corte = match nota {
             42 | 44 => " group=2",
             46 => " group=1 off_by=2",
             _ => "",
@@ -271,20 +292,33 @@ fn sfz_kit(k: &Kit) -> String {
         } else {
             String::new()
         };
-        sfz += &format!("// {}\n<group> key={} volume={:.2} tune={:.0} pan={:.0} amp_veltrack={:.0}{caida}{corte}{curva}\n", p.pieza, p.nota, p.vol, p.afinar * 100.0, p.pan, p.sensibilidad);
+        let mut g = format!("// {nombre}\n<group> key={nota} volume={:.2} tune={:.0} pan={:.0} amp_veltrack={:.0}{caida}{corte}{curva}{extra}\n", p.vol + vol - MARGEN_DB, p.afinar * 100.0 + cents, p.pan, p.sensibilidad);
         let n = p.muestras.len();
         for (j, m) in p.muestras.iter().enumerate() {
             let (a, b) = (j as f32 / n as f32, (j + 1) as f32 / n as f32);
-            sfz += &format!("<region> lorand={a:.4} hirand={b:.4} sample={}\n", m.display());
+            g += &format!("<region> lorand={a:.4} hirand={b:.4} sample={}\n", m.display());
+        }
+        g
+    };
+    for p in k.piezas.iter().filter(suena) {
+        sfz += &grupo(p, p.nota, &p.pieza, 0.0, 0.0, "");
+    }
+    for &(nota, nombre, de, vol, cents, extra) in &RESPALDOS {
+        if k.piezas.iter().any(|p| p.nota == nota && !p.muestras.is_empty()) {
+            continue;
+        }
+        if let Some(p) = k.piezas.iter().filter(suena).find(|p| p.nota == de) {
+            sfz += &grupo(p, nota, nombre, vol, cents, extra);
         }
     }
     sfz
 }
 
-/// Rehace el SFZ de los kits creados con versiones anteriores (golpes enteros, corte del hi-hat).
+/// Rehace el SFZ de los kits creados con versiones anteriores (golpes enteros, corte del hi-hat,
+/// articulaciones de respaldo).
 pub fn actualizar_kits() {
     for (id, _) in kits() {
-        let viejo = fs::read_to_string(dir(&id).join("kit.sfz")).is_ok_and(|s| !s.contains("loop_mode=one_shot"));
+        let viejo = fs::read_to_string(dir(&id).join("kit.sfz")).is_ok_and(|s| !s.contains(VERSION_SFZ));
         if viejo && let Some(k) = leer_kit(&id) {
             let _ = guardar_kit(Some(&id), &k);
         }
@@ -527,5 +561,19 @@ mod tests {
         assert!(sfz.contains("lokey=48 hikey=62 pitch_keycenter=60 lovel=0 hivel=63"));
         let kit = super::generate_sfz(&[("P/Bongos".into(), "P/Bongos/BongoH_Hit1_v1_rr1_Mid.wav".into())]);
         assert!(kit.contains("// Bongos BongoH Hit1\n<group> key=48"));
+    }
+
+    #[test]
+    fn kit_con_articulaciones_de_respaldo() {
+        use super::{Kit, PiezaKit};
+        let pieza = |nombre: &str, nota: u8| PiezaKit { pieza: nombre.into(), nota, muestras: vec![format!("/m/{nota}.wav").into()], ..Default::default() };
+        let k = Kit { nombre: "x".into(), carpeta: "/m".into(), piezas: vec![pieza("Caja", 38), pieza("Ride", 51), pieza("Hi-hat cerrado", 42)] };
+        let sfz = super::sfz_kit(&k);
+        // El borde de la caja suena con la caja (más fuerte y brillante) y la campana con el ride.
+        assert!(sfz.contains("// Caja (borde)\n<group> key=40 volume=-3.00 tune=100"));
+        assert!(sfz.contains("// Campana del ride\n<group> key=53"));
+        // El hi-hat de pie corta al abierto como el cerrado; sin crash no hay platillos de respaldo.
+        assert!(sfz.contains("key=44 volume=-12.00 tune=0 pan=0 amp_veltrack=70 group=2"));
+        assert!(!sfz.contains("key=55"));
     }
 }

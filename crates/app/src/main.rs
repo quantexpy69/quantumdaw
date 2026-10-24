@@ -438,6 +438,10 @@ struct Track {
     write_last: Option<u64>,
     /// Proxy: audio pre-renderizado (instrumento + efectos) y la firma del contenido que representa.
     proxy: Option<(Arc<AudioBuf>, u64)>,
+    /// Canal de una batería: la pista MIDI (id) que lo alimenta y las notas (piezas) que recibe.
+    bateria: Option<(u64, Vec<u8>)>,
+    /// Instrumento congelado: no se calcula (sus canales suenan desde el audio ya generado).
+    congelada: bool,
 }
 
 pub const TRACK_H: f32 = 100.0;
@@ -478,6 +482,8 @@ impl Track {
             latched: false,
             write_last: None,
             proxy: None,
+            bateria: None,
+            congelada: false,
         }
     }
     fn auto_mut(&mut self) -> &mut Vec<(u64, f32)> {
@@ -711,6 +717,8 @@ struct App {
     /// Pistas que la app puso a escuchar el teclado (piano roll, patrón, partitura…), para apagarlas
     /// al pasar a otra; el monitoreo que activa el usuario no se toca.
     monitor_auto: Vec<u64>,
+    /// Una ventana (Q Drums) usa la barra espaciadora para su propio transporte.
+    espacio_propio: bool,
     /// Creador de kits de batería propios (desde una carpeta de muestras).
     kit_editor: Option<kits::KitEditor>,
     /// QUANTUM Drummer Pro (módulo privado): ritmos por estilo que se escriben en una pista.
@@ -865,6 +873,7 @@ impl App {
             enfocar_ventana: None,
             recrear_ventana: None,
             monitor_auto: vec![],
+            espacio_propio: false,
             kit_editor: None,
             #[cfg(feature = "pro")]
             drummer: Default::default(),
@@ -955,7 +964,7 @@ impl App {
             pr.pan.set(ts.pan);
             pr.mute.store(ts.mute, Relaxed);
             pr.invert.store(ts.invert, Relaxed);
-            t.auto_mode = ts.auto_mode.min(4);
+            (t.auto_mode, t.congelada) = (ts.auto_mode.min(4), ts.congelada);
             if !ts.proxy_file.is_empty()
                 && let Ok(frames) = engine::decode(&self.dir.join(&ts.proxy_file), e.sample_rate)
             {
@@ -1016,6 +1025,7 @@ impl App {
         let ids: Vec<u64> = tracks.iter().map(|t| t.id).collect();
         for (t, ts) in tracks.iter_mut().zip(&p.tracks) {
             t.sends = ts.sends.iter().filter_map(|&(j, g)| Some((*ids.get(j)?, g))).collect();
+            t.bateria = ts.bateria_de.and_then(|j| Some((*ids.get(j)?, ts.bateria_notas.clone())));
             for (fx, fs) in t.fx.iter().zip(&ts.fx) {
                 fx.sidechain.store(fs.sidechain.and_then(|j| ids.get(j).copied()).unwrap_or(0), Relaxed);
             }
@@ -1062,7 +1072,10 @@ impl App {
             let mut ts = TrackState::new(t.name.clone(), t.kind, rgb3(t.color));
             ts.sends = t.sends.iter().filter_map(|&(id, g)| Some((index(id)?, g))).collect();
             (ts.no_master, ts.show_takes, ts.invert) = (!t.to_master, t.show_takes, t.params.invert.load(Relaxed));
-            ts.auto_mode = t.auto_mode;
+            (ts.auto_mode, ts.congelada) = (t.auto_mode, t.congelada);
+            if let Some((de, notas)) = &t.bateria {
+                (ts.bateria_de, ts.bateria_notas) = (index(*de), notas.clone());
+            }
             if let Some((b, firma)) = &t.proxy {
                 (ts.proxy_file, ts.proxy_firma) = (b.file.clone(), *firma);
             }
@@ -1489,6 +1502,22 @@ impl App {
             // Un clip lanzado desde el escenario reemplaza al arreglo de la pista (en bucle).
             let lanzado = t.lanzado.and_then(|(k, inicio)| Some((t.escenario.get(k)?.clone()?, inicio)));
             let proxy = t.proxy.as_ref().filter(|p| lanzado.is_none() && self.config.proxies && !self.render_vivo && !en_vivo && p.1 == proxies::firma(t, self.engine.sample_rate));
+            // Multisalida de una batería: las piezas de cada canal suenan en su pista.
+            let canales: Vec<(usize, &Vec<u8>)> = order
+                .iter()
+                .filter_map(|&j| {
+                    let (de, notas) = self.s.tracks[j].bateria.as_ref()?;
+                    (*de == t.id).then_some((slot(self.s.tracks[j].id)?, notas))
+                })
+                .collect();
+            let salidas = (!canales.is_empty()).then(|| {
+                let mut ruta = [0u8; 128];
+                for (k, (_, notas)) in canales.iter().enumerate() {
+                    notas.iter().for_each(|&n| ruta[n as usize & 127] = (k + 1).min(255) as u8);
+                }
+                engine::Salidas::new(ruta, canales.iter().map(|c| c.0).collect())
+            });
+            let congelada = t.congelada || proxy.is_some();
             Node {
                 params: t.params.clone(),
                 clips: match (&lanzado, proxy) {
@@ -1498,8 +1527,8 @@ impl App {
                 },
                 fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
                 // Con un instrumento real (batería, piano…) no suena el sintetizador, ni mientras se carga.
-                synth: if proxy.is_some() || instruments::es_real(&t.instrument) { None } else { t.synth.clone() },
-                sampler: if proxy.is_some() { None } else { t.sampler.clone() },
+                synth: if congelada || instruments::es_real(&t.instrument) { None } else { t.synth.clone() },
+                sampler: if congelada { None } else { t.sampler.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),
                 vol_auto: t.vol_auto.clone(),
                 pan_auto: t.pan_auto.clone(),
@@ -1509,6 +1538,7 @@ impl App {
                 click: t.kind == TrackKind::Click,
                 recv: Node::recv_buffer(),
                 salida: Node::recv_buffer(),
+                salidas,
             }
         });
         let graph: Vec<Node> = graph.collect();
@@ -2046,7 +2076,14 @@ impl App {
     fn flag_targets(&self, i: usize, k: usize) -> Vec<usize> {
         match (self.s.tracks[i].selected, k) {
             (true, _) => (0..self.s.tracks.len()).filter(|&j| self.s.tracks[j].selected).collect(),
-            (false, 1 | 2) => self.group_members(i),
+            // Mute y solo de una batería con canales separados también los mueven a ellos.
+            (false, 1 | 2) => {
+                let id = self.s.tracks[i].id;
+                let mut v = self.group_members(i);
+                let canales: Vec<usize> = (0..self.s.tracks.len()).filter(|&j| self.s.tracks[j].bateria.as_ref().is_some_and(|b| b.0 == id) && !v.contains(&j)).collect();
+                v.extend(canales);
+                v
+            }
             _ => vec![i],
         }
     }

@@ -19,7 +19,7 @@ fn icono_ventana() -> Option<Arc<egui::IconData>> {
 }
 
 impl App {
-    fn separada(&self, id: &str) -> bool {
+    pub(crate) fn separada(&self, id: &str) -> bool {
         !driver_inestable() && self.config.separadas.iter().any(|s| s == id)
     }
 

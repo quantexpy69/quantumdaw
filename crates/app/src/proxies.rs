@@ -32,7 +32,7 @@ pub fn firma(t: &Track, rate: u32) -> u64 {
 
 /// Pistas que vale la pena pasar a proxy: con instrumento (MIDI) o con efectos, y con regiones.
 pub fn pesada(t: &Track) -> bool {
-    !t.clips.is_empty() && (t.midi() || !t.fx.is_empty()) && t.kind != TrackKind::Video
+    !t.clips.is_empty() && (t.midi() || !t.fx.is_empty()) && t.kind != TrackKind::Video && !t.congelada
 }
 
 impl App {
@@ -121,5 +121,61 @@ impl App {
         self.pin_video();
         self.dirty = true;
         Ok(())
+    }
+
+    /// Pistas de la batería separada en canales que alimenta la pista `i`: sus canales (con piezas) y
+    /// sus buses de sala y master (sin piezas).
+    pub fn canales_de(&self, i: usize) -> Vec<usize> {
+        let id = self.s.tracks[i].id;
+        (0..self.s.tracks.len()).filter(|&j| self.s.tracks[j].bateria.as_ref().is_some_and(|b| b.0 == id)).collect()
+    }
+
+    /// Solo los canales con piezas (sin los buses).
+    pub fn canales_con_piezas(&self, i: usize) -> Vec<usize> {
+        self.canales_de(i).into_iter().filter(|&j| self.s.tracks[j].bateria.as_ref().is_some_and(|b| !b.1.is_empty())).collect()
+    }
+
+    /// Congela una batería con canales separados: cada canal recibe el audio de sus piezas (antes de
+    /// sus efectos, que siguen en vivo) y el instrumento deja de calcularse. Sin canales, la pista
+    /// MIDI se convierte en audio.
+    pub fn congelar(&mut self, i: usize) -> anyhow::Result<()> {
+        let canales = self.canales_con_piezas(i);
+        if canales.is_empty() {
+            return self.midi_a_audio(i);
+        }
+        anyhow::ensure!(!self.s.tracks[i].clips.is_empty(), "la pista no tiene regiones MIDI");
+        self.stop();
+        self.edit();
+        (self.render_vivo, self.dirty) = (true, true);
+        self.sync();
+        let fin = self.fin_con_cola(i);
+        let mut audios = vec![];
+        for &j in &canales {
+            let params = self.s.tracks[j].params.clone();
+            let frames: Vec<[f32; 2]> = self.engine.bounce_prefx(0, fin, &params).chunks(2).map(|c| [c[0], c[1]]).collect();
+            audios.push((j, frames));
+        }
+        self.render_vivo = false;
+        // Los canales sin golpes (por ejemplo percusión que no se tocó) quedan sin audio.
+        for (j, frames) in audios {
+            self.s.tracks[j].clips.clear();
+            if engine::peak(&frames) > 1e-5 {
+                let buf = self.write_audio(&format!("{}.wav", self.s.tracks[j].name), "audio", frames)?;
+                self.s.tracks[j].clips.push(Clip::audio(buf, 0));
+            }
+        }
+        self.s.tracks[i].congelada = true;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Vuelve a calcular el instrumento en vivo y quita el audio congelado de sus canales.
+    pub fn descongelar(&mut self, i: usize) {
+        self.edit();
+        for j in self.canales_con_piezas(i) {
+            self.s.tracks[j].clips.clear();
+        }
+        self.s.tracks[i].congelada = false;
+        self.dirty = true;
     }
 }

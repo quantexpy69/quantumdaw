@@ -18,6 +18,42 @@ pub const PRESETS: [(&str, [f32; 10]); 8] = [
 ];
 const BLACK: [bool; 12] = [false, true, false, true, false, false, true, false, true, false, true, false];
 
+/// Piezas de batería (General MIDI) de arriba abajo, como en los editores de batería.
+pub const MAPA_BATERIA: [(u8, &str); 23] = [
+    (57, "Crash 2"),
+    (52, "China"),
+    (49, "Crash"),
+    (55, "Splash"),
+    (53, "Campana del ride"),
+    (51, "Ride"),
+    (59, "Ride 2"),
+    (46, "Hi-hat abierto"),
+    (44, "Hi-hat de pie"),
+    (42, "Hi-hat cerrado"),
+    (50, "Tom alto"),
+    (48, "Tom alto 2"),
+    (47, "Tom medio"),
+    (45, "Tom medio 2"),
+    (43, "Tom de piso"),
+    (41, "Tom de piso 2"),
+    (40, "Caja (borde)"),
+    (38, "Caja"),
+    (37, "Aro"),
+    (39, "Palmas"),
+    (36, "Bombo"),
+    (35, "Bombo 2"),
+    (56, "Cencerro"),
+];
+/// Piezas que el editor de batería muestra siempre.
+const BATERIA_BASE: [u8; 13] = [49, 51, 53, 46, 44, 42, 50, 47, 43, 40, 38, 37, 36];
+/// Fuerzas del golpe para dibujar en el editor de batería.
+pub const FUERZAS: [(&str, u8); 8] = [("ppp", 20), ("pp", 36), ("p", 52), ("mp", 68), ("mf", 84), ("f", 100), ("ff", 116), ("fff", 127)];
+
+/// ¿El instrumento es una batería (kit propio, batería del catálogo o caja de ritmos)?
+pub fn es_bateria(instrumento: &str) -> bool {
+    instruments::es_kit(instrumento) || instrumento == "bateria" || instrumento.ends_with(CAJA_RITMOS)
+}
+
 /// Arrastre en la rejilla: las notas guardan su estado al empezar (índice, nota original).
 #[derive(Clone)]
 enum RollDrag {
@@ -78,6 +114,11 @@ pub struct Roll {
     mel_compases: u32,
     mel_densidad: usize,
     semilla: u64,
+    /// Editor de batería (un carril por pieza) en las pistas de batería y fuerza de los golpes nuevos.
+    bateria: bool,
+    fuerza: u8,
+    /// Si el cuadro anterior mostraba los carriles de batería (al entrar se sube al comienzo).
+    en_bateria: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -120,7 +161,7 @@ impl Carril {
 
 impl Default for Roll {
     fn default() -> Self {
-        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None, portapapeles: Vec::new(), hover: false, modo_acorde: None, inversion: 0, circulo: false, instrumento: false, tono: 0, menor: false, progresion: 0, ritmo: 0, compases: 1, escala_on: false, escala: 0, arp_patron: 0, arp_div: 4, strum_ms: 30.0, strum_abajo: false, mel_compases: 2, mel_densidad: 1, semilla: 0x5EED }
+        Self { target: None, ppb: 90.0, key_h: 12.0, grid: 4, scroll: vec2(0.0, (127.0 - 76.0) * 12.0), sel: Vec::new(), drag: None, last_len: 1.0, sounding: None, typing: false, octave: 5, step: false, lane: Carril::Velocidad, lane_h: 110.0, lane_prev: None, portapapeles: Vec::new(), hover: false, modo_acorde: None, inversion: 0, circulo: false, instrumento: false, tono: 0, menor: false, progresion: 0, ritmo: 0, compases: 1, escala_on: false, escala: 0, arp_patron: 0, arp_div: 4, strum_ms: 30.0, strum_abajo: false, mel_compases: 2, mel_densidad: 1, semilla: 0x5EED, bateria: true, fuerza: 100, en_bateria: false }
     }
 }
 
@@ -626,6 +667,23 @@ impl App {
             }
             ui.add(egui::Slider::new(&mut self.roll.ppb, 20.0..=400.0).show_value(false).text(tr("Zoom")));
             ui.separator();
+            // Pistas de batería: un carril por pieza y la fuerza con que se dibujan los golpes.
+            if es_bateria(&self.s.tracks[i].instrument) {
+                if ui.add(egui::Button::selectable(self.roll.bateria, tr("Vista de batería"))).on_hover_text(tr("Un carril por pieza (bombo, caja, borde, hi-hat…): clic para dibujar un golpe")).clicked() {
+                    self.roll.bateria = !self.roll.bateria;
+                }
+                if self.roll.bateria {
+                    let actual = FUERZAS.iter().find(|f| f.1 == self.roll.fuerza).map_or_else(|| self.roll.fuerza.to_string(), |f| f.0.to_string());
+                    egui::ComboBox::from_id_salt("roll-fuerza").width(60.0).selected_text(actual).show_ui(ui, |ui| {
+                        for (n, v) in FUERZAS {
+                            ui.selectable_value(&mut self.roll.fuerza, v, format!("{n} · {v}"));
+                        }
+                    })
+                    .response
+                    .on_hover_text(tr("Fuerza de los golpes que dibujas (la cambias después en el carril de velocidad)"));
+                }
+                ui.separator();
+            }
             // Instrumento virtual de la pista y teclado del computador para tocar y grabar.
             ui.label(tr("Instrumento"));
             self.instrument_combo(ui, i);
@@ -699,10 +757,15 @@ impl App {
         }
         ui.allocate_rect(area, Sense::hover());
         let lane_h = self.roll.lane_h.clamp(50.0, (area.height() * 0.6).max(50.0));
+        // Editor de batería: una fila por pieza, con su nombre a la izquierda.
+        let notas_region: Vec<Note> = self.s.tracks[i].clips[j].notes().map(|n| (**n).clone()).unwrap_or_default();
+        let carriles = self.carriles_bateria(i, &notas_region);
+        let keys_w = if carriles.is_some() { 150.0 } else { KEYS_W };
+        let filas = carriles.as_ref().map_or(128, |c| c.len());
         // Regla arriba (compases y cursor de reproducción), teclado y rejilla debajo.
         const REGLA_H: f32 = 18.0;
-        let regla = Rect::from_min_max(pos2(area.left() + KEYS_W, area.top()), pos2(area.right(), area.top() + REGLA_H));
-        let keys = Rect::from_min_max(pos2(area.left(), area.top() + REGLA_H), pos2(area.left() + KEYS_W, area.bottom() - lane_h));
+        let regla = Rect::from_min_max(pos2(area.left() + keys_w, area.top()), pos2(area.right(), area.top() + REGLA_H));
+        let keys = Rect::from_min_max(pos2(area.left(), area.top() + REGLA_H), pos2(area.left() + keys_w, area.bottom() - lane_h));
         let grid = Rect::from_min_max(pos2(keys.right(), area.top() + REGLA_H), pos2(area.right(), area.bottom() - lane_h));
         // Carril de control: separador arrastrable arriba, pestañas a la izquierda y barras a la derecha.
         let vel = Rect::from_min_max(pos2(keys.right(), grid.bottom() + 6.0), area.max);
@@ -713,17 +776,31 @@ impl App {
             self.roll.ppb = (self.roll.ppb * zoom).clamp(20.0, 400.0);
             self.roll.scroll.x = t * self.roll.ppb - (p.x - grid.left());
             self.roll.scroll -= d;
-            self.roll.scroll = vec2(self.roll.scroll.x.max(0.0), self.roll.scroll.y.clamp(0.0, 128.0 * self.roll.key_h - grid.height()));
         }
-        let (ppb, kh, scroll) = (self.roll.ppb, self.roll.key_h, self.roll.scroll);
+        let kh = if carriles.is_some() { 20.0 } else { self.roll.key_h };
+        // Al pasar del piano a la batería (o al revés) se vuelve a la parte de arriba o al centro.
+        if carriles.is_some() != std::mem::replace(&mut self.roll.en_bateria, carriles.is_some()) {
+            self.roll.scroll.y = if carriles.is_some() { 0.0 } else { (127.0 - 76.0) * self.roll.key_h };
+        }
+        self.roll.scroll = vec2(self.roll.scroll.x.max(0.0), self.roll.scroll.y.clamp(0.0, (filas as f32 * kh - grid.height()).max(0.0)));
+        let (ppb, scroll) = (self.roll.ppb, self.roll.scroll);
         let clip = self.s.tracks[i].clips[j].clone();
         let (origin, color) = (clip.origin(), self.s.tracks[i].color);
         let notes: Vec<Note> = clip.notes().map(|n| (**n).clone()).unwrap_or_default();
         // Coordenadas: frames relativos al inicio de la región ↔ x; nota MIDI ↔ y.
         let x_of = |rel: f64| grid.left() + (rel / beat) as f32 * ppb - scroll.x;
         let rel_at = |x: f32| ((x - grid.left() + scroll.x) / ppb) as f64 * beat;
-        let y_of = |key: u8| grid.top() + (127 - key) as f32 * kh - scroll.y;
-        let key_at = |y: f32| (127.0 - ((y - grid.top() + scroll.y) / kh).floor()).clamp(0.0, 127.0) as u8;
+        // Fila de cada nota: en el piano, de la 127 a la 0; en la batería, el orden de las piezas.
+        let fila_de = |key: u8| match &carriles {
+            Some(c) => c.iter().position(|x| x.0 == key).unwrap_or(c.len()) as f32,
+            None => (127 - key) as f32,
+        };
+        let nota_en_fila = |f: i32| match &carriles {
+            Some(c) => c[f.clamp(0, c.len() as i32 - 1) as usize].0,
+            None => (127 - f).clamp(0, 127) as u8,
+        };
+        let y_of = |key: u8| grid.top() + fila_de(key) * kh - scroll.y;
+        let key_at = |y: f32| nota_en_fila(((y - grid.top() + scroll.y) / kh).floor() as i32);
         let rel_of = |n: &Note| (origin + n.start as i64 - clip.start as i64) as f64;
         let note_rect = |n: &Note| Rect::from_x_y_ranges(x_of(rel_of(n))..=x_of(rel_of(n) + n.len as f64).max(x_of(rel_of(n)) + 3.0), y_of(n.key) + 1.0..=y_of(n.key) + kh - 1.0);
 
@@ -786,12 +863,16 @@ impl App {
         {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
-        if gr.double_clicked()
+        // En la batería basta un clic para dibujar un golpe.
+        let crear = if carriles.is_some() { gr.clicked() && !shift } else { gr.double_clicked() };
+        if crear
+            && !linea_activa
             && let Some(p) = ptr.filter(|p| hit_at(*p).is_none())
         {
             self.edit();
             let rel = (rel_at(p.x) / step).floor() * step;
-            let n = Note::new((rel + clip.start as f64 - origin as f64).max(0.0) as u64, (self.roll.last_len * beat) as u64, key_at(p.y), 100);
+            let (largo, fuerza) = if carriles.is_some() { (step, self.roll.fuerza) } else { (self.roll.last_len * beat, 100) };
+            let n = Note::new((rel + clip.start as f64 - origin as f64).max(0.0) as u64, largo as u64, key_at(p.y), fuerza);
             let mut v = notes.clone();
             for k in self.teclas_nota(n.key) {
                 v.push(Note { key: k, ..n });
@@ -843,11 +924,11 @@ impl App {
             match d {
                 RollDrag::Move(orig, acc) => {
                     *acc += delta;
-                    let dk = -(acc.y / kh).round() as i32;
+                    let df = (acc.y / kh).round() as i32;
                     let dt = snap((acc.x / ppb) as f64 * beat);
                     for (k, o) in orig.iter() {
                         if let Some(n) = v.get_mut(*k) {
-                            let new_key = (o.key as i32 + dk).clamp(0, 127) as u8;
+                            let new_key = nota_en_fila(fila_de(o.key) as i32 + df);
                             let new_key = if escala_on { creativo::ajustar(new_key, tono, escala) } else { new_key };
                             if n.key != new_key && orig.len() == 1 {
                                 key = Some(new_key);
@@ -991,7 +1072,16 @@ impl App {
         let p = ui.painter_at(area);
         p.rect_filled(area, 0.0, BG());
         let gp = p.with_clip_rect(grid);
-        for key in 0..128u8 {
+        if let Some(c) = &carriles {
+            for (f, (key, _)) in c.iter().enumerate() {
+                let y = y_of(*key);
+                if f % 2 == 0 {
+                    gp.rect_filled(Rect::from_x_y_ranges(grid.x_range(), y..=y + kh), 0.0, Color32::from_white_alpha(6));
+                }
+                gp.hline(grid.x_range(), y + kh, Stroke::new(1.0, Color32::from_black_alpha(90)));
+            }
+        }
+        for key in (0..128u8).filter(|_| carriles.is_none()) {
             let y = y_of(key);
             if y > grid.bottom() || y + kh < grid.top() {
                 continue;
@@ -1035,7 +1125,7 @@ impl App {
             if self.roll.sel.contains(&k) {
                 gp.rect_stroke(r, rr(3.0), Stroke::new(1.5, TEXT()), StrokeKind::Inside);
             }
-            if r.width() > 26.0 && kh >= 10.0 {
+            if r.width() > 26.0 && kh >= 10.0 && carriles.is_none() {
                 gp.text(r.left_center() + vec2(3.0, 0.0), Align2::LEFT_CENTER, NOTE_NAMES[n.key as usize % 12], FontId::proportional(9.0), BG());
             }
         }
@@ -1065,14 +1155,25 @@ impl App {
             gp.vline(px, grid.y_range(), Stroke::new(1.5, TEXT()));
         }
         // Nombres de las piezas (batería y percusión) sobre sus teclas.
-        if let Some(s) = &self.s.tracks[i].sampler {
+        if let Some(s) = self.s.tracks[i].sampler.as_ref().filter(|_| carriles.is_none()) {
             for (key, name) in &s.key_names {
                 gp.text(pos2(grid.left() + 4.0, y_of(*key) + kh / 2.0), Align2::LEFT_CENTER, instruments::spanish(name), FontId::proportional(10.0), TEXT_DIM());
             }
         }
-        // Teclado del piano.
+        // Teclado del piano o, en la batería, el nombre de cada pieza.
         let kp = p.with_clip_rect(keys);
-        for key in 0..128u8 {
+        if let Some(c) = &carriles {
+            kp.rect_filled(keys, 0.0, PANEL());
+            for (key, nombre) in c {
+                let y = y_of(*key);
+                let r = Rect::from_x_y_ranges(keys.left() + 2.0..=keys.right() - 2.0, y + 1.0..=y + kh - 1.0);
+                let suena = self.roll.sounding == Some(*key);
+                kp.rect_filled(r, rr(4.0), if suena { ACCENT() } else { ELEVATED() });
+                kp.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, nombre, FontId::proportional(11.5), if suena { BG() } else { TEXT() });
+                kp.text(r.right_center() - vec2(6.0, 0.0), Align2::RIGHT_CENTER, key.to_string(), FontId::monospace(9.5), if suena { BG() } else { TEXT_DIM() });
+            }
+        }
+        for key in (0..128u8).filter(|_| carriles.is_none()) {
             let y = y_of(key);
             let black = BLACK[key as usize % 12];
             let fill = if self.roll.sounding == Some(key) {
@@ -1147,5 +1248,27 @@ impl App {
             let t = regla.top();
             lp.add(egui::Shape::convex_polygon(vec![pos2(cx - 6.0, t), pos2(cx + 6.0, t), pos2(cx + 6.0, t + 6.0), pos2(cx, t + 12.0), pos2(cx - 6.0, t + 6.0)], ACCENT(), Stroke::new(1.0, BG())));
         }
+    }
+
+    /// Carriles del editor de batería (o None si la pista no es una batería): las piezas del mapa
+    /// General MIDI que trae el kit, usa la región o son básicas, y después las demás del kit.
+    fn carriles_bateria(&self, i: usize, notes: &[Note]) -> Option<Vec<(u8, String)>> {
+        let t = &self.s.tracks[i];
+        if !self.roll.bateria || !es_bateria(&t.instrument) {
+            return None;
+        }
+        let del_kit: Vec<(u8, String)> = t.sampler.as_ref().map(|s| s.key_names.clone()).unwrap_or_default();
+        let usada = |k: u8| notes.iter().any(|n| n.key == k) || del_kit.iter().any(|d| d.0 == k) || BATERIA_BASE.contains(&k);
+        let mut v: Vec<(u8, String)> = MAPA_BATERIA.iter().filter(|m| usada(m.0)).map(|&(k, n)| (k, tr(n).to_string())).collect();
+        for (k, n) in &del_kit {
+            if !v.iter().any(|x| x.0 == *k) {
+                v.push((*k, instruments::spanish(n)));
+            }
+        }
+        let mut otras: Vec<u8> = notes.iter().map(|n| n.key).filter(|k| !v.iter().any(|x| x.0 == *k)).collect();
+        otras.sort();
+        otras.dedup();
+        v.extend(otras.into_iter().map(|k| (k, format!("{} {k}", tr("Nota")))));
+        Some(v)
     }
 }

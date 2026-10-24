@@ -306,6 +306,10 @@ impl App {
                 Event::Key { key, pressed: true, repeat: false, modifiers, .. } => {
                     let text = key_text(key, modifiers);
                     if let Some(c) = Cmd::ALL.into_iter().find(|c| self.key_for(*c) == text) {
+                        // Con el ratón sobre Q Drums, su transporte usa la barra espaciadora.
+                        if c == Cmd::Play && self.espacio_propio {
+                            continue;
+                        }
                         self.run(c);
                     } else if key == Key::Backspace && modifiers.is_none() {
                         self.run(Cmd::Delete);

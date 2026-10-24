@@ -188,6 +188,12 @@ pub struct TrackState {
     /// Proxy (render previo al fader en Proxies/) y la firma del contenido con que se generó.
     pub proxy_file: String,
     pub proxy_firma: u64,
+    /// Canal de una batería: pista MIDI (índice) que lo alimenta y las notas (piezas) que recibe.
+    pub bateria_de: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bateria_notas: Vec<u8>,
+    /// Instrumento congelado: no se calcula (sus canales suenan desde el audio ya generado).
+    pub congelada: bool,
     /// Formato v1 (un archivo por pista); se migra a `clips` al cargar.
     #[serde(skip_serializing)]
     file: Option<String>,

@@ -215,6 +215,13 @@ impl Sampler {
     }
 
     pub fn render(&self, out: &mut [[f32; 2]], events: &[(usize, MidiEvent)], sr: f32, offline: bool, pos: u64, playing: bool) {
+        self.render_salidas(out, &mut [], &[0; 128], events, sr, offline, pos, playing);
+    }
+
+    /// Como `render`, pero cada nota con `ruta[nota] = k > 0` suena en `extra[k - 1]` en vez de en
+    /// `out` (multisalida de una batería: cada pieza en su canal del mezclador).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_salidas(&self, out: &mut [[f32; 2]], extra: &mut [Vec<[f32; 2]>], ruta: &[u8; 128], events: &[(usize, MidiEvent)], sr: f32, offline: bool, pos: u64, playing: bool) {
         let Some(mut st) = (if offline { self.state.lock().ok() } else { self.state.try_lock().ok() }) else {
             return;
         };
@@ -253,7 +260,15 @@ impl Sampler {
                     }
                 }
                 let gain = v.gain * v.env * g;
-                *o = [o[0] + s(0) * gain * v.lr[0], o[1] + s(1) * gain * v.lr[1]];
+                let (l, r) = (s(0) * gain * v.lr[0], s(1) * gain * v.lr[1]);
+                match ruta[v.key as usize & 127] {
+                    0 => *o = [o[0] + l, o[1] + r],
+                    k => {
+                        if let Some(d) = extra.get_mut(k as usize - 1).and_then(|b| b.get_mut(i)) {
+                            *d = [d[0] + l, d[1] + r];
+                        }
+                    }
+                }
                 v.pos += v.step;
                 if let Some((ls, le)) = z.looped.filter(|(_, le)| v.pos >= *le as f64) {
                     v.pos -= (le - ls) as f64;
@@ -390,6 +405,26 @@ mod pruebas_bateria {
         s.render(&mut out, &[], 48_000.0, true, 0, true);
         let izquierda = out.iter().map(|x| x[0].abs() - x[1].abs()).fold(0.0, f32::max);
         assert!(izquierda < 0.01, "el hi-hat abierto se cortó: {izquierda}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn multisalida_por_pieza() {
+        let dir = std::env::temp_dir().join(format!("qdaw-salidas-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        wav(&dir.join("a.wav"), 48_000);
+        std::fs::write(dir.join("k.sfz"), "<global> loop_mode=one_shot\n<group> key=36\n<region> sample=a.wav\n<group> key=38\n<region> sample=a.wav\n").unwrap();
+        let s = Sampler::load(&dir.join("k.sfz"), 48_000).unwrap();
+        // La caja va al canal 1; el bombo queda en la salida de la pista.
+        let mut ruta = [0u8; 128];
+        ruta[38] = 1;
+        let (mut out, mut extra) = (vec![[0f32; 2]; 1024], vec![vec![[0f32; 2]; 1024]]);
+        s.render_salidas(&mut out, &mut extra, &ruta, &[(0, [0x90, 38, 120])], 48_000.0, true, 0, true);
+        let pico = |b: &[[f32; 2]]| b.iter().map(|x| x[0].abs()).fold(0.0, f32::max);
+        assert!(pico(&out) < 1e-6 && pico(&extra[0]) > 0.1, "la caja suena solo en su canal");
+        let (mut out, mut extra) = (vec![[0f32; 2]; 1024], vec![vec![[0f32; 2]; 1024]]);
+        s.render_salidas(&mut out, &mut extra, &ruta, &[(0, [0x90, 36, 120])], 48_000.0, true, 1024, true);
+        assert!(pico(&out) > 0.1, "el bombo sigue en la pista");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

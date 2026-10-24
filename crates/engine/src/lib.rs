@@ -351,12 +351,38 @@ pub struct Node {
     pub recv: Mutex<Vec<[f32; 2]>>,
     /// Señal de la pista tras sus efectos (antes del fader), para el sidechain de otras pistas.
     pub salida: Mutex<Vec<[f32; 2]>>,
+    /// Multisalida de una batería: piezas que suenan en otros canales (sus pistas) y no en esta.
+    pub salidas: Option<Salidas>,
 }
 
 impl Node {
     pub fn recv_buffer() -> Mutex<Vec<[f32; 2]>> {
         Mutex::new(vec![[0.0; 2]; BLOCK])
     }
+}
+
+/// Multisalida del instrumento de una pista: cada nota puede ir a otro canal del grafo.
+pub struct Salidas {
+    /// Para cada nota: 0 = la propia pista; k = el canal `destinos[k - 1]`.
+    pub ruta: [u8; 128],
+    /// Posición en el grafo de cada canal (siempre después de la pista que los alimenta).
+    pub destinos: Vec<usize>,
+    buffers: Mutex<Vec<Vec<[f32; 2]>>>,
+}
+
+impl Salidas {
+    pub fn new(ruta: [u8; 128], destinos: Vec<usize>) -> Self {
+        let buffers = Mutex::new(vec![vec![[0.0; 2]; BLOCK]; destinos.len()]);
+        Self { ruta, destinos, buffers }
+    }
+}
+
+/// Secuencia que el motor toca con precisión de muestra en las pistas que escuchan (la escucha de
+/// un ritmo de Q Drums): eventos en frames desde el inicio, largo y si se repite.
+pub struct Secuencia {
+    pub eventos: Vec<(u64, MidiEvent)>,
+    pub largo: u64,
+    pub bucle: bool,
 }
 
 /// Dispositivos y formato de audio. Los dispositivos son nodos de PipeWire ("" = por defecto, entrada "-" = ninguna).
@@ -419,6 +445,11 @@ pub struct Engine {
     pub preview_gain: AtomicF32,
     /// Render offline previo al fader (proxys y MIDI a audio): instrumento + efectos de la pista.
     prefader: AtomicBool,
+    /// Render offline antes de los efectos (congelar los canales de una batería).
+    prefx: AtomicBool,
+    /// Secuencia en escucha y su posición (frames).
+    pub secuencia: ArcSwapOption<Secuencia>,
+    pub secuencia_pos: AtomicU64,
 }
 
 /// Windows y macOS: el dispositivo con ese id de cpal, o el predeterminado del sistema.
@@ -600,6 +631,9 @@ impl Engine {
             preview_loop: true.into(),
             preview_gain: AtomicF32::new(0.8),
             prefader: AtomicBool::new(false),
+            prefx: AtomicBool::new(false),
+            secuencia: ArcSwapOption::empty(),
+            secuencia_pos: 0.into(),
         });
         let out_dev = device(false, &cfg.output).unwrap_or(out_dev);
         let cb = callback(engine.clone(), config.channels as usize, Rings { in_rx, rec_tx, midi_rx, midi_rec_tx, scope_tx });
@@ -637,6 +671,7 @@ impl Engine {
         let graph = self.graph.load();
         let any_solo = graph.iter().any(|n| n.params.solo.load(Relaxed));
         let bpm_now = bpm_at(&self.tempo.load(), pos as f64);
+        let secuencia = if offline { Events::new() } else { self.eventos_secuencia(out.len() as u64) };
         for node in graph.iter() {
             let p = &node.params;
             tmp.fill([0.0; 2]);
@@ -661,10 +696,25 @@ impl Engine {
                 }
                 if listening {
                     live.midi.iter().for_each(|&e| ev.push(0, e));
+                    secuencia.as_slice().iter().for_each(|&(at, e)| ev.push(at, e));
                 }
                 ev.sort();
                 match (&node.sampler, &node.synth) {
-                    (Some(s), _) => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
+                    (Some(s), _) => match node.salidas.as_ref().and_then(|m| Some((m, m.buffers.try_lock().ok()?))) {
+                        Some((m, mut b)) => {
+                            b.iter_mut().for_each(|x| x.fill([0.0; 2]));
+                            s.render_salidas(tmp, &mut b, &m.ruta, ev.as_slice(), sr, offline, pos, playing);
+                            // Cada pieza va a su canal (salvo que la pista esté silenciada).
+                            if !p.mute.load(Relaxed) {
+                                for (x, &d) in b.iter().zip(&m.destinos) {
+                                    if let Some(mut recv) = graph.get(d).and_then(|t| t.recv.try_lock().ok()) {
+                                        recv.iter_mut().zip(&x[..tmp.len()]).for_each(|(r, s)| *r = [r[0] + s[0], r[1] + s[1]]);
+                                    }
+                                }
+                            }
+                        }
+                        None => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
+                    },
                     (None, Some(s)) => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
                     _ => {}
                 }
@@ -680,6 +730,11 @@ impl Engine {
                     *s = [s[0] + a * m, s[1] + b * m];
                 }
                 p.in_meter.max(peak);
+            }
+            // Render previo a los efectos de una pista (congelar los canales de una batería).
+            if offline && self.prefx.load(Relaxed) && only.is_some_and(|o| Arc::ptr_eq(o, &node.params)) {
+                out.iter_mut().zip(tmp.iter()).for_each(|(o, s)| *o = [o[0] + s[0], o[1] + s[1]]);
+                continue;
             }
             for fx in &node.fx {
                 // Sidechain: la señal de otra pista (ya procesada en este bloque) como clave.
@@ -766,6 +821,46 @@ impl Engine {
                 *o = [o[0] + v, o[1] + v];
             }
         }
+    }
+
+    /// Eventos de la secuencia en escucha que caen en este bloque (y avanza su posición).
+    fn eventos_secuencia(&self, n: u64) -> Events {
+        let mut ev = Events::new();
+        let guarda = self.secuencia.load();
+        let Some(s) = guarda.as_ref() else { return ev };
+        let sp = self.secuencia_pos.load(Relaxed);
+        let mut tomar = |desde: u64, hasta: u64, offset: u64| {
+            let a = s.eventos.partition_point(|e| e.0 < desde);
+            for e in s.eventos[a..].iter().take_while(|e| e.0 < hasta) {
+                ev.push((e.0 - desde + offset) as usize, e.1);
+            }
+        };
+        let largo = s.largo.max(1);
+        let siguiente = if s.bucle {
+            let p = sp % largo;
+            if p + n <= largo {
+                tomar(p, p + n, 0);
+            } else {
+                tomar(p, largo, 0);
+                tomar(0, (p + n - largo).min(largo), largo - p);
+            }
+            (p + n) % largo
+        } else {
+            tomar(sp, sp + n, 0);
+            sp + n
+        };
+        // Si la interfaz cambió la secuencia o su posición mientras tanto, su valor gana.
+        let _ = self.secuencia_pos.compare_exchange(sp, siguiente, Relaxed, Relaxed);
+        ev.sort();
+        ev
+    }
+
+    /// Render offline de una pista antes de sus efectos (solo su instrumento o lo que recibe).
+    pub fn bounce_prefx(&self, from: u64, to: u64, track: &Arc<Params>) -> Vec<f32> {
+        self.prefx.store(true, Relaxed);
+        let out = self.bounce(from, to, Some(track));
+        self.prefx.store(false, Relaxed);
+        out
     }
 
     /// Render offline de una pista antes del fader (instrumento + efectos), estéreo intercalado.

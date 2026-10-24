@@ -1402,7 +1402,13 @@ impl App {
                 TrackKind::Video => t.video.as_ref().map_or(tr("sin video").to_string(), |v| format!("Video · {:.1} s", v.duration())),
                 _ => format!("In {} / {} {}", t.input + 1, t.clips.len(), tr("regiones")),
             };
-            if proxy { format!("{base} · PROXY") } else { base }
+            if t.congelada {
+                format!("{base} · {}", tr("CONGELADA"))
+            } else if proxy {
+                format!("{base} · PROXY")
+            } else {
+                base
+            }
         };
         ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(14.0, 8.0), r.max - vec2(14.0, 6.0))), |ui| {
             ui.set_clip_rect(clip.intersect(r));
@@ -1548,6 +1554,16 @@ impl App {
         if self.s.tracks[i].midi() && ui.button(tr("Convertir MIDI en audio")).on_hover_text(tr("Crea una pista de audio con el sonido del instrumento y sus efectos; la pista MIDI queda silenciada")).clicked() {
             let r = self.midi_a_audio(i);
             self.report(tr("MIDI convertido en audio"), r);
+            ui.close();
+        }
+        if self.s.tracks[i].congelada {
+            if ui.button(tr("Descongelar la batería")).on_hover_text(tr("Vuelve a tocar el MIDI en vivo para poder editarlo")).clicked() {
+                self.descongelar(i);
+                ui.close();
+            }
+        } else if self.s.tracks[i].midi() && !self.canales_de(i).is_empty() && ui.button(tr("Congelar la batería en audio")).on_hover_text(tr("Cada canal suena desde su audio y el instrumento no se calcula: ahorra procesador")).clicked() {
+            let r = self.congelar(i);
+            self.report(tr("Batería congelada en audio"), r);
             ui.close();
         }
         if ui.button(tr("Duplicar pista")).clicked() {

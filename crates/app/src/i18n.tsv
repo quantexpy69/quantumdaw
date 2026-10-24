@@ -1407,3 +1407,71 @@ Curva S	S-curve	Curva S
 Splash	Splash	Splash
 Crash 2	Crash 2	Crash 2
 China	China	China
+BATERÍA CONGELADA	DRUMS FROZEN	BATERIA CONGELADA
+La pista suena desde su audio y no usa el procesador. Para cambiar el MIDI o el kit, descongélala.	The track plays from its audio and doesn't use the CPU. To change the MIDI or the kit, unfreeze it.	A faixa toca a partir do seu áudio e não usa o processador. Para mudar o MIDI ou o kit, descongele-a.
+Descongelar	Unfreeze	Descongelar
+Grabar en la pista lo que toques en la batería (con el proyecto sonando)	Record what you play on the kit into the track (with the project playing)	Gravar na faixa o que você tocar na bateria (com o projeto tocando)
+Parar (barra espaciadora)	Stop (space bar)	Parar (barra de espaço)
+Escuchar (barra espaciadora): el ritmo elegido o, en Canción, la canción	Listen (space bar): the chosen groove or, in Song, the whole song	Ouvir (barra de espaço): o ritmo escolhido ou, em Música, a música inteira
+Tempo: arrastra o haz doble clic para escribirlo	Tempo: drag, or double-click to type it	Andamento: arraste ou clique duas vezes para digitar
+Según dónde haces clic	Depends on where you click	Conforme onde você clica
+Golpe de esta pieza al hacer clic	Articulation this piece plays on click	Golpe desta peça ao clicar
+Fuerza según el punto	Strength by hit point	Força conforme o ponto
+Fuerza	Strength	Força
+Según el punto (centro fuerte, borde suave)	By hit point (center loud, edge soft)	Conforme o ponto (centro forte, borda suave)
+Borde (rimshot)	Rim (rimshot)	Aro (rimshot)
+Golpe	Articulation	Golpe
+Fuerza del golpe	Hit strength	Força do golpe
+Fija	Fixed	Fixa
+Clic: centro fuerte, borde suave · borde de la caja: rimshot · clic derecho: golpe y fuerza	Click: center loud, edge soft · snare rim: rimshot · right-click: articulation and strength	Clique: centro forte, borda suave · aro da caixa: rimshot · clique direito: golpe e força
+Clic: centro fuerte, borde suave · clic derecho: golpe y fuerza	Click: center loud, edge soft · right-click: articulation and strength	Clique: centro forte, borda suave · clique direito: golpe e força
+CANAL	CHANNEL	CANAL
+Para efectos y envíos por pieza, separa la batería en canales en la pestaña Mixer.	For per-piece effects and sends, split the kit into channels in the Mixer tab.	Para efeitos e envios por peça, separe a bateria em canais na aba Mixer.
+Tocar con fuerza	Play with strength	Tocar com força
+Esta pieza no tiene sonido propio en el kit (suena con la más parecida).	This piece has no sound of its own in the kit (the closest one plays).	Esta peça não tem som próprio no kit (toca a mais parecida).
+Doble clic: valor original	Double-click: original value	Clique duplo: valor original
+Batería separada en canales: cada pieza tiene sus efectos y envíos	Kit split into channels: each piece has its own effects and sends	Bateria separada em canais: cada peça tem seus efeitos e envios
+Mezcla como en un estudio	Mix like in a studio	Mixe como num estúdio
+Separa la batería en canales (bombo, caja, hi-hat, toms, platillos y percusión): cada uno con sus efectos, panorama, volumen y envío a la sala, y un master de la batería. También aparecen en el mixer del proyecto.	Split the kit into channels (kick, snare, hi-hat, toms, cymbals and percussion), each with its own effects, pan, volume and room send, plus a drum master. They also show up in the project mixer.	Separe a bateria em canais (bumbo, caixa, chimbal, tons, pratos e percussão): cada um com seus efeitos, pan, volume e envio para a sala, e um master da bateria. Eles também aparecem no mixer do projeto.
+Separar en canales	Split into channels	Separar em canais
+Clic en un efecto: abrirlo · clic derecho: bypass o quitar · las perillas de envío mandan cada canal a un bus	Click an effect to open it · right-click: bypass or remove · send knobs route each channel to a bus	Clique num efeito para abri-lo · clique direito: bypass ou remover · os botões de envio mandam cada canal para um bus
+Unir en una pista	Merge into one track	Unir em uma faixa
+Quita los canales y los buses de la batería	Removes the kit's channels and buses	Remove os canais e os buses da bateria
+Master	Master	Master
+Panorama · doble clic: centro	Pan · double-click: center	Pan · clique duplo: centro
++ envío	+ send	+ envio
+Clic en un groove para escucharlo · barra espaciadora: escuchar o parar	Click a groove to hear it · space bar: play or stop	Clique num groove para ouvi-lo · barra de espaço: tocar ou parar
+Agrega ritmos desde la pestaña Grooves con «+ Canción» · barra espaciadora: escuchar la canción	Add grooves from the Grooves tab with "+ Song" · space bar: play the song	Adicione ritmos na aba Grooves com «+ Música» · barra de espaço: ouvir a música
+Cada canal pasa a sonar desde su audio (sus efectos siguen en vivo) y el instrumento no se calcula. Se puede descongelar para editar.	Each channel plays from its audio (its effects stay live) and the instrument isn't computed. You can unfreeze it to edit.	Cada canal passa a tocar a partir do seu áudio (os efeitos continuam ao vivo) e o instrumento não é calculado. Dá para descongelar para editar.
+Crea una pista de audio con la batería y silencia la pista MIDI	Creates an audio track with the drums and mutes the MIDI track	Cria uma faixa de áudio com a bateria e silencia a faixa MIDI
+Pasar a audio (ahorra procesador)	Convert to audio (saves CPU)	Passar para áudio (economiza processador)
+Batería pasada a audio	Drums converted to audio	Bateria passada para áudio
+Vista de batería	Drum view	Vista de bateria
+Un carril por pieza (bombo, caja, borde, hi-hat…): clic para dibujar un golpe	One lane per piece (kick, snare, rim, hi-hat…): click to draw a hit	Uma faixa por peça (bumbo, caixa, aro, chimbal…): clique para desenhar um golpe
+Fuerza de los golpes que dibujas (la cambias después en el carril de velocidad)	Strength of the hits you draw (change it later in the velocity lane)	Força dos golpes que você desenha (mude depois na faixa de velocidade)
+Nota	Note	Nota
+CONGELADA	FROZEN	CONGELADA
+Descongelar la batería	Unfreeze the drums	Descongelar a bateria
+Vuelve a tocar el MIDI en vivo para poder editarlo	Plays the MIDI live again so you can edit it	Volta a tocar o MIDI ao vivo para poder editá-lo
+Congelar la batería en audio	Freeze the drums to audio	Congelar a bateria em áudio
+Cada canal suena desde su audio y el instrumento no se calcula: ahorra procesador	Each channel plays from its audio and the instrument isn't computed: saves CPU	Cada canal toca a partir do seu áudio e o instrumento não é calculado: economiza processador
+Batería congelada en audio	Drums frozen to audio	Bateria congelada em áudio
+Caja (borde)	Snare (rim)	Caixa (aro)
+Hi-hat	Hi-hat	Chimbal
+Hi-hat de pie	Hi-hat pedal	Chimbal de pé
+Campana del ride	Ride bell	Cúpula do ride
+Tom medio	Mid tom	Tom médio
+Tom de piso	Floor tom	Surdo
+Centro	Center	Centro
+Aro (cross stick)	Cross stick	Aro (cross stick)
+Cerrado	Closed	Fechado
+Abierto	Open	Aberto
+Con el pie	Pedal	Com o pé
+Arco	Bow	Corpo
+Campana	Bell	Cúpula
+Bombo 2	Kick 2	Bumbo 2
+Platillos	Cymbals	Pratos
+Ride 2	Ride 2	Ride 2
+Tom alto 2	High tom 2	Tom agudo 2
+Tom medio 2	Mid tom 2	Tom médio 2
+Tom de piso 2	Floor tom 2	Surdo 2
