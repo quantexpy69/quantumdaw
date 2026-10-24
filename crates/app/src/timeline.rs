@@ -1422,7 +1422,7 @@ impl App {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         let t = &mut self.s.tracks[i];
-                        let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(14.0)).text_color(TEXT()).desired_width((r.width() - 170.0).max(80.0));
+                        let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(14.0)).text_color(TEXT()).desired_width((r.width() - 210.0).max(70.0));
                         ui.add(nombre).on_hover_text(tr("Nombre de la pista (clic para editar)"));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
@@ -1445,6 +1445,9 @@ impl App {
                                         flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
                                     }
                                 }
+                            }
+                            if !self.config.ocultar_plugins_pista && self.admite_efectos(i) {
+                                self.boton_plugins(ui, i);
                             }
                         });
                     });
@@ -1478,6 +1481,70 @@ impl App {
                 });
             }
         });
+    }
+
+    /// Botón de la cabecera de pista: el instrumento y los plugins que usa, para abrirlos, apagarlos,
+    /// quitarlos o agregar otros sin salir de la pista.
+    fn boton_plugins(&mut self, ui: &mut egui::Ui, i: usize) {
+        let n = self.s.tracks[i].fx.len();
+        let midi = self.s.tracks[i].midi();
+        let activo = n > 0 || midi;
+        let texto = if n > 0 { format!("FX {n}") } else { "FX".to_string() };
+        let b = egui::Button::new(RichText::new(texto).strong().size(10.5).color(if activo { BG() } else { TEXT_DIM() })).fill(if activo { ACCENT() } else { Color32::from_white_alpha(10) }).min_size(vec2(34.0, 18.0)).corner_radius(rr(9.0));
+        let (mut quitar, mut agregar, mut abrir, mut instrumento) = (None, None, false, false);
+        egui::containers::menu::MenuButton::from_button(b).ui(ui, |ui| {
+            widgets::menu_style(ui);
+            if midi {
+                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                let t = &self.s.tracks[i];
+                let nombre = if instruments::es_real(&t.instrument) { instruments::nombre(&t.instrument) } else { t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth").to_string() };
+                if ui.button(nombre).on_hover_text(tr("Abrir el instrumento")).clicked() {
+                    instrumento = true;
+                }
+                ui.separator();
+            }
+            ui.label(RichText::new(tr("PLUGINS")).size(10.0).color(TEXT_DIM()));
+            if n == 0 {
+                ui.label(RichText::new(tr("Sin plugins en esta pista")).size(11.5).color(TEXT_DIM()));
+            }
+            for (k, fx) in self.s.tracks[i].fx.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    let mut on = !fx.bypass.load(Relaxed);
+                    if ui.checkbox(&mut on, "").on_hover_text(tr("Encendido / bypass")).changed() {
+                        fx.bypass.store(!on, Relaxed);
+                    }
+                    if ui.button(fx.kind.name()).on_hover_text(tr("Abrir el plugin")).clicked() {
+                        abrir = true;
+                    }
+                    if ui.small_button("✕").on_hover_text(tr("Quitar")).clicked() {
+                        quitar = Some(k);
+                    }
+                });
+            }
+            ui.menu_button(tr("+ Agregar plugin"), |ui| {
+                widgets::menu_style(ui);
+                for k in FxKind::disponibles() {
+                    if ui.button(k.name()).clicked() {
+                        agregar = Some(k);
+                    }
+                }
+            });
+        });
+        if instrumento {
+            self.abrir_instrumento(i);
+        }
+        if abrir {
+            self.abrir_efectos(i);
+        }
+        if let Some(k) = quitar {
+            self.edit();
+            self.s.tracks[i].fx.remove(k);
+            self.dirty = true;
+        }
+        if let Some(k) = agregar {
+            self.add_fx(i, k);
+            self.abrir_efectos(i);
+        }
     }
 
     /// Selector del canal de la interfaz que alimenta la pista.

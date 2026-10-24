@@ -226,6 +226,8 @@ struct Config {
     licencias: Vec<String>,
     /// Trabajar con proxys: las pistas con instrumento o efectos suenan desde su render previo.
     proxies: bool,
+    /// Ocultar el botón de instrumento y plugins en la cabecera de cada pista.
+    ocultar_plugins_pista: bool,
 }
 
 impl Config {
@@ -719,6 +721,8 @@ struct App {
     monitor_auto: Vec<u64>,
     /// Una ventana (Q Drums) usa la barra espaciadora para su propio transporte.
     espacio_propio: bool,
+    /// Momento de la última actualización de los medidores (su caída depende del tiempo).
+    ultimo_medidor: Option<std::time::Instant>,
     /// Creador de kits de batería propios (desde una carpeta de muestras).
     kit_editor: Option<kits::KitEditor>,
     /// QUANTUM Drummer Pro (módulo privado): ritmos por estilo que se escriben en una pista.
@@ -874,6 +878,7 @@ impl App {
             recrear_ventana: None,
             monitor_auto: vec![],
             espacio_propio: false,
+            ultimo_medidor: None,
             kit_editor: None,
             #[cfg(feature = "pro")]
             drummer: Default::default(),
@@ -1129,6 +1134,20 @@ impl App {
     /// Reinicia el motor (dispositivos, frecuencia, buffer o proyecto nuevo) y carga `p`.
     fn reload(&mut self, dir: PathBuf, p: Project) -> anyhow::Result<()> {
         self.stop();
+        let cfg = audio_config(&p);
+        // Con el mismo dispositivo y formato, el audio abierto se reutiliza: cerrar y reabrir PipeWire
+        // dos veces seguidas (abrir un proyecto con doble clic, o recuperar el autoguardado justo
+        // después de abrirlo) dejaba la ventana colgada.
+        if !self.streams.is_empty() && cfg == self.audio {
+            let e = &self.engine;
+            e.secuencia.store(None);
+            e.preview.store(None);
+            e.looping.store(false, Relaxed);
+            e.pos.store(0, Relaxed);
+            self.dir = dir;
+            self.apply_project(p);
+            return Ok(());
+        }
         let habia_audio = !self.streams.is_empty();
         (self.streams, self.old_graph, self.midi_in) = (vec![], None, vec![]);
         if habia_audio {
@@ -1136,7 +1155,6 @@ impl App {
             // reabrirla enseguida dejaba snd_pcm_prepare esperando para siempre y la ventana colgada.
             std::thread::sleep(Duration::from_millis(400));
         }
-        let cfg = audio_config(&p);
         let (engine, streams) = match Engine::start(&cfg) {
             Ok(v) => v,
             Err(e) => {
@@ -2370,19 +2388,34 @@ impl App {
         }
     }
 
-    /// Actualiza los medidores con caída y retención de picos.
+    /// Actualiza los medidores con balística de consola: suben en unos 15 ms y caen a 20 dB por
+    /// segundo, sin depender de cuántos cuadros por segundo dibuje la interfaz; los picos se retienen.
     fn update_meters(&mut self) {
+        let ahora = std::time::Instant::now();
+        let dt = self.ultimo_medidor.map_or(0.016, |t| (ahora - t).as_secs_f32()).clamp(0.0, 0.25);
+        self.ultimo_medidor = Some(ahora);
         let n = self.s.tracks.len();
         self.levels.resize(n + 1, 0.0);
         self.peaks.resize(n + 1, 0.0);
         self.in_levels.resize(n, 0.0);
+        let balistica = |antes: f32, nuevo: f32| {
+            let (a, b) = (widgets::db(antes.max(1e-6)), widgets::db(nuevo.max(1e-6)));
+            let db = if b > a { a + (b - a) * (dt / 0.015).min(1.0) } else { (a - 20.0 * dt).max(b) };
+            if db <= -90.0 { 0.0 } else { 10f32.powf(db / 20.0) }
+        };
+        let mut moviendo = false;
         for i in 0..=n {
             let p = self.s.tracks.get(i).map_or(&self.engine.master, |t| &t.params);
-            self.levels[i] = p.meter.take().max(self.levels[i] * 0.9);
+            self.levels[i] = balistica(self.levels[i], p.meter.take());
             self.peaks[i] = self.peaks[i].max(self.levels[i]);
             if i < n {
-                self.in_levels[i] = p.in_meter.take().max(self.in_levels[i] * 0.9);
+                self.in_levels[i] = balistica(self.in_levels[i], p.in_meter.take());
             }
+            moviendo |= self.levels[i] > 0.0;
+        }
+        // Mientras un medidor baja, se sigue dibujando para que la caída sea continua.
+        if moviendo {
+            self.ctx.request_repaint();
         }
     }
 

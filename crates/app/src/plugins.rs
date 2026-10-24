@@ -6,7 +6,6 @@ use crate::{
 use egui::{Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 
-const PLUGIN_BG: Color32 = Color32::from_rgb(0x15, 0x15, 0x19);
 const SIGNATURE: &str = "QUANTUM";
 const DISCRETE: [&str; 8] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División"];
 
@@ -251,23 +250,16 @@ impl App {
                           fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
                 let accent = kind_color(kind);
-                egui::Frame::new().fill(PLUGIN_BG).corner_radius(rr(12.0)).stroke(Stroke::new(1.5, accent.gamma_multiply(0.6))).inner_margin(10.0).show(ui, |ui| {
+                widgets::chasis(ui, accent, |ui| {
                     ui.set_width(ui.available_width());
-                    // Franja de color del plugin.
-                    let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), 4.0), Sense::hover());
-                    ui.painter().rect_filled(strip, rr(2.0), accent);
                     ui.horizontal(|ui| {
                         if let Some(b) = bypass {
                             let on = !b.load(Relaxed);
-                            let power = egui::Button::new(RichText::new(if on { "ON" } else { "OFF" }).size(10.0).strong().color(if on { BG() } else { TEXT_DIM() }))
-                                .fill(if on { METER[0] } else { BG() })
-                                .corner_radius(rr(10.0));
-                            if ui.add(power).on_hover_text(if on { "Activo · clic para bypass" } else { "En bypass · clic para activar" }).clicked() {
+                            if widgets::led(ui, on).on_hover_text(if on { tr("Activo · clic para bypass") } else { tr("En bypass · clic para activar") }).clicked() {
                                 b.store(on, Relaxed);
                             }
                         }
-                        ui.label(RichText::new(tr("QUANTUM")).size(10.0).strong().color(accent));
-                        ui.label(RichText::new(tr(name).trim_start_matches("QUANTUM ")).size(17.0).strong().color(TEXT()));
+                        widgets::chapa(ui, "QUANTUM", tr(name).trim_start_matches("QUANTUM "), accent);
                         if let Some(j) = j {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.small_button(tr("Quitar")).clicked() {
@@ -331,12 +323,12 @@ impl App {
             if let Some(s) = &t.sampler {
                 // Instrumento real (sampler): volumen y créditos de la biblioteca.
                 ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
-                egui::Frame::new().fill(PLUGIN_BG).corner_radius(rr(12.0)).stroke(Stroke::new(1.0, BORDER())).inner_margin(10.0).show(ui, |ui| {
+                widgets::chasis(ui, ACCENT(), |ui| {
                     ui.set_width(ui.available_width());
                     let e = instruments::find(&t.instrument);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr("QUANTUM")).size(10.0).strong().color(ACCENT()));
-                        ui.label(RichText::new(if instruments::es_kit(&t.instrument) { instruments::nombre(&t.instrument) } else { e.map_or(s.name.clone(), |e| e.name.to_string()) }).size(16.0).strong());
+                        let nombre = if instruments::es_kit(&t.instrument) { instruments::nombre(&t.instrument) } else { e.map_or(s.name.clone(), |e| e.name.to_string()) };
+                        widgets::chapa(ui, "QUANTUM", &nombre, ACCENT());
                         if bateria {
                             let b = egui::Button::new(RichText::new(tr("Abrir Q Drums")).strong().color(BG())).fill(Color32::from_rgb(0xFF, 0x6B, 0x3D));
                             if ui.add(b).on_hover_text(tr("Ritmos, kit y piezas de la batería")).clicked() {

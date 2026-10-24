@@ -30,7 +30,11 @@ fn device_label(devices: &[DeviceInfo], id: &str) -> String {
 fn lcd_cell(ui: &mut egui::Ui, caption: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
-        add(ui);
+        // Todas las celdas con el mismo alto y el valor centrado: las leyendas quedan en una línea.
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), 30.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.set_min_height(30.0);
+            add(ui);
+        });
         ui.label(RichText::new(tr(caption)).size(10.0).color(TEXT_DIM()));
     });
 }
@@ -148,6 +152,11 @@ impl App {
                     }
                 }
                 ui.checkbox(&mut self.show_auto, tr("Automatización (A)"));
+                let mut plugins = !self.config.ocultar_plugins_pista;
+                if ui.checkbox(&mut plugins, tr("Botón de instrumento y plugins en las pistas")).changed() {
+                    self.config.ocultar_plugins_pista = !plugins;
+                    self.config.save();
+                }
                 ui.checkbox(&mut self.show_video, tr("Visor de video"));
                 ui.checkbox(&mut self.show_arrange, tr("Pista de arreglo (Intro, Estrofa, Coro…)"));
                 ui.checkbox(&mut self.show_chords, tr("Pista de acordes"));
