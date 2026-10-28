@@ -38,6 +38,15 @@ pub enum Accion {
     PtClave(project::partitura::Clave),
     PtArmadura(i8),
     PtAnotacion,
+    // Carriles del secuenciador de patrones.
+    PatLlenar,
+    PatEuclidiano,
+    PatRotarIzq,
+    PatRotarDer,
+    PatAleatorio,
+    PatHumanizar,
+    PatBorrar,
+    PatDuplicar,
 }
 
 pub struct Pie {
@@ -121,6 +130,21 @@ fn icono(p: &egui::Painter, c: Pos2, a: Accion, color: Color32) {
         Accion::PtClave(_) => glifo(p, c, '\u{E05C}', color),
         Accion::PtMenuArmadura => glifo(p, c, '\u{E262}', color),
         Accion::PtAnotacion => _ = p.text(c, egui::Align2::CENTER_CENTER, "T", FontId::proportional(17.0), color),
+        Accion::PatLlenar => (0..4).for_each(|k| _ = p.rect_filled(egui::Rect::from_center_size(c + vec2(-6.0 + k as f32 * 4.0, 0.0), vec2(3.0, 9.0)), 1.0, color)),
+        Accion::PatEuclidiano => (0..5).for_each(|k| {
+            let a = k as f32 * std::f32::consts::TAU / 5.0;
+            p.circle_filled(c + vec2(a.sin(), -a.cos()) * 6.5, 1.8, color);
+        }),
+        Accion::PatRotarIzq | Accion::PatRotarDer => {
+            let d = if a == Accion::PatRotarDer { 1.0 } else { -1.0 };
+            p.line_segment([c + vec2(-7.0 * d, 0.0), c + vec2(6.0 * d, 0.0)], s);
+            p.line_segment([c + vec2(6.0 * d, 0.0), c + vec2(2.0 * d, -4.0)], s);
+            p.line_segment([c + vec2(6.0 * d, 0.0), c + vec2(2.0 * d, 4.0)], s);
+        }
+        Accion::PatAleatorio => [(-5.0, -4.0), (3.0, -6.0), (-1.0, 1.0), (6.0, 3.0), (-6.0, 6.0)].into_iter().for_each(|(x, y)| _ = p.circle_filled(c + vec2(x, y), 1.8, color)),
+        Accion::PatHumanizar => _ = p.add(Shape::line((0..=12).map(|k| c + vec2(-8.0 + k as f32 * 16.0 / 12.0, (k as f32 * 1.1).sin() * 4.0)).collect(), s)),
+        Accion::PatBorrar => icono(p, c, Accion::Eliminar, color),
+        Accion::PatDuplicar => icono(p, c, Accion::Duplicar, color),
     }
 }
 
@@ -306,6 +330,7 @@ impl App {
             Accion::GenerarAcordes => self.generador.abierto = true,
             Accion::PtFigura(_) | Accion::PtPuntillo | Accion::PtSilencio | Accion::PtSubir | Accion::PtBajar | Accion::PtBorrar | Accion::PtEscuchar | Accion::PtClave(_) | Accion::PtArmadura(_) | Accion::PtAnotacion => self.pie_partitura(a),
             Accion::PtMenuClave | Accion::PtMenuArmadura => self.abrir_pie_partitura_sub(centro, a),
+            Accion::PatLlenar | Accion::PatEuclidiano | Accion::PatRotarIzq | Accion::PatRotarDer | Accion::PatAleatorio | Accion::PatHumanizar | Accion::PatBorrar | Accion::PatDuplicar => self.pie_patron(a),
             notas => self.pie_notas(notas),
         }
     }

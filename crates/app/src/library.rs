@@ -12,6 +12,8 @@ pub enum LibItem {
     Instrument(&'static str),
     /// QUANTUM Drummer: sobre una pista MIDI le pone el kit y abre el plugin (en vacío crea la pista).
     Drummer,
+    /// Un patrón del secuenciador (pista, región): se copia donde se suelta.
+    Patron(usize, usize),
 }
 
 /// Sección de la biblioteca que se arrastra para reordenar.
@@ -864,12 +866,23 @@ impl App {
                 None => self.status = "Suelta el instrumento sobre una pista MIDI".into(),
             },
             LibItem::Drummer => self.soltar_drummer(track),
+            LibItem::Patron(i, j) => self.soltar_patron(*i, *j, track, at),
             LibItem::File(path) if video::is_video(path) => self.import_video(path.clone(), at),
             LibItem::File(path) => {
                 let r = self.import_one(path, at, track);
                 self.report(format!("Importado: {}", path.display()), r);
             }
         }
+    }
+
+    /// Copia un patrón donde se suelta: en esa pista si es MIDI, si no en la suya.
+    fn soltar_patron(&mut self, i: usize, j: usize, track: Option<usize>, at: u64) {
+        let Some(c) = self.s.tracks.get(i).and_then(|t| t.clips.get(j)).cloned() else { return };
+        let destino = track.filter(|&k| self.s.tracks[k].midi()).unwrap_or(i);
+        self.edit();
+        self.s.tracks[destino].clips.push(Clip { start: at, selected: false, ..c });
+        self.dirty = true;
+        self.status = format!("{} · {}", tr("Patrón colocado"), self.s.tracks[destino].name);
     }
 
     pub fn floating_windows(&mut self, ctx: &egui::Context) {

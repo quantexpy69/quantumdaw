@@ -2484,7 +2484,23 @@ fn theme(ctx: &egui::Context) {
             st.corner_radius = (r - r / 4).into();
         }
         (s.visuals.window_corner_radius, s.visuals.menu_corner_radius) = ((r + 4).into(), r.into());
-        s.spacing.button_padding = egui::vec2(8.0, 4.0);
+        // Todos los controles con la misma altura, relleno y borde fino: botones, menús
+        // desplegables, campos y casillas quedan parejos en cualquier pantalla y sistema.
+        s.spacing.button_padding = egui::vec2(10.0, 5.0);
+        s.spacing.interact_size = egui::vec2(40.0, 28.0);
+        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        s.spacing.combo_width = 120.0;
+        s.spacing.icon_width = 16.0;
+        s.spacing.icon_spacing = 6.0;
+        let borde = egui::Stroke::new(1.0, BORDER().lerp_to_gamma(TEXT(), 0.12));
+        w.inactive.bg_stroke = borde;
+        w.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT().gamma_multiply(0.7));
+        w.active.bg_stroke = egui::Stroke::new(1.0, ACCENT());
+        w.open.bg_stroke = egui::Stroke::new(1.0, ACCENT().gamma_multiply(0.7));
+        w.hovered.expansion = 0.0;
+        w.active.expansion = 0.0;
+        s.visuals.popup_shadow = egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(110) };
+        s.visuals.window_shadow = egui::Shadow { offset: [0, 10], blur: 28, spread: 0, color: Color32::from_black_alpha(120) };
         // Las etiquetas no se seleccionan como texto: el puntero sigue siendo la flecha.
         s.interaction.selectable_labels = false;
         // Texto algo más grande que el de egui por defecto, legible en cualquier pantalla.
