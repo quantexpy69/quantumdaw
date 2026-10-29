@@ -365,7 +365,7 @@ pub fn controles(ui: &mut egui::Ui, fx: &engine::Fx, color: Color32) -> bool {
             plugins::perilla(ui, Some(FxKind::Curves), defs[19], &fx.params[19], 58.0);
         });
         ui.vertical(|ui| {
-            ui.label(RichText::new(tr("INTENSIDAD")).size(11.0).strong().color(color));
+            ui.add(egui::Label::new(RichText::new(tr("INTENSIDAD")).size(11.0).strong().color(color)).extend());
             plugins::perilla(ui, Some(FxKind::Curves), defs[15], &fx.params[15], 120.0);
         });
         ui.vertical(|ui| {

@@ -524,9 +524,8 @@ impl App {
         nombres.extend(FX_CATEGORIES.iter().map(|c| tr(c.0).to_string()));
         nombres.push(format!("★ {}", tr("Favoritos")));
         self.chips(ui, &nombres);
-        let target = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video);
-        let destino = target.map_or_else(|| tr("ninguna pista seleccionada").to_string(), |i| self.s.tracks[i].name.clone());
-        ui.label(RichText::new(format!("{} {destino} · {}", tr("Doble clic añade a:"), tr("o arrastra a una pista"))).size(11.0).color(TEXT_DIM()));
+        let destino = self.pista_destino_fx().map_or_else(|| tr("ninguna pista seleccionada").to_string(), |i| self.s.tracks[i].name.clone());
+        ui.label(RichText::new(format!("{} {destino} · {}", tr("Clic añade a:"), tr("o arrastra a una pista"))).size(11.0).color(TEXT_DIM()));
         let favoritos = nombres.len() - 1;
         for (k, (cat, kinds)) in FX_CATEGORIES.iter().enumerate() {
             if self.lib_filtro != 0 && self.lib_filtro != k + 1 && self.lib_filtro != favoritos {
@@ -570,9 +569,14 @@ impl App {
         }
     }
 
+    /// Pista que recibe un efecto al hacer clic: la seleccionada o, si no hay, la que se ve en Dispositivos.
+    fn pista_destino_fx(&self) -> Option<usize> {
+        self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video).or(self.last_track.filter(|&i| i < self.s.tracks.len())).filter(|&i| self.admite_efectos(i))
+    }
+
     /// Efectos en tarjetas (tantas columnas como entren).
     fn fx_grid(&mut self, ui: &mut egui::Ui, lista: &[FxKind]) {
-        let target = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video);
+        let target = self.pista_destino_fx();
         let cols = ((ui.available_width() + 6.0) / 150.0).floor().max(1.0) as usize;
         let w = (ui.available_width() - 6.0 * (cols as f32 - 1.0)) / cols as f32;
         for fila in lista.chunks(cols) {
@@ -623,18 +627,26 @@ impl App {
                         widgets::menu_style(ui);
                         let targets: Vec<usize> = (0..self.s.tracks.len()).filter(|&i| self.s.tracks[i].selected && self.admite_efectos(i)).collect();
                         if ui.add_enabled(!targets.is_empty(), egui::Button::new(tr("Añadir a las pistas seleccionadas"))).clicked() {
-                            targets.into_iter().for_each(|i| self.add_fx(i, k));
+                            if let Some(&primera) = targets.first() {
+                                targets.iter().for_each(|&i| self.add_fx(i, k));
+                                self.abrir_efectos(primera);
+                            }
                         }
                     });
-                    if resp.double_clicked()
-                        && let Some(i) = target
-                    {
-                        self.add_fx(i, k);
+                    // Un clic lo añade a la pista y lo muestra abajo, en Dispositivos (como al arrastrarlo).
+                    if resp.clicked() {
+                        match target {
+                            Some(i) => {
+                                self.add_fx(i, k);
+                                self.abrir_efectos(i);
+                            }
+                            None => self.status = tr("Selecciona una pista para añadirle el efecto, o arrástralo sobre una").into(),
+                        }
                     }
                     let sr = self.sr() as f32;
                     resp.on_hover_ui(|ui| {
                         plugins::preview(ui, k, sr);
-                        ui.label(egui::RichText::new(tr("Arrastra a una pista o canal · doble clic: añadir a la pista seleccionada")).size(11.0).color(TEXT_DIM()));
+                        ui.label(egui::RichText::new(tr("Clic: añadir a la pista seleccionada · arrastrar: a una pista o canal")).size(11.0).color(TEXT_DIM()));
                     });
                 }
             });
@@ -879,7 +891,10 @@ impl App {
         match item {
             // Los efectos van en cualquier pista: audio o instrumento (después del sonido del instrumento).
             LibItem::Fx(k) => match track.filter(|&i| self.admite_efectos(i)) {
-                Some(i) => self.add_fx(i, *k),
+                Some(i) => {
+                    self.add_fx(i, *k);
+                    self.abrir_efectos(i);
+                }
                 None => self.status = tr("Suelta el efecto sobre una pista o un canal").into(),
             },
             LibItem::Instrument(id) => match track.filter(|&i| self.s.tracks[i].midi()) {

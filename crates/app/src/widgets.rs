@@ -607,106 +607,81 @@ pub fn perilla_3d(p: &Painter, c: Pos2, r: f32, a: f32, color: Color32) {
     p.line_segment([c + d * cr * 0.28, c + d * cr * 0.94], Stroke::new(ancho, color));
 }
 
-/// Chasis de un plugin: placa de metal cepillado con bisel, cuatro tornillos y sombra, detrás del
-/// contenido (que va con margen para no tapar los tornillos).
-pub fn chasis<R>(ui: &mut egui::Ui, acento: Color32, contenido: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let fondo = ui.painter().add(egui::Shape::Noop);
-    let r = egui::Frame::new().inner_margin(egui::Margin { left: 24, right: 24, top: 16, bottom: 14 }).show(ui, contenido);
-    let rect = r.response.rect;
-    let radio = rr(12.0);
-    let mut v = vec![];
-    // Sombra y placa anodizada.
-    for k in 1..=4 {
-        v.push(egui::Shape::rect_filled(rect.translate(vec2(0.0, k as f32)).expand(k as f32 * 0.5), radio, Color32::from_black_alpha(30)));
-    }
-    v.push(egui::Shape::rect_filled(rect, radio, Color32::from_rgb(0x26, 0x26, 0x2B)));
-    // Metal cepillado: líneas horizontales finas de brillo irregular (siempre igual para cada alto).
-    let mut y = rect.top() + 3.0;
-    let mut semilla = 0x9E37_79B9u32;
-    while y < rect.bottom() - 3.0 {
-        semilla ^= semilla << 13;
-        semilla ^= semilla >> 17;
-        semilla ^= semilla << 5;
-        let a = 3 + (semilla % 7) as u8;
-        v.push(egui::Shape::hline(rect.left() + radio * 0.6..=rect.right() - radio * 0.6, y, Stroke::new(1.0, Color32::from_white_alpha(a))));
-        y += 2.0;
-    }
-    // Reflejo de luz en la parte de arriba.
-    for k in 0..10 {
-        let f = k as f32 / 10.0;
-        v.push(egui::Shape::hline(rect.x_range().shrink(radio * 0.6), rect.top() + 2.0 + k as f32 * 3.0, Stroke::new(3.0, Color32::from_white_alpha((14.0 * (1.0 - f)) as u8))));
-    }
-    // Bisel: borde claro arriba, oscuro abajo, y una línea del color del plugin.
-    v.push(egui::Shape::rect_stroke(rect, radio, Stroke::new(1.0, Color32::from_black_alpha(200)), egui::StrokeKind::Outside));
-    v.push(egui::Shape::hline(rect.x_range().shrink(radio), rect.top() + 1.0, Stroke::new(1.0, Color32::from_white_alpha(60))));
-    v.push(egui::Shape::hline(rect.x_range().shrink(radio), rect.bottom() - 1.0, Stroke::new(1.0, Color32::from_black_alpha(160))));
-    v.push(egui::Shape::rect_filled(Rect::from_min_size(rect.left_top() + vec2(radio, 0.0), vec2(rect.width() - 2.0 * radio, 2.0)), 0.0, acento.gamma_multiply(0.8)));
-    // Tornillos en las esquinas.
-    for (k, esquina) in [rect.left_top() + vec2(11.0, 11.0), rect.right_top() + vec2(-11.0, 11.0), rect.left_bottom() + vec2(11.0, -11.0), rect.right_bottom() + vec2(-11.0, -11.0)].into_iter().enumerate() {
-        v.push(egui::Shape::circle_filled(esquina + vec2(0.0, 1.0), 4.6, Color32::from_black_alpha(160)));
-        for s in 0..5 {
-            let f = s as f32 / 5.0;
-            v.push(egui::Shape::circle_filled(esquina - vec2(0.8, 1.0) * f, 4.2 * (1.0 - f * 0.6), Color32::from_gray((95.0 + 90.0 * f) as u8)));
-        }
-        let ang = 0.5 + k as f32 * 1.1;
-        let d = vec2(ang.cos(), ang.sin()) * 3.2;
-        v.push(egui::Shape::line_segment([esquina - d, esquina + d], Stroke::new(1.3, Color32::from_gray(45))));
-    }
-    ui.painter().set(fondo, egui::Shape::Vec(v));
-    r.inner
+/// Tarjeta de dispositivo (instrumento o efecto), como en un rack: cabecera teñida del color del
+/// plugin con una línea de acento debajo, y el cuerpo oscuro con su margen. Con `llenar`, ocupa todo
+/// el alto disponible para que las tarjetas en fila queden parejas.
+pub fn dispositivo<R>(ui: &mut egui::Ui, acento: Color32, llenar: bool, cabecera: impl FnOnce(&mut egui::Ui), cuerpo: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let alto = if llenar { (ui.available_height() - 4.0).max(0.0) } else { 0.0 };
+    let radio = rr(10.0);
+    egui::Frame::new()
+        .fill(ELEVATED())
+        .stroke(Stroke::new(1.0, BORDER()))
+        .corner_radius(radio)
+        .show(ui, |ui| {
+            ui.set_min_height(alto);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let esquinas = egui::CornerRadius { nw: radio as u8, ne: radio as u8, sw: 0, se: 0 };
+            let c = egui::Frame::new().fill(acento.gamma_multiply(0.2)).corner_radius(esquinas).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.set_min_height(26.0);
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    cabecera(ui);
+                });
+            });
+            let r = c.response.rect;
+            ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.5, acento));
+            egui::Frame::new()
+                .inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 10 })
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+                    cuerpo(ui)
+                })
+                .inner
+        })
+        .inner
 }
 
-/// Chapa con el nombre del plugin: placa metálica clara con remaches y las letras grabadas.
-pub fn chapa(ui: &mut egui::Ui, marca: &str, nombre: &str, acento: Color32) -> Response {
-    let fuente = FontId::proportional(15.0);
-    let g = ui.painter().layout_no_wrap(nombre.to_uppercase(), fuente.clone(), Color32::BLACK);
-    let gm = ui.painter().layout_no_wrap(marca.to_uppercase(), FontId::proportional(8.5), Color32::BLACK);
-    let (rect, resp) = ui.allocate_exact_size(vec2(g.size().x.max(gm.size().x) + 52.0, 34.0), Sense::hover());
+/// Botón de encendido de un dispositivo: símbolo de power en un círculo; verde encendido, apagado
+/// gris (bypass).
+pub fn encendido(ui: &mut egui::Ui, on: bool) -> Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
     let p = ui.painter();
-    p.rect_filled(rect.translate(vec2(0.0, 2.0)), rr(5.0), Color32::from_black_alpha(140));
-    // Degradé vertical del aluminio.
-    let bandas = 12;
-    for k in 0..bandas {
-        let f = k as f32 / bandas as f32;
-        let gris = (206.0 - 70.0 * f + 22.0 * (f * 6.0).sin().abs() * (1.0 - f)) as u8;
-        let alto = rect.height() / bandas as f32;
-        let fila = Rect::from_min_size(pos2(rect.left(), rect.top() + k as f32 * alto), vec2(rect.width(), alto + 0.5));
-        p.rect_filled(fila, if k == 0 || k == bandas - 1 { rr(5.0) } else { 0.0 }, Color32::from_gray(gris));
-    }
-    p.rect_stroke(rect, rr(5.0), Stroke::new(1.0, Color32::from_gray(70)), egui::StrokeKind::Inside);
-    p.hline(rect.x_range().shrink(4.0), rect.top() + 1.5, Stroke::new(1.0, Color32::from_white_alpha(170)));
-    // Remaches.
-    for x in [rect.left() + 9.0, rect.right() - 9.0] {
-        let c = pos2(x, rect.center().y);
-        p.circle_filled(c + vec2(0.0, 0.8), 3.4, Color32::from_black_alpha(120));
-        p.circle_filled(c, 3.0, Color32::from_gray(120));
-        p.circle_filled(c - vec2(0.8, 0.8), 1.4, Color32::from_gray(230));
-    }
-    // Letras grabadas: luz debajo y tinta oscura encima; la marca, pequeña y del color del plugin.
-    let centro = pos2(rect.center().x, rect.center().y + 4.0);
-    p.galley_with_override_text_color(pos2(rect.center().x - gm.size().x / 2.0, rect.top() + 3.0), gm, acento.gamma_multiply(0.8).to_opaque());
-    p.galley_with_override_text_color(centro - g.size() / 2.0 + vec2(0.0, 1.0), g.clone(), Color32::from_white_alpha(200));
-    p.galley_with_override_text_color(centro - g.size() / 2.0, g, Color32::from_gray(36));
+    let c = r.center();
+    let color = if on { METER[0] } else if resp.hovered() { TEXT() } else { TEXT_DIM() };
+    p.circle_filled(c, 10.0, if on { METER[0].gamma_multiply(0.18) } else { BG() });
+    let s = Stroke::new(1.6, color);
+    let arco: Vec<Pos2> = (0..=16).map(|k| -std::f32::consts::FRAC_PI_2 + 0.75 + (std::f32::consts::TAU - 1.5) * k as f32 / 16.0).map(|a| c + vec2(a.cos(), a.sin()) * 5.5).collect();
+    p.add(egui::Shape::line(arco, s));
+    p.line_segment([c + vec2(0.0, -7.0), c + vec2(0.0, -1.5)], s);
     resp
 }
 
-/// Botón de encendido con LED: verde encendido, apagado en bypass.
-pub fn led(ui: &mut egui::Ui, on: bool) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
+/// Botón plano con icono para la cabecera de un dispositivo (subir en la cadena, quitar).
+pub fn boton_cabecera(ui: &mut egui::Ui, draw: fn(&Painter, Rect, Color32), activo: bool) -> Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(24.0, 22.0), if activo { Sense::click() } else { Sense::hover() });
     let p = ui.painter();
-    let c = rect.center();
-    p.circle_filled(c + vec2(0.0, 1.0), 11.0, Color32::from_black_alpha(150));
-    p.circle_filled(c, 10.5, Color32::from_gray(if resp.hovered() { 90 } else { 70 }));
-    p.circle_filled(c, 8.0, Color32::from_gray(25));
-    let verde = METER[0];
-    if on {
-        p.circle_filled(c, 9.5, verde.gamma_multiply(0.25));
-        p.circle_filled(c, 6.0, verde);
-    } else {
-        p.circle_filled(c, 6.0, verde.gamma_multiply(0.15).to_opaque());
+    if activo && resp.hovered() {
+        p.rect_filled(r, rr(5.0), Color32::from_white_alpha(20));
     }
-    p.circle_filled(c - vec2(2.0, 2.2), 2.0, Color32::from_white_alpha(if on { 150 } else { 40 }));
+    draw(p, r, if !activo { TEXT_DIM().gamma_multiply(0.5) } else if resp.hovered() { TEXT() } else { TEXT_DIM() });
     resp
+}
+
+/// Flecha hacia la izquierda (subir en la cadena: el dispositivo pasa antes).
+pub fn draw_subir(p: &Painter, r: Rect, c: Color32) {
+    let b = Rect::from_center_size(r.center(), vec2(10.0, 10.0));
+    let s = Stroke::new(1.8, c);
+    p.line_segment([b.right_top(), b.left_center()], s);
+    p.line_segment([b.left_center(), b.right_bottom()], s);
+}
+
+/// Cruz para quitar.
+pub fn draw_quitar(p: &Painter, r: Rect, c: Color32) {
+    let b = Rect::from_center_size(r.center(), vec2(9.0, 9.0));
+    let s = Stroke::new(1.8, c);
+    p.line_segment([b.left_top(), b.right_bottom()], s);
+    p.line_segment([b.right_top(), b.left_bottom()], s);
 }
 
 /// Menú contextual que solo se cierra al hacer clic fuera (para menús con campos de texto).

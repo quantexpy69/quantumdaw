@@ -8,16 +8,17 @@ use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 
 const SIGNATURE: &str = "QUANTUM";
 const DISCRETE: [&str; 8] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División"];
-/// Ancho de cada dispositivo en la pestaña Dispositivos.
+/// Ancho de cada dispositivo en la pestaña Dispositivos; Curves (visor y controles en fila) es ancho.
 const ANCHO_DISPOSITIVO: f32 = 380.0;
+const ANCHO_CURVES: f32 = 820.0;
 
 /// En fila, cada dispositivo ocupa una columna de ancho fijo con su propio desplazamiento vertical.
-fn columna(ui: &mut egui::Ui, en_fila: bool, add: impl FnOnce(&mut egui::Ui)) {
+fn columna(ui: &mut egui::Ui, en_fila: bool, ancho: f32, add: impl FnOnce(&mut egui::Ui)) {
     if !en_fila {
         return add(ui);
     }
-    ui.allocate_ui_with_layout(vec2(ANCHO_DISPOSITIVO, ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
-        ui.set_width(ANCHO_DISPOSITIVO);
+    ui.allocate_ui_with_layout(vec2(ancho, ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.set_width(ancho);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, add);
     });
 }
@@ -93,7 +94,7 @@ pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         "Ping-pong" | "Sincronía" => pick(&["No", "Sí"]),
         "División" => pick(&["1/1", "1/2", "1/4", "1/8", "1/16", "1/8 ·"]),
         "Volumen" => format!("{v:+.1} dB"),
-        "Corte" | "Tono" | "Frec. graves" | "Frec. medios" | "Frec. agudos" | "Corte graves" | "Corte agudos" | "Frec. eses" | "Cruce graves" | "Cruce agudos" => hz(v),
+        "Frecuencia" | "Corte" | "Tono" | "Frec. graves" | "Frec. medios" | "Frec. agudos" | "Corte graves" | "Corte agudos" | "Frec. eses" | "Cruce graves" | "Cruce agudos" => hz(v),
         "Q medios" => format!("Q {v:.2}"),
         "Desafinar" => format!("{v:.0} ct"),
         "Ratio" => format!("{v:.1}:1"),
@@ -104,6 +105,23 @@ pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         n if n.ends_with("ms") => format!("{v:.1} ms"),
         n if n.ends_with(" s") => format!("{v:.1} s"),
         _ => format!("{:.0} %", v * 100.0),
+    }
+}
+
+/// Perillas en una cuadrícula que reparte el ancho: tantas columnas como entren, separadas por igual
+/// y alineadas fila a fila (la última fila queda bajo las primeras columnas).
+fn rejilla_perillas(ui: &mut egui::Ui, kind: Option<FxKind>, defs: &[(&str, f32, f32, f32)], params: &[AtomicF32]) {
+    const CELDA: f32 = 58.0 + 26.0;
+    let ancho = ui.available_width();
+    let columnas = (((ancho + 4.0) / (CELDA + 4.0)).floor() as usize).clamp(1, defs.len().max(1));
+    let hueco = if columnas > 1 { ((ancho - CELDA * columnas as f32) / (columnas - 1) as f32).max(0.0) } else { 0.0 };
+    for (f, fila) in defs.chunks(columnas).enumerate() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = hueco;
+            for (k, def) in fila.iter().enumerate() {
+                param_knob(ui, kind, *def, &params[f * columnas + k]);
+            }
+        });
     }
 }
 
@@ -145,7 +163,14 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
     let r = rect.shrink(8.0);
     let line = |pts: Vec<Pos2>| painter.add(egui::Shape::line(pts, Stroke::new(2.0, color)));
     let curve = |f: &dyn Fn(f32) -> f32| line((0..=120).map(|k| k as f32 / 120.0).map(|t| pos2(r.left() + t * r.width(), r.bottom() - f(t).clamp(0.0, 1.0) * r.height())).collect());
-    let label = |pos: Pos2, align: Align2, text: String, size: f32, c: Color32| painter.text(pos, align, text, FontId::proportional(size), c);
+    // Textos del visor sobre una placa del color del fondo: se leen aunque pase una curva por debajo.
+    let label = |pos: Pos2, align: Align2, text: String, size: f32, c: Color32| {
+        let g = painter.layout_no_wrap(text, FontId::proportional(size), c);
+        let caja = align.anchor_size(pos, g.size()).expand2(vec2(4.0, 1.0));
+        painter.rect_filled(caja, rr(3.0), BG());
+        painter.galley(caja.min + vec2(4.0, 1.0), g, c);
+        caja
+    };
     painter.hline(r.x_range(), r.center().y, Stroke::new(1.0, PANEL()));
     match kind {
         Some(FxKind::Eq) => {
@@ -274,27 +299,31 @@ impl App {
                           fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
                 let accent = kind_color(kind);
-                columna(ui, en_fila, |ui| widgets::chasis(ui, accent, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.horizontal(|ui| {
-                        if let Some(b) = bypass {
-                            let on = !b.load(Relaxed);
-                            if widgets::led(ui, on).on_hover_text(if on { tr("Activo · clic para bypass") } else { tr("En bypass · clic para activar") }).clicked() {
-                                b.store(on, Relaxed);
+                let ancho = if kind == Some(FxKind::Curves) { ANCHO_CURVES } else { ANCHO_DISPOSITIVO };
+                // Cabecera: encendido (bypass), nombre con la marca y, a la derecha, subir y quitar.
+                let mut accion_cabecera = None;
+                let cabecera = |ui: &mut egui::Ui| {
+                    if let Some(b) = bypass {
+                        let on = !b.load(Relaxed);
+                        if widgets::encendido(ui, on).on_hover_text(if on { tr("Activo · clic para bypass") } else { tr("En bypass · clic para activar") }).clicked() {
+                            b.store(on, Relaxed);
+                        }
+                    }
+                    ui.label(RichText::new(tr(name).trim_start_matches("QUANTUM ")).size(13.5).strong().color(TEXT()));
+                    ui.label(RichText::new(SIGNATURE).size(9.0).strong().color(accent));
+                    if let Some(j) = j {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if widgets::boton_cabecera(ui, widgets::draw_quitar, true).on_hover_text(tr("Quitar")).clicked() {
+                                accion_cabecera = Some(Act::Remove(j));
                             }
-                        }
-                        widgets::chapa(ui, "QUANTUM", tr(name).trim_start_matches("QUANTUM "), accent);
-                        if let Some(j) = j {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.small_button(tr("Quitar")).clicked() {
-                                    *act = Some(Act::Remove(j));
-                                }
-                                if ui.add_enabled(j > 0, egui::Button::new("⏶").small()).on_hover_text(tr("Subir en la cadena")).clicked() {
-                                    *act = Some(Act::Up(j));
-                                }
-                            });
-                        }
-                    });
+                            if widgets::boton_cabecera(ui, widgets::draw_subir, j > 0).on_hover_text(tr("Subir en la cadena")).clicked() {
+                                accion_cabecera = Some(Act::Up(j));
+                            }
+                        });
+                    }
+                };
+                columna(ui, en_fila, ancho, |ui| widgets::dispositivo(ui, accent, en_fila, cabecera, |ui| {
+                    ui.set_width(ui.available_width());
                     let values: Vec<f32> = params.iter().map(|a| a.get()).collect();
                     match (kind, fx, j) {
                         // Plugins Pro: su interfaz propia (con todos sus controles).
@@ -334,33 +363,36 @@ impl App {
                         _ => true,
                     };
                     if todos {
-                        ui.horizontal_wrapped(|ui| {
-                            for (k, def) in defs.iter().enumerate() {
-                                param_knob(ui, kind, *def, &params[k]);
-                            }
-                        });
+                        ui.add_space(4.0);
+                        rejilla_perillas(ui, kind, defs, params);
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM())));
                 }));
+                if accion_cabecera.is_some() {
+                    *act = accion_cabecera;
+                }
                 ui.add_space(6.0);
             };
             if let Some(s) = &t.sampler {
                 // Instrumento real (sampler): volumen y créditos de la biblioteca.
-                columna(ui, en_fila, |ui| {
-                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
-                widgets::chasis(ui, ACCENT(), |ui| {
-                    ui.set_width(ui.available_width());
-                    let e = instruments::find(&t.instrument);
-                    ui.horizontal(|ui| {
-                        let nombre = if instruments::es_kit(&t.instrument) { instruments::nombre(&t.instrument) } else { e.map_or(s.name.clone(), |e| e.name.to_string()) };
-                        widgets::chapa(ui, "QUANTUM", &nombre, ACCENT());
-                        if bateria {
+                columna(ui, en_fila, ANCHO_DISPOSITIVO, |ui| {
+                if !en_fila {
+                    ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                }
+                let e = instruments::find(&t.instrument);
+                let nombre = if instruments::es_kit(&t.instrument) { instruments::nombre(&t.instrument) } else { e.map_or(s.name.clone(), |e| e.name.to_string()) };
+                let mut abrir_drums = false;
+                let cabecera = |ui: &mut egui::Ui| {
+                    ui.label(RichText::new(&nombre).size(13.5).strong().color(TEXT()));
+                    ui.label(RichText::new(tr("INSTRUMENTO")).size(9.0).strong().color(ACCENT()));
+                    if bateria {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let b = egui::Button::new(RichText::new(tr("Abrir Q Drums")).strong().color(BG())).fill(Color32::from_rgb(0xFF, 0x6B, 0x3D));
-                            if ui.add(b).on_hover_text(tr("Ritmos, kit y piezas de la batería")).clicked() {
-                                act = Some(Act::Drums);
-                            }
-                        }
-                    });
+                            abrir_drums = ui.add(b).on_hover_text(tr("Ritmos, kit y piezas de la batería")).clicked();
+                        });
+                    }
+                };
+                widgets::dispositivo(ui, ACCENT(), en_fila, cabecera, |ui| {
+                    ui.set_width(ui.available_width());
                     let mut db = widgets::db(s.gain.get());
                     if ui.add(egui::Slider::new(&mut db, -30.0..=12.0).suffix(" dB").text(tr("Volumen"))).changed() {
                         s.gain.set(10f32.powf(db / 20.0));
@@ -368,8 +400,10 @@ impl App {
                     if let Some(e) = e {
                         ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM()));
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM())));
                 });
+                if abrir_drums {
+                    act = Some(Act::Drums);
+                }
                 ui.add_space(6.0);
                 });
             } else if let Some(s) = &t.synth {
