@@ -99,7 +99,7 @@ impl App {
                     self.exportar_midi(None);
                 }
                 if item(ui, tr("Exportar…"), tr("Ctrl+E")) {
-                    self.dialog = Some(Dialog::Export(Format::Wav24, 0, 0, 0));
+                    self.abrir_exportar();
                 }
                 ui.separator();
                 if item(ui, tr("Salir"), "") {
@@ -715,7 +715,7 @@ impl App {
             Settings(AudioConfig, u16, String),
             Region(RegionOp),
             Tempo(u64, u64, f32, bool),
-            Export(Format, u8, u8, usize),
+            Export(Box<exportar::Exportacion>),
             DissolveGroup(usize),
             Name(NameKind, usize, String),
         }
@@ -742,12 +742,16 @@ impl App {
             }
             _ => String::new(),
         };
+        let resumen = match &self.dialog {
+            Some(Dialog::Export(e)) => self.resumen_exportacion(e),
+            _ => String::new(),
+        };
         let Some(dialog) = &mut self.dialog else {
             return;
         };
         let (mut act, mut close) = (None, false);
         let has_sel = self.time_sel.is_some();
-        let (tracks, groups) = (&self.s.tracks, &mut self.s.groups);
+        let (tracks, groups, sections) = (&self.s.tracks, &mut self.s.groups, &self.s.sections);
         let in_channels = self.engine.in_channels;
         let input_error = self.engine.input_error.clone();
         let mut show_hdmi = self.config.show_hdmi;
@@ -900,36 +904,11 @@ impl App {
                         close |= ui.button(tr("Cancelar")).clicked();
                     });
                 }
-                Dialog::Export(format, range, source, track) => {
-                    ui.heading(tr("Exportar"));
-                    egui::ComboBox::from_label(tr("Formato")).selected_text(format.label()).show_ui(ui, |ui| {
-                        Format::ALL.iter().for_each(|&f| _ = ui.selectable_value(format, f, f.label()));
-                    });
-                    ui.label(RichText::new(tr("Qué exportar")).strong());
-                    ui.radio_value(source, 0, tr("Mezcla completa del proyecto"));
-                    ui.horizontal(|ui| {
-                        ui.radio_value(source, 1, tr("Solo una pista:"));
-                        let name = tracks.get(*track).map_or("—", |t| t.name.as_str());
-                        egui::ComboBox::from_id_salt("exp-track").selected_text(name).show_ui(ui, |ui| {
-                            for (i, t) in tracks.iter().enumerate().filter(|(_, t)| t.kind != TrackKind::Midi) {
-                                if ui.selectable_value(track, i, &t.name).clicked() {
-                                    *source = 1;
-                                }
-                            }
-                        });
-                    });
-                    ui.radio_value(source, 2, tr("Cada pista por separado (stems)"));
-                    ui.label(RichText::new(tr("Rango")).strong());
-                    ui.radio_value(range, 0, tr("Todo el proyecto"));
-                    ui.radio_value(range, 1, tr("Rango de loop"));
-                    ui.add_enabled_ui(has_sel, |ui| ui.radio_value(range, 2, tr("Selección de tiempo")));
-                    ui.horizontal(|ui| {
-                        if ui.button(tr("Exportar…")).clicked() {
-                            act = Some(Act::Export(*format, *range, *source, *track));
-                        }
-                        close |= ui.button(tr("Cancelar")).clicked();
-                    });
-                }
+                Dialog::Export(e) => match exportar::dialogo(ui, e, tracks, groups.as_slice(), sections, has_sel, &resumen) {
+                    Some(true) => act = Some(Act::Export(e.clone())),
+                    Some(false) => close = true,
+                    None => {}
+                },
                 Dialog::Stretch(pct) => {
                     ui.heading(tr("Estirar tiempo"));
                     ui.label(RichText::new(tr("Cambia la duración de las regiones seleccionadas sin cambiar el tono.")).color(TEXT_DIM()));
@@ -1102,8 +1081,9 @@ impl App {
                 self.aplicar_audio(cfg, bits, midi);
                 self.dialog = None;
             }
-            Some(Act::Export(format, range, source, track)) => {
-                let r = self.export(format, range, source, track);
+            Some(Act::Export(e)) => {
+                self.exportacion = Some((*e).clone());
+                let r = self.exportar(*e);
                 self.status = r.unwrap_or_else(|e| format!("Error: {e}"));
                 self.dialog = None;
             }

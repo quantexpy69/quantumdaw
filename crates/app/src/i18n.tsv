@@ -1717,3 +1717,44 @@ Ajustar a la rejilla de tiempos	Snap to the time grid	Ajustar à grade de tempo
 Clic añade a:	Click adds to:	Clique adiciona a:
 Selecciona una pista para añadirle el efecto, o arrástralo sobre una	Select a track to add the effect to it, or drag it onto one	Selecione uma faixa para adicionar o efeito, ou arraste-o para uma
 Clic: añadir a la pista seleccionada · arrastrar: a una pista o canal	Click: add to the selected track · drag: onto a track or channel	Clique: adicionar à faixa selecionada · arrastar: para uma faixa ou canal
+Stems por pista	Stems per track	Stems por faixa
+Stems por grupo	Stems per group	Stems por grupo
+La mezcla completa o stems de pistas y grupos, en el rango que elijas	The full mix or stems of tracks and groups, in the range you choose	A mixagem completa ou stems de faixas e grupos, no intervalo que escolher
+QUÉ EXPORTAR	WHAT TO EXPORT	O QUE EXPORTAR
+RANGO	RANGE	INTERVALO
+FORMATO Y OPCIONES	FORMAT AND OPTIONS	FORMATO E OPÇÕES
+Un solo archivo estéreo con todo lo que suena, después del master.	A single stereo file with everything that plays, after the master.	Um único arquivo estéreo com tudo o que soa, depois do master.
+Incluir la mezcla	Include the mix	Incluir a mixagem
+Sección	Section	Seção
+Loop	Loop	Loop
+del	from	de
+al	to	até
+Para Selección marca un tramo en la regla; para Sección crea secciones en el arreglo.	For Selection, mark a span on the ruler; for Section, create arrangement sections.	Para Seleção marque um trecho na régua; para Seção crie seções no arranjo.
+Para Selección marca un tramo en la regla del timeline.	For Selection, mark a span on the timeline ruler.	Para Seleção marque um trecho na régua da linha do tempo.
+Para Sección crea secciones del arreglo en el timeline.	For Section, create arrangement sections on the timeline.	Para Seção crie seções do arranjo na linha do tempo.
+Cola	Tail	Cauda
+Tiempo extra al final para que las reverbs y los delays terminen de sonar.	Extra time at the end so reverbs and delays can ring out.	Tempo extra no final para que reverbs e delays terminem de soar.
+Pasar por el master	Through the master	Passar pelo master
+Con «No» los stems salen sin los efectos ni el volumen del master, listos para mezclar en otro lado.	With “No” the stems skip the master effects and volume, ready to mix elsewhere.	Com «Não» os stems saem sem os efeitos nem o volume do master, prontos para mixar em outro lugar.
+Omitir stems en silencio	Skip silent stems	Omitir stems em silêncio
+Numerar los archivos	Number the files	Numerar os arquivos
+Exportar 1 archivo…	Export 1 file…	Exportar 1 arquivo…
+archivos…	files…	arquivos…
+El rango está vacío	The range is empty	O intervalo está vazio
+Las que suenan	Audible ones	As que soam
+Seleccionadas	Selected	Selecionadas
+Todas	All	Todas
+de	of	de
+Silenciada	Muted	Silenciada
+Clic	Click	Clique
+El proyecto no tiene grupos. Selecciona pistas en el timeline y agrúpalas (Pista → Agrupar seleccionadas) para exportarlas juntas en un stem.	The project has no groups. Select tracks on the timeline and group them (Track → Group selected) to export them together as one stem.	O projeto não tem grupos. Selecione faixas na linha do tempo e agrupe-as (Faixa → Agrupar selecionadas) para exportá-las juntas em um stem.
+Cada grupo sale como un stem con la suma de sus pistas.	Each group becomes one stem with the sum of its tracks.	Cada grupo sai como um stem com a soma das suas faixas.
+Sin pistas	No tracks	Sem faixas
+pista	track	faixa
+Pistas sin grupo	Ungrouped tracks	Faixas sem grupo
+como stems sueltos	as individual stems	como stems individuais
+Exportado:	Exported:	Exportado:
+Carpeta para los stems	Folder for the stems	Pasta para os stems
+en silencio, omitidos	silent, skipped	em silêncio, omitidos
+stems exportados	stems exported	stems exportados
+en	in	em

@@ -458,6 +458,11 @@ pub fn pan_h(ui: &mut egui::Ui, v: &mut f32, ancho: f32) -> Response {
 
 /// Control segmentado a lo ancho (No / Auto / Sí): la opción elegida con fondo y borde de acento.
 pub fn segmentado(ui: &mut egui::Ui, sel: &mut usize, opciones: &[&str]) -> bool {
+    segmentado_con(ui, sel, opciones, &[])
+}
+
+/// Como `segmentado`, con opciones desactivadas (`activas[k] == false`): atenuadas y sin clic.
+pub fn segmentado_con(ui: &mut egui::Ui, sel: &mut usize, opciones: &[&str], activas: &[bool]) -> bool {
     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
     let p = ui.painter().clone();
     p.rect(r, rr(7.0), BG(), Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
@@ -465,14 +470,16 @@ pub fn segmentado(ui: &mut egui::Ui, sel: &mut usize, opciones: &[&str]) -> bool
     let mut cambio = false;
     for (k, texto) in opciones.iter().enumerate() {
         let celda = Rect::from_min_size(pos2(r.left() + w * k as f32, r.top()), vec2(w, r.height())).shrink(2.0);
-        let c = ui.interact(celda, resp.id.with(k), Sense::click());
+        let activa = activas.get(k).copied().unwrap_or(true);
+        let c = ui.interact(celda, resp.id.with(k), if activa { Sense::click() } else { Sense::hover() });
         let on = *sel == k;
         if on {
             p.rect(celda, rr(6.0), ACCENT().gamma_multiply(0.18), Stroke::new(1.0, ACCENT().gamma_multiply(0.6)), egui::StrokeKind::Inside);
-        } else if c.hovered() {
+        } else if c.hovered() && activa {
             p.rect_filled(celda, rr(6.0), BORDER());
         }
-        p.text(celda.center(), Align2::CENTER_CENTER, tr(texto), FontId::proportional(12.0), if on { ACCENT() } else if c.hovered() { TEXT() } else { TEXT_DIM() });
+        let color = if on { ACCENT() } else if !activa { TEXT_DIM().gamma_multiply(0.45) } else if c.hovered() { TEXT() } else { TEXT_DIM() };
+        p.text(celda.center(), Align2::CENTER_CENTER, tr(texto), FontId::proportional(12.0), color);
         if c.clicked() && !on {
             *sel = k;
             cambio = true;

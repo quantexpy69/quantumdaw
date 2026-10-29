@@ -173,7 +173,8 @@ pub fn resultados(ui: &mut egui::Ui, buscar: &str) -> Option<u8> {
 pub fn tarjeta(ui: &mut egui::Ui, titulo: &str, add: impl FnOnce(&mut egui::Ui)) {
     let ancho = ui.available_width().min(ANCHO);
     egui::Frame::new().fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(egui::Margin { left: 18, right: 18, top: 14, bottom: 16 }).show(ui, |ui| {
-        ui.set_width(ancho - 36.0);
+        // Márgenes (36) y borde (2): la tarjeta ocupa justo `ancho` y no ensancha la página.
+        ui.set_width(ancho - 38.0);
         ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
         ui.label(RichText::new(tr(titulo)).size(11.0).strong().color(TEXT_DIM()));
         ui.add_space(2.0);

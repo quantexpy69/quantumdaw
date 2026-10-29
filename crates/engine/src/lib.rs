@@ -447,6 +447,8 @@ pub struct Engine {
     prefader: AtomicBool,
     /// Render offline antes de los efectos (congelar los canales de una batería).
     prefx: AtomicBool,
+    /// Render offline de stems sin los efectos ni el volumen del master.
+    sin_master: AtomicBool,
     /// Secuencia en escucha y su posición (frames).
     pub secuencia: ArcSwapOption<Secuencia>,
     pub secuencia_pos: AtomicU64,
@@ -632,6 +634,7 @@ impl Engine {
             preview_gain: AtomicF32::new(0.8),
             prefader: AtomicBool::new(false),
             prefx: AtomicBool::new(false),
+            sin_master: AtomicBool::new(false),
             secuencia: ArcSwapOption::empty(),
             secuencia_pos: 0.into(),
         });
@@ -660,8 +663,9 @@ impl Engine {
         }
     }
 
-    /// Mezcla en `out` desde el frame `pos`. `only`: renderiza solo esa pista (exportación por canal).
-    pub fn render(&self, out: &mut [[f32; 2]], pos: u64, playing: bool, offline: bool, live: Live, only: Option<&Arc<Params>>) {
+    /// Mezcla en `out` desde el frame `pos`. `only`: renderiza solo esas pistas (exportación de stems).
+    pub fn render(&self, out: &mut [[f32; 2]], pos: u64, playing: bool, offline: bool, live: Live, only: Option<&[Arc<Params>]>) {
+        let elegida = |p: &Arc<Params>| only.is_some_and(|o| o.iter().any(|x| Arc::ptr_eq(x, p)));
         out.fill([0.0; 2]);
         let mut tmp = [[0f32; 2]; BLOCK];
         let tmp = &mut tmp[..out.len()];
@@ -732,7 +736,7 @@ impl Engine {
                 p.in_meter.max(peak);
             }
             // Render previo a los efectos de una pista (congelar los canales de una batería).
-            if offline && self.prefx.load(Relaxed) && only.is_some_and(|o| Arc::ptr_eq(o, &node.params)) {
+            if offline && self.prefx.load(Relaxed) && elegida(&node.params) {
                 out.iter_mut().zip(tmp.iter()).for_each(|(o, s)| *o = [o[0] + s[0], o[1] + s[1]]);
                 continue;
             }
@@ -751,7 +755,7 @@ impl Engine {
                 s[..tmp.len()].copy_from_slice(tmp);
             }
             // Render previo al fader de una pista: sin fader, panorama, automatización ni envíos.
-            if offline && self.prefader.load(Relaxed) && only.is_some_and(|o| Arc::ptr_eq(o, &node.params)) {
+            if offline && self.prefader.load(Relaxed) && elegida(&node.params) {
                 out.iter_mut().zip(tmp.iter()).for_each(|(o, s)| *o = [o[0] + s[0], o[1] + s[1]]);
                 continue;
             }
@@ -763,8 +767,8 @@ impl Engine {
             if let Some(v) = automation_at(&node.pan_auto, pos).filter(|_| read) {
                 p.pan.set(v);
             }
-            // Exportando una sola pista, solo ella va a la salida (sus envíos se siguen calculando).
-            let to_out = only.map_or(node.to_master, |o| Arc::ptr_eq(o, &node.params));
+            // Exportando stems, solo las pistas elegidas van a la salida (los envíos se siguen calculando).
+            let to_out = if only.is_some() { elegida(&node.params) } else { node.to_master };
             let audible = !p.mute.load(Relaxed) && (!any_solo || p.solo.load(Relaxed) || node.bus || only.is_some());
             if p.apply(tmp, p.gain.get(), audible) {
                 if to_out {
@@ -777,7 +781,7 @@ impl Engine {
                 }
             }
         }
-        if !(offline && self.prefader.load(Relaxed)) {
+        if !(offline && (self.prefader.load(Relaxed) || self.sin_master.load(Relaxed))) {
             for fx in self.master_fx.load().iter() {
                 fx.process(out, sr, bpm_now, offline);
             }
@@ -858,7 +862,7 @@ impl Engine {
     /// Render offline de una pista antes de sus efectos (solo su instrumento o lo que recibe).
     pub fn bounce_prefx(&self, from: u64, to: u64, track: &Arc<Params>) -> Vec<f32> {
         self.prefx.store(true, Relaxed);
-        let out = self.bounce(from, to, Some(track));
+        let out = self.bounce(from, to, Some(std::slice::from_ref(track)));
         self.prefx.store(false, Relaxed);
         out
     }
@@ -866,13 +870,21 @@ impl Engine {
     /// Render offline de una pista antes del fader (instrumento + efectos), estéreo intercalado.
     pub fn bounce_prefader(&self, from: u64, to: u64, track: &Arc<Params>) -> Vec<f32> {
         self.prefader.store(true, Relaxed);
-        let out = self.bounce(from, to, Some(track));
+        let out = self.bounce(from, to, Some(std::slice::from_ref(track)));
         self.prefader.store(false, Relaxed);
         out
     }
 
-    /// Mezcla offline de `[from, to)` como estéreo intercalado (de una pista o de todo el proyecto).
-    pub fn bounce(&self, from: u64, to: u64, only: Option<&Arc<Params>>) -> Vec<f32> {
+    /// Stem offline de `[from, to)`: la suma de esas pistas, con o sin el procesamiento del master.
+    pub fn bounce_stem(&self, from: u64, to: u64, tracks: &[Arc<Params>], master: bool) -> Vec<f32> {
+        self.sin_master.store(!master, Relaxed);
+        let out = self.bounce(from, to, Some(tracks));
+        self.sin_master.store(false, Relaxed);
+        out
+    }
+
+    /// Mezcla offline de `[from, to)` como estéreo intercalado (de unas pistas o de todo el proyecto).
+    pub fn bounce(&self, from: u64, to: u64, only: Option<&[Arc<Params>]>) -> Vec<f32> {
         let mut buf = [[0f32; 2]; BLOCK];
         let mut out = Vec::with_capacity((to.saturating_sub(from) * 2) as usize);
         for pos in (from..to).step_by(BLOCK) {

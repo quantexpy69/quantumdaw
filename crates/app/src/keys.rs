@@ -275,7 +275,7 @@ impl App {
             Cmd::Automation => self.show_auto = !self.show_auto,
             Cmd::NewTrack => self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None)),
             Cmd::Import => self.import(rfd::FileDialog::new().pick_files().unwrap_or_default()),
-            Cmd::Export => self.dialog = Some(Dialog::Export(Format::Wav24, 0, 0, 0)),
+            Cmd::Export => self.abrir_exportar(),
             Cmd::Loop => self.toggle_loop(),
             Cmd::Metronome => _ = self.engine.metronome.fetch_xor(true, Relaxed),
             Cmd::Select => self.set_tool(Tool::Select),

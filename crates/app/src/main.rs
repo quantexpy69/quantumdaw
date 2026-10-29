@@ -9,6 +9,7 @@ mod creativo;
 mod generador;
 mod edicion;
 mod editor_partitura;
+mod exportar;
 mod escenario;
 mod curves;
 mod i18n;
@@ -567,8 +568,8 @@ enum Dialog {
     NewTrack(String, TrackKind, u32, Option<Color32>),
     /// Configuración, bits de grabación, dispositivos, puertos MIDI y puerto elegido.
     Settings(AudioConfig, u16, Vec<DeviceInfo>, Vec<String>, String),
-    /// Formato, rango (0 proyecto, 1 loop, 2 selección), origen (0 mezcla, 1 una pista, 2 stems) y pista.
-    Export(Format, u8, u8, usize),
+    /// Mezcla o stems (por pista o por grupo), rango, formato y opciones.
+    Export(Box<exportar::Exportacion>),
     Groups,
     /// Editor de atajos (con la captura en curso).
     Keys(Option<keys::Capture>),
@@ -675,6 +676,8 @@ struct App {
     last_track: Option<usize>,
     /// Alto de la tarjeta más alta en Dispositivos (las demás lo igualan).
     alto_dispositivos: f32,
+    /// Últimas opciones de exportación.
+    exportacion: Option<exportar::Exportacion>,
     drag: Option<timeline::Drag>,
     /// Región bajo el último clic derecho (menú contextual).
     ctx_region: Option<(usize, usize)>,
@@ -852,6 +855,7 @@ impl App {
             stretch_scope: 0,
             last_track: None,
             alto_dispositivos: 0.0,
+            exportacion: None,
             drag: None,
             ctx_region: None,
             ctx_lane: None,
@@ -1454,46 +1458,6 @@ impl App {
     /// ¿Admite efectos la pista? (todas menos las de video)
     fn admite_efectos(&self, i: usize) -> bool {
         self.s.tracks.get(i).is_some_and(|t| t.kind != TrackKind::Video)
-    }
-
-    fn export_range(&self, range: u8) -> (u64, u64) {
-        let e = &self.engine;
-        match range {
-            1 => (e.loop_start.load(Relaxed), e.loop_end.load(Relaxed)),
-            2 => self.time_sel.unwrap_or_default(),
-            _ => (0, self.project_end()),
-        }
-    }
-
-    fn write_export(&self, path: &Path, format: Format, (a, b): (u64, u64), only: Option<&Arc<Params>>) -> anyhow::Result<()> {
-        let (mut samples, mut rate) = (self.engine.bounce(a, b, only), self.engine.sample_rate);
-        if format == Format::Mp3 && rate > 48_000 {
-            let frames = samples.chunks(2).map(|c| [c[0], c[1]]).collect();
-            (samples, rate) = (engine::resample(frames, rate, 48_000).into_iter().flatten().collect(), 48_000);
-        }
-        project::export(path, format, rate, &samples)
-    }
-
-    /// Exporta la mezcla, una sola pista o cada pista por separado (stems).
-    fn export(&mut self, format: Format, range: u8, source: u8, track: usize) -> anyhow::Result<String> {
-        let r = self.export_range(range);
-        anyhow::ensure!(r.1 > r.0, "el rango de exportación está vacío");
-        self.stop();
-        let ext = format.ext();
-        if source == 2 {
-            let dir = rfd::FileDialog::new().set_title("Carpeta para los stems").set_directory(self.dir.join(RENDER_DIR)).pick_folder();
-            let dir = dir.ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
-            for t in &self.s.tracks {
-                self.write_export(&dir.join(format!("{}.{ext}", safe(&t.name))), format, r, Some(&t.params))?;
-            }
-            return Ok(format!("{} stems exportados en {}", self.s.tracks.len(), dir.display()));
-        }
-        let only = (source == 1).then(|| self.s.tracks.get(track).map(|t| t.params.clone())).flatten();
-        let name = if only.is_some() { safe(&self.s.tracks[track].name) } else { "mix".into() };
-        let dialog = rfd::FileDialog::new().set_directory(self.dir.join(RENDER_DIR)).set_file_name(format!("{name}.{ext}"));
-        let path = dialog.save_file().ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
-        self.write_export(&path, format, r, only.as_ref())?;
-        Ok(format!("Exportado: {}", path.display()))
     }
 
     // ---------- Edición ----------
