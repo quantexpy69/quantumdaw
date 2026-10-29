@@ -11,6 +11,11 @@ const DISCRETE: [&str; 8] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda
 /// Ancho de cada dispositivo en la pestaña Dispositivos; Curves (visor y controles en fila) es ancho.
 const ANCHO_DISPOSITIVO: f32 = 380.0;
 const ANCHO_CURVES: f32 = 820.0;
+/// En fila (Dispositivos) las tarjetas son compactas: perillas y visores más chicos, con los textos del
+/// mismo tamaño para que se lean igual. Curves cabe entonces en menos ancho.
+const ANCHO_CURVES_FILA: f32 = 660.0;
+const PERILLA: f32 = 58.0;
+const PERILLA_FILA: f32 = 42.0;
 
 /// En fila, cada dispositivo ocupa una columna de ancho fijo con su propio desplazamiento vertical.
 fn columna(ui: &mut egui::Ui, en_fila: bool, ancho: f32, add: impl FnOnce(&mut egui::Ui)) {
@@ -74,7 +79,7 @@ pub fn preview(ui: &mut egui::Ui, k: FxKind, sr: f32) {
         ui.label(RichText::new(tr(k.name()).trim_start_matches("QUANTUM ")).size(15.0).strong());
     });
     let defaults: Vec<f32> = k.params().iter().map(|p| p.3).collect();
-    display(ui, Some(k), &defaults, [0.0; 2], kind_color(Some(k)), sr);
+    display(ui, Some(k), &defaults, [0.0; 2], kind_color(Some(k)), sr, 96.0);
     ui.label(RichText::new(tr(summary(k))).size(12.5));
     ui.label(RichText::new(format!("{} {}", k.params().len(), tr("parámetros"))).size(11.0).color(TEXT_DIM()));
 }
@@ -110,16 +115,17 @@ pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
 
 /// Perillas en una cuadrícula que reparte el ancho: tantas columnas como entren, separadas por igual
 /// y alineadas fila a fila (la última fila queda bajo las primeras columnas).
-fn rejilla_perillas(ui: &mut egui::Ui, kind: Option<FxKind>, defs: &[(&str, f32, f32, f32)], params: &[AtomicF32]) {
-    const CELDA: f32 = 58.0 + 26.0;
+fn rejilla_perillas(ui: &mut egui::Ui, kind: Option<FxKind>, defs: &[(&str, f32, f32, f32)], params: &[AtomicF32], tam: f32) {
+    // La celda deja lugar al valor y al nombre debajo de la perilla (ancho mínimo para los textos).
+    let celda = (tam + 26.0).max(76.0);
     let ancho = ui.available_width();
-    let columnas = (((ancho + 4.0) / (CELDA + 4.0)).floor() as usize).clamp(1, defs.len().max(1));
-    let hueco = if columnas > 1 { ((ancho - CELDA * columnas as f32) / (columnas - 1) as f32).max(0.0) } else { 0.0 };
+    let columnas = (((ancho + 4.0) / (celda + 4.0)).floor() as usize).clamp(1, defs.len().max(1));
+    let hueco = if columnas > 1 { ((ancho - celda * columnas as f32) / (columnas - 1) as f32).max(0.0) } else { 0.0 };
     for (f, fila) in defs.chunks(columnas).enumerate() {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = hueco;
             for (k, def) in fila.iter().enumerate() {
-                param_knob(ui, kind, *def, &params[f * columnas + k]);
+                ui.allocate_ui(vec2(celda, tam + 44.0), |ui| perilla(ui, kind, *def, &params[f * columnas + k], tam));
             }
         });
     }
@@ -150,14 +156,18 @@ pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (
                 a.set(if DISCRETE.contains(&name) { v.round() } else { v });
             }
             ui.label(RichText::new(value_text(kind, name, a.get())).monospace().size(11.0).strong().color(color));
-            ui.label(RichText::new(tr(name.trim_end_matches(" dB").trim_end_matches(" ms"))).size(10.5).color(TEXT()));
+            // Nombre en una sola línea: si no entra en la celda, la letra se achica un poco (no se corta).
+            let nombre = tr(name.trim_end_matches(" dB").trim_end_matches(" ms")).to_string();
+            let ancho = ui.painter().layout_no_wrap(nombre.clone(), egui::FontId::proportional(10.5), TEXT()).size().x;
+            let tam = if ancho > ui.available_width() { (10.5 * ui.available_width() / ancho).max(8.5) } else { 10.5 };
+            ui.add(egui::Label::new(RichText::new(nombre).size(tam).color(TEXT())).extend());
         });
     });
 }
 
 /// Visor de cada plugin: curvas de respuesta, medidores o la nota detectada.
-fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2], color: Color32, sr: f32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 96.0), Sense::hover());
+fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2], color: Color32, sr: f32, alto: f32) {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), alto), Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, rr(8.0), BG());
     let r = rect.shrink(8.0);
@@ -284,6 +294,10 @@ impl App {
         }
         let bateria = Self::drummer_disponible() && self.es_pista_bateria(i);
         let (mut act, sr) = (None, self.engine.sample_rate as f32);
+        // En fila, todas las tarjetas toman el alto de la más alta (medido en el cuadro anterior), sin
+        // pasar del alto del panel; en la ventana de plugins cada una tiene su alto natural.
+        let alto_max = std::cell::Cell::new(0.0f32);
+        let alto_fila = if en_fila { self.alto_dispositivos.min((ui.available_height() - 4.0).max(0.0)) } else { 0.0 };
         let mut cuerpo = |app: &Self, ui: &mut egui::Ui| {
             let t = &app.s.tracks[i];
             // Pistas que pueden ser clave del sidechain de Curves (todas menos esta).
@@ -299,7 +313,12 @@ impl App {
                           fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
                 let accent = kind_color(kind);
-                let ancho = if kind == Some(FxKind::Curves) { ANCHO_CURVES } else { ANCHO_DISPOSITIVO };
+                let ancho = match (kind == Some(FxKind::Curves), en_fila) {
+                    (true, true) => ANCHO_CURVES_FILA,
+                    (true, false) => ANCHO_CURVES,
+                    _ => ANCHO_DISPOSITIVO,
+                };
+                let alto_visor = if en_fila { 64.0 } else { 96.0 };
                 // Cabecera: encendido (bypass), nombre con la marca y, a la derecha, subir y quitar.
                 let mut accion_cabecera = None;
                 let cabecera = |ui: &mut egui::Ui| {
@@ -322,7 +341,8 @@ impl App {
                         });
                     }
                 };
-                columna(ui, en_fila, ancho, |ui| widgets::dispositivo(ui, accent, en_fila, cabecera, |ui| {
+                columna(ui, en_fila, ancho, |ui| {
+                    let (_, natural) = widgets::dispositivo(ui, accent, alto_fila, cabecera, |ui| {
                     ui.set_width(ui.available_width());
                     let values: Vec<f32> = params.iter().map(|a| a.get()).collect();
                     match (kind, fx, j) {
@@ -342,7 +362,7 @@ impl App {
                             if sincronizar {
                                 *act = Some(Act::Sincronizar);
                             }
-                            curves::visor(ui, fx, sr, accent);
+                            curves::visor(ui, fx, sr, accent, if en_fila { 130.0 } else { 240.0 });
                         }
                         // Compresor y puerta: también pueden escuchar a otra pista (sidechain).
                         (Some(k @ (FxKind::Compressor | FxKind::Gate)), Some(fx), Some(_)) => {
@@ -352,21 +372,23 @@ impl App {
                             if sincronizar {
                                 *act = Some(Act::Sincronizar);
                             }
-                            display(ui, kind, &values, readout, accent, sr);
+                            display(ui, kind, &values, readout, accent, sr, alto_visor);
                         }
-                        _ => display(ui, kind, &values, readout, accent, sr),
+                        _ => display(ui, kind, &values, readout, accent, sr, alto_visor),
                     }
                     // Curves muestra solo los controles esenciales; el resto en «Avanzado».
                     let todos = match (kind, fx) {
-                        (Some(FxKind::Curves), Some(fx)) => curves::controles(ui, fx, accent),
+                        (Some(FxKind::Curves), Some(fx)) => curves::controles(ui, fx, accent, en_fila),
                         (Some(k), Some(_)) if k.pro().is_some() => false,
                         _ => true,
                     };
                     if todos {
                         ui.add_space(4.0);
-                        rejilla_perillas(ui, kind, defs, params);
+                        rejilla_perillas(ui, kind, defs, params, if en_fila { PERILLA_FILA } else { PERILLA });
                     }
-                }));
+                    });
+                    alto_max.set(alto_max.get().max(natural));
+                });
                 if accion_cabecera.is_some() {
                     *act = accion_cabecera;
                 }
@@ -391,7 +413,7 @@ impl App {
                         });
                     }
                 };
-                widgets::dispositivo(ui, ACCENT(), en_fila, cabecera, |ui| {
+                let (_, natural) = widgets::dispositivo(ui, ACCENT(), alto_fila, cabecera, |ui| {
                     ui.set_width(ui.available_width());
                     let mut db = widgets::db(s.gain.get());
                     if ui.add(egui::Slider::new(&mut db, -30.0..=12.0).suffix(" dB").text(tr("Volumen"))).changed() {
@@ -401,6 +423,7 @@ impl App {
                         ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM()));
                     }
                 });
+                alto_max.set(alto_max.get().max(natural));
                 if abrir_drums {
                     act = Some(Act::Drums);
                 }
@@ -438,7 +461,7 @@ impl App {
             };
             if en_fila {
                 // Ranura vacía al final de la fila: marco del alto del panel con el botón en el centro.
-                let alto = (ui.available_height() - 8.0).max(120.0);
+                let alto = if alto_fila > 0.0 { alto_fila } else { (ui.available_height() - 8.0).max(120.0) };
                 ui.allocate_ui_with_layout(vec2(220.0, alto), egui::Layout::top_down(egui::Align::Center), |ui| {
                     ui.set_width(220.0);
                     ui.painter().rect_stroke(egui::Rect::from_min_size(ui.max_rect().min, vec2(220.0, alto)), widgets::rr(12.0), egui::Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
@@ -458,6 +481,10 @@ impl App {
             });
         } else {
             cuerpo(self, ui);
+        }
+        if en_fila && (alto_max.get() - self.alto_dispositivos).abs() > 0.5 {
+            self.alto_dispositivos = alto_max.get();
+            ui.ctx().request_repaint();
         }
         match act {
             Some(Act::Add(k)) => self.add_fx(i, k),

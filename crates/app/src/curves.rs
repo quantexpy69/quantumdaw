@@ -53,8 +53,8 @@ pub fn aplicar_preset(fx: &engine::Fx, i: usize) {
 }
 
 /// Visor interactivo: espectro, resonancias atenuadas (rojo), curva del EQ y nodos arrastrables.
-pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 240.0), Sense::hover());
+pub fn visor(ui: &mut egui::Ui, fx: &engine::Fx, sr: f32, color: Color32, alto: f32) {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), alto), Sense::hover());
     let p = ui.painter_at(rect);
     p.rect_filled(rect, widgets::rr(10.0), Color32::from_rgb(0x0C, 0x0C, 0x10));
     let r = rect.shrink2(vec2(10.0, 14.0));
@@ -319,8 +319,8 @@ pub fn selector_sidechain(ui: &mut egui::Ui, fx: &engine::Fx, pistas: &[(u64, St
 }
 
 /// Vúmetro analógico con aguja (nivel RMS en dB VU, -20 a +3).
-fn vumetro(ui: &mut egui::Ui, id: egui::Id, etiqueta: &str, nivel: f32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(118.0, 78.0), Sense::hover());
+fn vumetro(ui: &mut egui::Ui, id: egui::Id, etiqueta: &str, nivel: f32, tam: egui::Vec2) {
+    let (rect, _) = ui.allocate_exact_size(tam, Sense::hover());
     let p = ui.painter_at(rect);
     p.rect_filled(rect, widgets::rr(8.0), Color32::from_rgb(0xF2, 0xE6, 0xC8));
     p.rect_stroke(rect, widgets::rr(8.0), Stroke::new(2.0, Color32::from_gray(40)), StrokeKind::Inside);
@@ -329,7 +329,8 @@ fn vumetro(ui: &mut egui::Ui, id: egui::Id, etiqueta: &str, nivel: f32) {
     let objetivo = ((vu + 20.0) / 23.0).clamp(0.0, 1.0);
     let t = ui.ctx().animate_value_with_time(id, objetivo, 0.3);
     let centro = pos2(rect.center().x, rect.bottom() - 10.0);
-    let radio = 56.0;
+    // El arco escala con el vúmetro (56 px en el de 78 de alto).
+    let radio = rect.height() * 56.0 / 78.0;
     let ang = |x: f32| (-50.0 + 100.0 * x).to_radians();
     let punto = |x: f32, r: f32| centro + vec2(ang(x).sin(), -ang(x).cos()) * r;
     for (db, marca) in [(-20.0, "20"), (-10.0, "10"), (-7.0, "7"), (-5.0, "5"), (-3.0, "3"), (0.0, "0"), (3.0, "+3")] {
@@ -342,39 +343,37 @@ fn vumetro(ui: &mut egui::Ui, id: egui::Id, etiqueta: &str, nivel: f32) {
     p.line_segment([centro, punto(t, radio - 1.0)], Stroke::new(1.8, Color32::from_gray(25)));
     p.circle_filled(centro, 4.0, Color32::from_gray(30));
     p.text(pos2(rect.center().x, rect.bottom() - 22.0), Align2::CENTER_CENTER, "VU", FontId::proportional(10.0), Color32::from_gray(60));
-    p.text(rect.left_top() + vec2(6.0, 4.0), Align2::LEFT_TOP, etiqueta, FontId::proportional(9.5), Color32::from_gray(60));
+    // IN / OUT abajo a la izquierda, lejos de la escala (que en los vúmetros chicos llega a la esquina).
+    p.text(rect.left_bottom() + vec2(6.0, -4.0), Align2::LEFT_BOTTOM, etiqueta, FontId::proportional(9.5), Color32::from_gray(60));
 }
 
 /// Controles esenciales: vúmetros de entrada y salida, perilla grande de intensidad en el centro y
 /// sensibilidad, sidechain, salida y mezcla. Devuelve si hay que mostrar todos los controles.
-pub fn controles(ui: &mut egui::Ui, fx: &engine::Fx, color: Color32) -> bool {
+pub fn controles(ui: &mut egui::Ui, fx: &engine::Fx, color: Color32, compacto: bool) -> bool {
     let defs = FxKind::Curves.params();
     let clave = egui::Id::new(("curves-avanzado", fx as *const _ as usize));
     let mut avanzado = ui.data(|d| d.get_temp::<bool>(clave).unwrap_or(false));
+    // Compacto (Dispositivos): perillas, perilla grande y vúmetros más chicos; los textos no cambian.
+    let (chica, grande, vu): (f32, f32, egui::Vec2) = if compacto { (42.0, 64.0, vec2(92.0, 60.0)) } else { (58.0, 120.0, vec2(118.0, 78.0)) };
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let ancho = ui.available_width();
         // Centrado: vúmetro · 2 perillas · perilla grande · 2 perillas · vúmetro.
-        let total = 118.0 * 2.0 + 84.0 * 4.0 + 146.0 + 6.0 * 12.0;
+        let celda = (chica + 26.0).max(76.0);
+        let total = vu.x * 2.0 + celda * 4.0 + grande + 26.0 + 6.0 * 12.0;
         ui.add_space(((ancho - total) / 2.0).max(0.0));
-        vumetro(ui, clave.with("in"), "IN", fx.vu[0].get());
-        ui.vertical(|ui| {
-            plugins::perilla(ui, Some(FxKind::Curves), defs[16], &fx.params[16], 58.0);
-        });
-        ui.vertical(|ui| {
-            plugins::perilla(ui, Some(FxKind::Curves), defs[19], &fx.params[19], 58.0);
-        });
+        vumetro(ui, clave.with("in"), "IN", fx.vu[0].get(), vu);
+        for k in [16, 19] {
+            ui.allocate_ui(vec2(celda, chica + 44.0), |ui| plugins::perilla(ui, Some(FxKind::Curves), defs[k], &fx.params[k], chica));
+        }
         ui.vertical(|ui| {
             ui.add(egui::Label::new(RichText::new(tr("INTENSIDAD")).size(11.0).strong().color(color)).extend());
-            plugins::perilla(ui, Some(FxKind::Curves), defs[15], &fx.params[15], 120.0);
+            plugins::perilla(ui, Some(FxKind::Curves), defs[15], &fx.params[15], grande);
         });
-        ui.vertical(|ui| {
-            plugins::perilla(ui, Some(FxKind::Curves), defs[17], &fx.params[17], 58.0);
-        });
-        ui.vertical(|ui| {
-            plugins::perilla(ui, Some(FxKind::Curves), defs[18], &fx.params[18], 58.0);
-        });
-        vumetro(ui, clave.with("out"), "OUT", fx.vu[1].get());
+        for k in [17, 18] {
+            ui.allocate_ui(vec2(celda, chica + 44.0), |ui| plugins::perilla(ui, Some(FxKind::Curves), defs[k], &fx.params[k], chica));
+        }
+        vumetro(ui, clave.with("out"), "OUT", fx.vu[1].get(), vu);
     });
     ui.horizontal(|ui| {
         if ui.selectable_label(avanzado, RichText::new(tr("Avanzado: todas las bandas")).size(12.0)).clicked() {

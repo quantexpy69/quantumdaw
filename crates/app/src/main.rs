@@ -673,6 +673,8 @@ struct App {
     stretch_scope: u8,
     /// Última pista seleccionada (para Shift+clic por rango).
     last_track: Option<usize>,
+    /// Alto de la tarjeta más alta en Dispositivos (las demás lo igualan).
+    alto_dispositivos: f32,
     drag: Option<timeline::Drag>,
     /// Región bajo el último clic derecho (menú contextual).
     ctx_region: Option<(usize, usize)>,
@@ -849,6 +851,7 @@ impl App {
             pending_inst: vec![],
             stretch_scope: 0,
             last_track: None,
+            alto_dispositivos: 0.0,
             drag: None,
             ctx_region: None,
             ctx_lane: None,

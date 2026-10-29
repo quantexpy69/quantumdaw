@@ -608,10 +608,10 @@ pub fn perilla_3d(p: &Painter, c: Pos2, r: f32, a: f32, color: Color32) {
 }
 
 /// Tarjeta de dispositivo (instrumento o efecto), como en un rack: cabecera teñida del color del
-/// plugin con una línea de acento debajo, y el cuerpo oscuro con su margen. Con `llenar`, ocupa todo
-/// el alto disponible para que las tarjetas en fila queden parejas.
-pub fn dispositivo<R>(ui: &mut egui::Ui, acento: Color32, llenar: bool, cabecera: impl FnOnce(&mut egui::Ui), cuerpo: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let alto = if llenar { (ui.available_height() - 4.0).max(0.0) } else { 0.0 };
+/// plugin con una línea de acento debajo, y el cuerpo oscuro con su margen. `alto` es el alto mínimo
+/// (el de la tarjeta más alta de la fila, para que queden parejas). Devuelve también el alto natural
+/// de su contenido, con el que se calcula ese mínimo en el cuadro siguiente.
+pub fn dispositivo<R>(ui: &mut egui::Ui, acento: Color32, alto: f32, cabecera: impl FnOnce(&mut egui::Ui), cuerpo: impl FnOnce(&mut egui::Ui) -> R) -> (R, f32) {
     let radio = rr(10.0);
     egui::Frame::new()
         .fill(ELEVATED())
@@ -631,13 +631,11 @@ pub fn dispositivo<R>(ui: &mut egui::Ui, acento: Color32, llenar: bool, cabecera
             });
             let r = c.response.rect;
             ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.5, acento));
-            egui::Frame::new()
-                .inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 10 })
-                .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
-                    cuerpo(ui)
-                })
-                .inner
+            let b = egui::Frame::new().inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 10 }).show(ui, |ui| {
+                ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+                cuerpo(ui)
+            });
+            (b.inner, r.height() + b.response.rect.height() + 2.0)
         })
         .inner
 }
