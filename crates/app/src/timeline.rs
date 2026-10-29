@@ -1416,7 +1416,7 @@ impl App {
             ui.horizontal(|ui| {
                 {
                     let t = &mut self.s.tracks[i];
-                    ui.allocate_ui_with_layout(vec2(40.0, 40.0), egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| icons::picker(ui, t, 26.0));
+                    ui.allocate_ui_with_layout(vec2(40.0, 40.0), egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| icons::picker(ui, t, 36.0));
                 }
                 ui.add_space(6.0);
                 ui.vertical(|ui| {
@@ -1460,7 +1460,7 @@ impl App {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 let params = self.s.tracks[i].params.clone();
-                widgets::fader_h(ui, &params.gain, (r.width() - 90.0).max(60.0));
+                widgets::fader_h(ui, &params.gain, (r.width() - 90.0).max(60.0), self.levels.get(i).copied());
                 let mut pan = params.pan.get();
                 if widgets::pan_knob(ui, &mut pan).changed() {
                     params.pan.set(pan);
@@ -1603,7 +1603,7 @@ impl App {
         let n = self.s.tracks[i].fx.len();
         let text = RichText::new(if n > 0 { format!("FX {n}") } else { "FX".into() }).size(12.0).color(if n > 0 { ACCENT() } else { TEXT_DIM() });
         if ui.add(egui::Button::new(text).fill(BG()).min_size(vec2(34.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Instrumento y efectos de la pista")).clicked() {
-            self.fx_window = Some(i);
+            self.abrir_efectos(i);
         }
     }
 

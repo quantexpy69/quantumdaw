@@ -57,7 +57,7 @@ impl App {
                 ui.label(RichText::new(tipo).size(12.0).color(TEXT_DIM()));
                 let params = self.s.tracks[i].params.clone();
                 fila(ui, "Volumen", |ui| {
-                    widgets::fader_h(ui, &params.gain, 120.0);
+                    widgets::fader_h(ui, &params.gain, 120.0, None);
                     ui.label(RichText::new(widgets::db_text(params.gain.get())).monospace().size(11.5));
                 });
                 fila(ui, "Panorama", |ui| {

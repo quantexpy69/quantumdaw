@@ -114,6 +114,18 @@ pub fn icon_button(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32
     resp
 }
 
+/// Botón de herramienta: icono y nombre, resaltado cuando está activa.
+pub fn icon_text_button(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), texto: &str) -> Response {
+    let ink = if on { BG() } else { TEXT() };
+    let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(12.5), ink);
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 40.0, 30.0), Sense::click());
+    let p = ui.painter();
+    p.rect_filled(r, rr(10.0), if on { ACCENT() } else if resp.hovered() { BORDER() } else { ELEVATED() });
+    draw(p, Rect::from_center_size(r.left_center() + vec2(17.0, 0.0), vec2(16.0, 18.0)), ink);
+    p.galley(pos2(r.left() + 30.0, r.center().y - galley.size().y / 2.0), galley, ink);
+    resp
+}
+
 /// Botón de icono con color propio cuando está activo (play verde, loop naranja).
 pub fn icon_button_color(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), color: Color32) -> Response {
     let (r, resp) = ui.allocate_exact_size(vec2(38.0, 30.0), Sense::click());
@@ -136,8 +148,9 @@ pub fn pestana(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
     resp
 }
 
-/// Fader horizontal fino (cabeceras de pista): -60 a +6 dB; doble clic vuelve a 0 dB.
-pub fn fader_h(ui: &mut egui::Ui, g: &AtomicF32, ancho: f32) -> Response {
+/// Fader horizontal fino (cabeceras de pista): -60 a +6 dB; doble clic vuelve a 0 dB. Con `nivel`, el
+/// carril muestra además el medidor de la pista (verde, amarillo y rojo) bajo el tirador.
+pub fn fader_h(ui: &mut egui::Ui, g: &AtomicF32, ancho: f32, nivel: Option<f32>) -> Response {
     let (r, resp) = ui.allocate_exact_size(vec2(ancho, 16.0), Sense::click_and_drag());
     let a_pos = |gain: f32| ((db(gain) + 60.0) / 66.0).clamp(0.0, 1.0);
     if resp.dragged()
@@ -154,6 +167,15 @@ pub fn fader_h(ui: &mut egui::Ui, g: &AtomicF32, ancho: f32) -> Response {
     p.rect_filled(carril, rr(3.0), BG());
     let x = r.left() + a_pos(g.get()) * r.width();
     p.rect_filled(Rect::from_min_max(carril.min, pos2(x, carril.bottom())), rr(3.0), BORDER());
+    if let Some(nivel) = nivel.filter(|&n| n > 0.0) {
+        let xn = |d: f32| r.left() + ((d + 60.0) / 66.0).clamp(0.0, 1.0) * r.width();
+        let barra = carril.shrink2(vec2(0.0, 1.0));
+        for (lo, hi, c) in [(-60.0, -12.0, METER[0]), (-12.0, -3.0, METER[1]), (-3.0, 6.0, METER[2])] {
+            if db(nivel) > lo {
+                p.rect_filled(Rect::from_x_y_ranges(xn(lo)..=xn(db(nivel).min(hi)), barra.y_range()), rr(2.0), c);
+            }
+        }
+    }
     p.rect_filled(Rect::from_center_size(pos2(x, r.center().y), vec2(3.0, 14.0)), 1.0, if resp.hovered() || resp.dragged() { ACCENT() } else { TEXT() });
     resp.on_hover_text(format!("{} {}", tr("Volumen"), db_text(g.get())))
 }

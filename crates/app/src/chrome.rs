@@ -146,9 +146,10 @@ impl App {
                 widgets::menu_style(ui);
                 ui.checkbox(&mut self.show_lib, tr("Biblioteca (Y)"));
                 ui.checkbox(&mut self.show_mixer, tr("Panel inferior (X)"));
-                for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador")] {
+                for (k, label) in [(0, "Mixer"), (6, "Dispositivos"), (1, "Piano roll"), (2, "Analizador")] {
                     if ui.radio(self.show_mixer && self.bottom_tab == k, tr(label)).clicked() {
                         (self.show_mixer, self.bottom_tab) = (true, k);
+                        self.vista_mix &= k != 0;
                     }
                 }
                 ui.checkbox(&mut self.show_auto, tr("Automatización (A)"));
@@ -414,12 +415,14 @@ impl App {
             // Vistas en mayúsculas: el arreglo solo, o con el piano roll, el mixer, el analizador o el
             // editor de audio abajo.
             "views" => {
-                let actual = if self.show_mixer { Some(self.bottom_tab) } else { None };
-                for (vista, nombre, tecla) in [(None, "Arreglo", ""), (Some(1), "Piano", ""), (Some(0), "Mix", "X"), (Some(2), "Análisis", ""), (Some(3), "Audio", ""), (Some(4), "Partitura", ""), (Some(5), "Patrón", "")] {
+                let actual = if self.vista_mix { Some(0) } else if self.show_mixer { Some(self.bottom_tab) } else { None };
+                for (vista, nombre, tecla) in [(None, "Arreglo", ""), (Some(1), "Piano", ""), (Some(0), "Mix", "X"), (Some(6), "Inst", "Instrumento y efectos de la pista"), (Some(2), "Análisis", ""), (Some(3), "Audio", ""), (Some(4), "Partitura", ""), (Some(5), "Patrón", "")] {
                     if widgets::pestana(ui, actual == vista, tr(nombre)).on_hover_text(tecla).clicked() {
+                        // MIX: consola a pantalla completa en el área central (como en el panel, pero alta).
                         match vista {
-                            None => self.show_mixer = false,
-                            Some(k) => (self.show_mixer, self.bottom_tab) = (true, k),
+                            None => (self.show_mixer, self.vista_mix) = (false, false),
+                            Some(0) => (self.show_mixer, self.vista_mix) = (false, true),
+                            Some(k) => (self.show_mixer, self.bottom_tab, self.vista_mix) = (true, k, false),
                         }
                     }
                 }
@@ -428,13 +431,13 @@ impl App {
             "lcd" => self.lcd_box(ui),
             _ => {
                 type Draw = fn(&egui::Painter, egui::Rect, Color32);
-                let tools: [(Tool, Draw, &str); 3] = [
-                    (Tool::Select, widgets::draw_pointer, "Selección (V)"),
-                    (Tool::Pencil, widgets::draw_pencil, "Lápiz: automatización y muestras (P)"),
-                    (Tool::Blade, widgets::draw_scissors, "Cuchilla: clic en una región para cortarla (B)"),
+                let tools: [(Tool, Draw, &str, &str); 3] = [
+                    (Tool::Select, widgets::draw_pointer, "Puntero", "Selección (V)"),
+                    (Tool::Pencil, widgets::draw_pencil, "Lápiz", "Lápiz: automatización y muestras (P)"),
+                    (Tool::Blade, widgets::draw_scissors, "Cuchilla", "Cuchilla: clic en una región para cortarla (B)"),
                 ];
-                for (tool, draw, tip) in tools {
-                    if widgets::icon_button(ui, self.tool == tool, draw).on_hover_text(tr(tip)).clicked() {
+                for (tool, draw, nombre, tip) in tools {
+                    if widgets::icon_text_button(ui, self.tool == tool, draw, tr(nombre)).on_hover_text(tr(tip)).clicked() {
                         self.set_tool(tool);
                     }
                 }

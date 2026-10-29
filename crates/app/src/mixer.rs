@@ -30,10 +30,13 @@ impl App {
     pub fn mixer(&mut self, ui: &mut egui::Ui) {
         let n = self.s.tracks.len();
         self.strip_rects.resize(n, Rect::NOTHING);
-        // Distribución según la altura disponible: en paneles bajos se ocultan las ranuras de efectos.
+        // Distribución según la altura disponible: en paneles bajos se ocultan las ranuras de efectos y las
+        // de envíos, grupo y automatización (están en la vista MIX), para que el fader conserve su alto.
         let h = ui.available_height();
-        let compact = h < 430.0;
-        let top_h = if compact { 30.0 } else { 150.0 };
+        let compact = h < 640.0;
+        // Las ranuras de efectos solo reservan lo que usa el canal con más efectos: el resto es del fader.
+        let ranuras = self.s.tracks.iter().map(|t| t.fx.len().min(SLOTS) + usize::from(t.fx.len() > SLOTS)).max().unwrap_or(0);
+        let top_h = if compact { 30.0 } else { 74.0 + 24.0 * ranuras as f32 };
         // El fader ocupa todo el alto sobrante (se mide el resto del canal en el cuadro anterior).
         let fader_h = (h - self.strip_extra - 16.0).max(50.0);
         // El contenido se desplaza en vez de forzar la altura del panel: así se queda donde lo dejes.
@@ -123,9 +126,9 @@ impl App {
                         widgets::menu_style(ui);
                         self.track_menu(ui, i);
                     });
-                    icons::picker(ui, &mut self.s.tracks[i], 26.0);
+                    icons::picker(ui, &mut self.s.tracks[i], 30.0);
                 } else {
-                    ui.add(welcome::logo(26.0));
+                    ui.add(welcome::logo(24.0));
                 }
                 let top = ui.scope(|ui| match i {
                     Some(i) if compact => self.fx_button(ui, i),
@@ -148,7 +151,7 @@ impl App {
                 ui.add_space((top_h - top.response.rect.height()).max(0.0));
                 sep(ui);
                 // Envíos, grupo y modo de automatización, sobre el panorama.
-                if let Some(i) = i {
+                if let Some(i) = i.filter(|_| !compact) {
                     self.strip_slots(ui, i);
                     sep(ui);
                 }

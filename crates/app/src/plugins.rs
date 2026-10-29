@@ -8,6 +8,19 @@ use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 
 const SIGNATURE: &str = "QUANTUM";
 const DISCRETE: [&str; 8] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División"];
+/// Ancho de cada dispositivo en la pestaña Dispositivos.
+const ANCHO_DISPOSITIVO: f32 = 380.0;
+
+/// En fila, cada dispositivo ocupa una columna de ancho fijo con su propio desplazamiento vertical.
+fn columna(ui: &mut egui::Ui, en_fila: bool, add: impl FnOnce(&mut egui::Ui)) {
+    if !en_fila {
+        return add(ui);
+    }
+    ui.allocate_ui_with_layout(vec2(ANCHO_DISPOSITIVO, ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.set_width(ANCHO_DISPOSITIVO);
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, add);
+    });
+}
 
 /// Color de acento de cada plugin (None = instrumento).
 pub fn kind_color(kind: Option<FxKind>) -> Color32 {
@@ -222,6 +235,18 @@ impl App {
         let Some(i) = self.fx_window.filter(|&i| i < self.s.tracks.len()) else {
             return;
         };
+        let title = format!("QUANTUM · {}", self.s.tracks[i].name);
+        let open = self.ventana(ctx, "fx", title, [860.0, 900.0], true, |app, ui| app.cadena(ui, i, false));
+        if !open {
+            self.fx_window = None;
+        }
+        // Los visores (reducción de ganancia, nota detectada) se actualizan en vivo.
+        ctx.request_repaint_after(Duration::from_millis(33));
+    }
+
+    /// Instrumento y cadena de efectos de la pista `i`: en columna (ventana de plugins) o en fila,
+    /// un dispositivo junto al otro (pestaña Dispositivos del panel inferior).
+    pub fn cadena(&mut self, ui: &mut egui::Ui, i: usize, en_fila: bool) {
         enum Act {
             Add(FxKind),
             Detectar(usize),
@@ -234,8 +259,7 @@ impl App {
         }
         let bateria = Self::drummer_disponible() && self.es_pista_bateria(i);
         let (mut act, sr) = (None, self.engine.sample_rate as f32);
-        let title = format!("QUANTUM · {}", self.s.tracks[i].name);
-        let open = self.ventana(ctx, "fx", title, [860.0, 900.0], true, |app, ui| {
+        let mut cuerpo = |app: &Self, ui: &mut egui::Ui| {
             let t = &app.s.tracks[i];
             // Pistas que pueden ser clave del sidechain de Curves (todas menos esta).
             let pistas: Vec<(u64, String)> = app.s.tracks.iter().filter(|x| x.id != t.id).map(|x| (x.id, x.name.clone())).collect();
@@ -250,7 +274,7 @@ impl App {
                           fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
                 let accent = kind_color(kind);
-                widgets::chasis(ui, accent, |ui| {
+                columna(ui, en_fila, |ui| widgets::chasis(ui, accent, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         if let Some(b) = bypass {
@@ -317,11 +341,12 @@ impl App {
                         });
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM())));
-                });
+                }));
                 ui.add_space(6.0);
             };
             if let Some(s) = &t.sampler {
                 // Instrumento real (sampler): volumen y créditos de la biblioteca.
+                columna(ui, en_fila, |ui| {
                 ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
                 widgets::chasis(ui, ACCENT(), |ui| {
                     ui.set_width(ui.available_width());
@@ -346,30 +371,60 @@ impl App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.label(RichText::new(SIGNATURE).size(9.5).italics().color(TEXT_DIM())));
                 });
                 ui.add_space(6.0);
+                });
             } else if let Some(s) = &t.synth {
-                ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                if !en_fila {
+                    ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                }
                 plugin(ui, "Synth", None, &s.params, &SYNTH_PARAMS, None, [0.0; 2], None, None, &mut act);
             }
-            ui.label(RichText::new(tr("EFECTOS DE AUDIO")).size(10.0).color(TEXT_DIM()));
-            if t.fx.is_empty() {
-                ui.label(RichText::new(tr("Sin efectos. Añade uno abajo o arrástralo desde la Biblioteca.")).color(TEXT_DIM()));
+            if !en_fila {
+                ui.label(RichText::new(tr("EFECTOS DE AUDIO")).size(10.0).color(TEXT_DIM()));
             }
             for (j, fx) in t.fx.iter().enumerate() {
                 let readout = [fx.readout[0].get(), fx.readout[1].get()];
                 plugin(ui, fx.kind.name(), Some(fx.kind), &fx.params, fx.kind.params(), Some(&fx.bypass), readout, Some(j), Some(fx), &mut act);
             }
-            ui.menu_button(tr("+ Añadir efecto"), |ui| {
-                for k in FxKind::disponibles() {
-                    if ui.button(k.name()).clicked() {
-                        act = Some(Act::Add(k));
+            // Al final de la cadena: añadir un efecto (en fila, como una ranura vacía más angosta).
+            let mut anadir = |ui: &mut egui::Ui| {
+                if t.fx.is_empty() {
+                    ui.label(RichText::new(tr("Sin efectos. Añade uno abajo o arrástralo desde la Biblioteca.")).color(TEXT_DIM()));
+                }
+                ui.menu_button(tr("+ Añadir efecto"), |ui| {
+                    for k in FxKind::disponibles() {
+                        if ui.button(k.name()).clicked() {
+                            act = Some(Act::Add(k));
+                        }
                     }
-                }
-                ui.separator();
-                if ui.button(tr("Agregar mis efectos…")).on_hover_text(tr("Plugins VST3 / LV2 / CLAP instalados")).clicked() {
-                    act = Some(Act::MyPlugins);
-                }
+                    ui.separator();
+                    if ui.button(tr("Agregar mis efectos…")).on_hover_text(tr("Plugins VST3 / LV2 / CLAP instalados")).clicked() {
+                        act = Some(Act::MyPlugins);
+                    }
+                });
+            };
+            if en_fila {
+                // Ranura vacía al final de la fila: marco del alto del panel con el botón en el centro.
+                let alto = (ui.available_height() - 8.0).max(120.0);
+                ui.allocate_ui_with_layout(vec2(220.0, alto), egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.set_width(220.0);
+                    ui.painter().rect_stroke(egui::Rect::from_min_size(ui.max_rect().min, vec2(220.0, alto)), widgets::rr(12.0), egui::Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
+                    ui.add_space((alto / 2.0 - 40.0).max(8.0));
+                    ui.vertical_centered(|ui| {
+                        ui.set_max_width(190.0);
+                        anadir(ui);
+                    });
+                });
+            } else {
+                anadir(ui);
+            }
+        };
+        if en_fila {
+            egui::ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
+                ui.horizontal_top(|ui| cuerpo(self, ui));
             });
-        });
+        } else {
+            cuerpo(self, ui);
+        }
         match act {
             Some(Act::Add(k)) => self.add_fx(i, k),
             Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
@@ -387,10 +442,5 @@ impl App {
             }
             None => {}
         }
-        if !open {
-            self.fx_window = None;
-        }
-        // Los visores (reducción de ganancia, nota detectada) se actualizan en vivo.
-        ctx.request_repaint_after(Duration::from_millis(33));
     }
 }

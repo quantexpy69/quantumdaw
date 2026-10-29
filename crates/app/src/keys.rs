@@ -254,7 +254,7 @@ impl App {
             Cmd::Pencil => self.set_tool(Tool::Pencil),
             Cmd::Blade => self.set_tool(Tool::Blade),
             Cmd::Snap => self.snap = !self.snap,
-            Cmd::Mixer => (self.show_mixer, self.bottom_tab) = (!(self.show_mixer && self.bottom_tab == 0), 0),
+            Cmd::Mixer => (self.show_mixer, self.bottom_tab, self.vista_mix) = (!(self.show_mixer && self.bottom_tab == 0), 0, false),
             Cmd::Library => self.show_lib = !self.show_lib,
             Cmd::ZoomIn => self.zoom(1.25),
             Cmd::ZoomOut => self.zoom(0.8),

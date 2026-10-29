@@ -594,6 +594,8 @@ struct App {
     show_auto: bool,
     /// Panel inferior (pestañas: 0 mixer, 1 piano roll, 2 analizador).
     show_mixer: bool,
+    /// Vista MIX: el mixer ocupa toda el área central en lugar del panel inferior.
+    vista_mix: bool,
     bottom_tab: u8,
     mixer_float: bool,
     show_lib: bool,
@@ -791,9 +793,10 @@ impl App {
             snap: true,
             show_auto: false,
             show_mixer: true,
+            vista_mix: false,
             bottom_tab: 0,
             mixer_float: separadas_inicio.0,
-            show_lib: false,
+            show_lib: true,
             lib_float: separadas_inicio.1,
             places: vec![],
             tree_cache: HashMap::new(),
@@ -1285,10 +1288,16 @@ impl App {
         self.abrir_efectos(i);
     }
 
-    /// Abre la ventana de instrumento y efectos de la pista y la trae al frente.
+    /// Muestra el instrumento y los efectos de la pista en la pestaña Dispositivos; con el mixer a la
+    /// vista (para no taparlo) o la ventana de plugins ya abierta, en esa ventana, al frente.
     fn abrir_efectos(&mut self, i: usize) {
-        self.fx_window = Some(i);
-        self.enfocar_ventana = Some("fx");
+        self.last_track = Some(i);
+        if (self.show_mixer && self.bottom_tab == 0) || self.fx_window.is_some() {
+            self.fx_window = Some(i);
+            self.enfocar_ventana = Some("fx");
+        } else {
+            (self.show_mixer, self.bottom_tab) = (true, 6);
+        }
     }
 
     /// Quita el instrumento propio de una pista MIDI: vuelve a sonar el QUANTUM Synth.
@@ -2422,14 +2431,30 @@ impl App {
     /// Panel inferior con pestañas: mixer, piano roll y analizador.
     fn bottom_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            for (k, label) in [(0, "Mixer"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura"), (5, "Patrón")] {
+            for (k, label) in [(0, "Mixer"), (6, "Dispositivos"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura"), (5, "Patrón")] {
                 if widgets::pildora(ui, self.bottom_tab == k, tr(label)).clicked() {
                     self.bottom_tab = k;
+                    // El mixer se dibuja en un solo lugar: abajo, se sale de la vista MIX.
+                    self.vista_mix &= k != 0;
                 }
+            }
+            let pista = self.last_track.filter(|&i| i < self.s.tracks.len());
+            if self.bottom_tab == 6
+                && let Some(i) = pista
+            {
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(&self.s.tracks[i].name).strong().color(self.s.tracks[i].color));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("×").on_hover_text(tr("Ocultar panel (X)")).clicked() {
                     self.show_mixer = false;
+                }
+                if self.bottom_tab == 6
+                    && let Some(i) = pista
+                    && ui.button(tr("Ventana de plugins")).on_hover_text(tr("Abre el instrumento y los efectos en una ventana aparte")).clicked()
+                {
+                    self.fx_window = Some(i);
+                    self.enfocar_ventana = Some("fx");
                 }
                 if self.bottom_tab == 0 && ui.button(tr(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" })).clicked() {
                     if self.mixer_float {
@@ -2446,11 +2471,20 @@ impl App {
         });
         match self.bottom_tab {
             0 if self.mixer_float => _ = ui.label(egui::RichText::new(tr("El mixer está en una ventana flotante.")).color(TEXT_DIM())),
+            0 if self.vista_mix => _ = ui.label(egui::RichText::new(tr("El mixer está en la vista MIX.")).color(TEXT_DIM())),
             0 => self.mixer(ui),
             1 => self.piano_roll(ui),
             2 => self.analyzer(ui),
             4 => self.vista_partitura(ui),
             5 => self.vista_patron(ui),
+            6 => match self.last_track.filter(|&i| i < self.s.tracks.len()) {
+                Some(i) => {
+                    self.cadena(ui, i, true);
+                    // Los visores (reducción de ganancia, nota detectada) se actualizan en vivo.
+                    ui.ctx().request_repaint_after(Duration::from_millis(33));
+                }
+                None => _ = ui.label(egui::RichText::new(tr("Selecciona una pista para ver su instrumento y efectos.")).color(TEXT_DIM())),
+            },
             _ => self.audio_editor(ui),
         }
     }
@@ -2594,7 +2628,16 @@ impl eframe::App for App {
         if self.show_lib && !self.lib_float {
             egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));
         }
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG()).inner_margin(if self.ver_escenario { 12.0 } else { 0.0 })).show(ui, |ui| if self.ver_escenario { self.vista_escenario(ui) } else { self.timeline(ui) });
+        let consola = self.vista_mix && !self.mixer_float;
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG()).inner_margin(if self.ver_escenario || consola { 12.0 } else { 0.0 })).show(ui, |ui| {
+            if consola {
+                self.mixer(ui)
+            } else if self.ver_escenario {
+                self.vista_escenario(ui)
+            } else {
+                self.timeline(ui)
+            }
+        });
         self.floating_windows(&ctx);
         self.fx_window(&ctx);
         self.ventana_licencias(&ctx);

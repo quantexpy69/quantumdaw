@@ -6,8 +6,9 @@ use project::{Collection, SongMeta};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Logo sin el cuadro de fondo (ese queda para el icono de la app), teñido con el texto del tema.
 pub fn logo(size: f32) -> egui::Image<'static> {
-    egui::Image::new(egui::include_image!("../../../assets/quantumlogo.svg")).fit_to_exact_size(vec2(size, size))
+    egui::Image::new(egui::include_image!("../../../assets/quantumlogo-marca.svg")).tint(TEXT()).fit_to_exact_size(vec2(size, size))
 }
 
 /// Plantillas: (nombre, descripción, pistas (nombre, tipo, instrumento)).
@@ -659,30 +660,55 @@ impl App {
         let nombre: String = nombre.chars().take(1).flat_map(char::to_uppercase).chain(nombre.chars().skip(1)).collect();
         let saludo_txt = if nombre.is_empty() { tr(saludo()).to_string() } else { format!("{}, {nombre}", tr(saludo())) };
         let ultimo = self.config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned();
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.label(RichText::new(saludo_txt).size(28.0).color(TEXT()));
-                ui.label(RichText::new(tr("Sigue donde lo dejaste o empieza algo nuevo.")).size(14.0).color(TEXT_DIM()));
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(RichText::new(tr("Abrir…")).size(14.0)).min_size(vec2(100.0, 40.0)).corner_radius(rr(8.0))).clicked() {
-                    *action = Some(Box::new(|app: &mut Self| {
-                        let r = app.open_dialog(false);
-                        app.report("Proyecto abierto", r);
-                    }));
-                }
-                if let Some(dir) = ultimo {
-                    let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-                    let b = egui::Button::new(RichText::new(format!("{}  ·  {nombre}", tr("Continuar"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(0.0, 40.0)).corner_radius(rr(8.0));
-                    if ui.add(b).clicked() {
-                        *action = Some(Box::new(move |app: &mut Self| {
-                            if app.dir != dir {
-                                let r = app.open_dir(dir);
-                                app.report("Proyecto abierto", r);
+        // Banner: degradado con el logo de fondo, el saludo y los accesos rápidos.
+        let (banner, _) = ui.allocate_exact_size(vec2(ancho, 120.0), egui::Sense::hover());
+        // Colores opacos: los extremos y la malla se superponen y con transparencia se notaría la unión.
+        degradado(ui.painter(), banner, rr(16.0), PANEL().lerp_to_gamma(ACCENT(), 0.6), Color32::from_rgb(0x4B, 0x2E, 0x8F));
+        let marca = egui::Rect::from_center_size(banner.center() + vec2(banner.width() * 0.08, 0.0), vec2(150.0, 150.0)).intersect(banner);
+        egui::Image::new(egui::include_image!("../../../assets/quantumlogo-marca.svg")).tint(Color32::from_white_alpha(28)).paint_at(ui, marca);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(banner.shrink2(vec2(28.0, 22.0))), |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(saludo_txt).size(28.0).strong().color(Color32::WHITE));
+                    ui.label(RichText::new(tr("Sigue donde lo dejaste o empieza algo nuevo.")).size(14.0).color(Color32::from_white_alpha(190)));
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    let abrir = egui::Button::new(RichText::new(tr("Abrir…")).size(14.0).color(Color32::WHITE)).fill(Color32::from_black_alpha(70)).min_size(vec2(100.0, 42.0)).corner_radius(rr(10.0));
+                    if ui.add(abrir).clicked() {
+                        *action = Some(Box::new(|app: &mut Self| {
+                            let r = app.open_dialog(false);
+                            app.report("Proyecto abierto", r);
+                        }));
+                    }
+                    // La demo se abre y empieza a sonar: la forma más rápida de oír el programa.
+                    let demo = egui::Button::new(RichText::new(format!("         {}", tr("Escuchar la demo"))).size(14.0).strong().color(BG())).fill(VERDE_PLAY).min_size(vec2(0.0, 42.0)).corner_radius(rr(10.0));
+                    let demo = ui.add(demo);
+                    crate::widgets::draw_play(ui.painter(), egui::Rect::from_center_size(demo.rect.left_center() + vec2(18.0, 0.0), vec2(14.0, 16.0)), BG());
+                    if demo.clicked() {
+                        *action = Some(Box::new(|app: &mut Self| {
+                            let dir = projects_dir().join("Demo");
+                            let r = Project::open_or_demo(&dir).and_then(|p| app.reload(dir, p));
+                            let ok = r.is_ok();
+                            app.report("Demo abierta", r);
+                            if ok && !app.playing() {
+                                app.toggle_play();
                             }
                         }));
                     }
-                }
+                    if let Some(dir) = ultimo {
+                        let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let b = egui::Button::new(RichText::new(format!("{}  ·  {nombre}", tr("Continuar"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(0.0, 42.0)).corner_radius(rr(10.0));
+                        if ui.add(b).clicked() {
+                            *action = Some(Box::new(move |app: &mut Self| {
+                                if app.dir != dir {
+                                    let r = app.open_dir(dir);
+                                    app.report("Proyecto abierto", r);
+                                }
+                            }));
+                        }
+                    }
+                });
             });
         });
         ui.add_space(28.0);
@@ -720,10 +746,9 @@ impl App {
                 });
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("Tempo")).size(12.0).color(TEXT_DIM()));
-                    ui.add(egui::DragValue::new(&mut w.bpm).range(20.0..=300.0).speed(0.5).suffix(" BPM"));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let b = egui::Button::new(RichText::new(format!("+  {}", tr("Crear proyecto"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(170.0, 36.0)).corner_radius(rr(8.0));
+                    paso_a_paso(ui, "TEMPO (BPM)", &mut w.bpm, 20.0..=300.0, 1.0, "");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
+                        let b = egui::Button::new(RichText::new(format!("+  {}", tr("Crear proyecto"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(220.0, 40.0)).corner_radius(rr(10.0));
                         if ui.add(b).clicked() {
                             let mut nueva = Welcome { name: tr("Mi canción").into(), author: w.author.clone(), bpm: w.bpm, template: w.template, ..Default::default() };
                             nueva.folder = w.folder.clone();
@@ -748,8 +773,17 @@ impl App {
                 });
                 ui.add_space(6.0);
                 let recientes: Vec<PathBuf> = self.config.recent.iter().filter(|d| d.join(project::FILE).exists()).take(4).cloned().collect();
+                egui::Frame::new().fill(PANEL()).stroke(egui::Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(8.0).show(ui, |ui| {
+                ui.set_min_height(200.0);
+                ui.set_width(ui.available_width());
                 if recientes.is_empty() {
-                    ui.label(RichText::new(tr("Todavía no hay proyectos recientes.")).color(TEXT_DIM()));
+                    ui.add_space(50.0);
+                    ui.vertical_centered(|ui| {
+                        icono_seccion(ui.painter(), ui.cursor().center_top() + vec2(0.0, 14.0), 2, TEXT_DIM());
+                        ui.add_space(36.0);
+                        ui.label(RichText::new(tr("Todavía no hay proyectos recientes.")).strong().color(TEXT()));
+                        ui.label(RichText::new(tr("Las canciones que guardes o abras aparecen aquí.")).size(12.0).color(TEXT_DIM()));
+                    });
                 }
                 for dir in recientes {
                     let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -771,6 +805,7 @@ impl App {
                         }));
                     }
                 }
+                });
             });
         });
         ui.add_space(32.0);
@@ -798,6 +833,36 @@ impl App {
                 Some(_) => tr("Todavía no hay novedades publicadas."),
             };
             ui.label(RichText::new(texto).size(12.0).color(TEXT_DIM()));
+            ui.add_space(10.0);
+            // Sin novedades: tarjetas para empezar con lo que ya trae el programa.
+            let locales = [
+                (Portada::Noticia, "DEMO", "Escuchar la demo", "Batería, bajo y pad listos para probar el mixer y los efectos.", "Abrir y reproducir", ACCENT(), 0u8),
+                (Portada::Producto("instrumento"), "GRATIS", "Instrumentos reales", "Guitarras, bajos, batería, cuerdas y piano libres, con su licencia.", "Gratis", VERDE_PLAY, 1),
+                (Portada::Producto("plugin"), "EFECTOS", "Plugins QUANTUM", "Curves, compresor, reverb, delay, saturación, Tune y más.", "Incluidos", ACCENT(), 2),
+            ];
+            let n = locales.len() as f32;
+            let tam = vec2(((ancho - 16.0 * (n - 1.0)) / n).min(340.0), 250.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
+                for (portada, arriba, titulo, texto, pie, color, k) in locales {
+                    let t = Tarjeta { imagen: None, portada, arriba: tr(arriba), titulo: tr(titulo), texto: tr(texto), pie: (tr(pie), color), etiqueta: None };
+                    if tarjeta_imagen(ui, tam, t) {
+                        *action = Some(Box::new(move |app: &mut Self| match k {
+                            0 => {
+                                let dir = projects_dir().join("Demo");
+                                let r = Project::open_or_demo(&dir).and_then(|p| app.reload(dir, p));
+                                let ok = r.is_ok();
+                                app.report("Demo abierta", r);
+                                if ok && !app.playing() {
+                                    app.toggle_play();
+                                }
+                            }
+                            1 => (app.show_lib, app.lib_tab) = (true, library::INSTRUMENTS_TAB),
+                            _ => (app.show_lib, app.lib_tab) = (true, library::FX_TAB),
+                        }));
+                    }
+                }
+            });
             return;
         }
         // Hasta cuatro: las noticias más recientes y luego la tienda.
@@ -990,7 +1055,7 @@ fn portada(ui: &egui::Ui, r: egui::Rect, esquinas: egui::CornerRadius, titulo: &
     let blanco = |a: u8| Color32::from_white_alpha(a);
     match tipo {
         Portada::Noticia => {
-            egui::Image::new(egui::include_image!("../../../assets/quantumlogo.svg")).tint(blanco(70)).paint_at(ui, egui::Rect::from_center_size(centro, vec2(r.height() * 0.62, r.height() * 0.62)));
+            egui::Image::new(egui::include_image!("../../../assets/quantumlogo-marca.svg")).tint(blanco(70)).paint_at(ui, egui::Rect::from_center_size(centro, vec2(r.height() * 0.62, r.height() * 0.62)));
         }
         Portada::Producto(t) if t.to_lowercase().contains("instrument") => {
             let teclas = egui::Rect::from_center_size(centro, vec2(r.width() * 0.55, r.height() * 0.42));
@@ -1024,6 +1089,42 @@ fn portada(ui: &egui::Ui, r: egui::Rect, esquinas: egui::CornerRadius, titulo: &
             pc.line_segment([centro + vec2(ang.cos(), ang.sin()) * (rad * 0.25), centro + vec2(ang.cos(), ang.sin()) * (rad - 10.0)], egui::Stroke::new(3.0, blanco(240)));
         }
     }
+}
+
+/// Degradado horizontal de `a` a `b` con las esquinas redondeadas: los extremos son rectángulos
+/// redondeados de color sólido y el tramo central, una malla con el degradado.
+fn degradado(p: &egui::Painter, r: egui::Rect, radio: f32, a: Color32, b: Color32) {
+    let ancho_extremo = (radio * 2.0).min(r.width() / 2.0);
+    p.rect_filled(egui::Rect::from_min_size(r.min, vec2(ancho_extremo, r.height())), radio, a);
+    p.rect_filled(egui::Rect::from_min_max(egui::pos2(r.right() - ancho_extremo, r.top()), r.max), radio, b);
+    let medio = r.shrink2(vec2(radio, 0.0));
+    let mut mesh = egui::Mesh::default();
+    for (pt, col) in [(medio.left_top(), a), (medio.right_top(), b), (medio.right_bottom(), b), (medio.left_bottom(), a)] {
+        mesh.colored_vertex(pt, col);
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    p.add(mesh);
+}
+
+/// Campo numérico con botones − y + a los lados (pasos de `paso`), con su título encima.
+fn paso_a_paso(ui: &mut egui::Ui, titulo: &str, valor: &mut f32, rango: std::ops::RangeInclusive<f32>, paso: f32, sufijo: &str) {
+    ui.vertical(|ui| {
+        ui.label(RichText::new(tr(titulo)).size(10.5).strong().color(TEXT_DIM()));
+        egui::Frame::new().fill(PANEL()).stroke(egui::Stroke::new(1.0, BORDER())).corner_radius(rr(10.0)).inner_margin(egui::Margin::symmetric(4, 3)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let boton = |t: &str| egui::Button::new(RichText::new(t).size(16.0).color(TEXT())).frame(false).min_size(vec2(30.0, 30.0));
+                if ui.add(boton("−")).clicked() {
+                    *valor = (*valor - paso).max(*rango.start());
+                }
+                ui.add_sized([74.0, 30.0], egui::DragValue::new(valor).range(rango.clone()).speed(0.5).suffix(sufijo));
+                if ui.add(boton("+")).clicked() {
+                    *valor = (*valor + paso).min(*rango.end());
+                }
+            });
+        });
+    });
 }
 
 /// Flecha «→» dibujada (se adelanta un poco al pasar el ratón).

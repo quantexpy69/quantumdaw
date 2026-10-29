@@ -22,6 +22,9 @@ struct LibSection(usize);
 const SECTIONS: [(&str, &str); 4] = [("files", "Muestras"), ("fx", "Efectos"), ("inst", "Instrumentos"), ("plugins", "Plugins")];
 /// Índice de la sección de plugins (para abrirla desde «Agregar mis efectos»).
 pub const PLUGINS_TAB: usize = 3;
+/// Índices de las secciones de efectos e instrumentos (para abrirlas desde la pantalla inicial).
+pub const FX_TAB: usize = 1;
+pub const INSTRUMENTS_TAB: usize = 2;
 const FX_CATEGORIES: [(&str, &[FxKind]); 6] = [
     ("QUANTUM Pro", &[FxKind::VocalPro, FxKind::MasterPro, FxKind::TapePro, FxKind::SpacePro]),
     ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::DeEsser]),

@@ -56,9 +56,14 @@ pub fn of(t: &Track) -> &'static str {
     }
 }
 
-/// Icono de la pista que, al hacer clic, abre la paleta de iconos para elegir otro.
+/// Icono de la pista dentro de un recuadro de su color, igual en todas las pistas; al hacer clic abre
+/// la paleta de iconos para elegir otro.
 pub fn picker(ui: &mut egui::Ui, t: &mut Track, size: f32) {
-    let resp = ui.add(image(of(t)).tint(t.color).fit_to_exact_size(egui::vec2(size, size)).sense(egui::Sense::click())).on_hover_text(tr("Icono de la pista · clic para cambiarlo"));
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    let fondo = t.color.gamma_multiply(if resp.hovered() { 0.32 } else { 0.2 });
+    ui.painter().rect(r, crate::widgets::rr(size * 0.26), fondo, egui::Stroke::new(1.0, t.color.gamma_multiply(0.45)), egui::StrokeKind::Inside);
+    image(of(t)).tint(t.color).paint_at(ui, r.shrink(size * 0.22));
+    let resp = resp.on_hover_text(tr("Icono de la pista · clic para cambiarlo"));
     egui::Popup::from_toggle_button_response(&resp).show(|ui| {
         ui.label(egui::RichText::new(tr("Icono de la pista")).strong());
         egui::Grid::new(("icon-grid", t.id)).num_columns(4).spacing([8.0, 8.0]).show(ui, |ui| {
