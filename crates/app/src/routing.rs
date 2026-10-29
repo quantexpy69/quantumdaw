@@ -1,5 +1,5 @@
 //! Ruteo estilo REAPER: salida al master, envíos post-fader entre canales y buses.
-use crate::{widgets::rr, *};
+use crate::*;
 use egui::RichText;
 
 impl App {
@@ -59,8 +59,9 @@ impl App {
     pub fn route_button(&mut self, ui: &mut egui::Ui, i: usize) {
         let t = &self.s.tracks[i];
         let routed = !t.sends.is_empty() || !t.to_master;
-        let text = RichText::new(tr("ROUTE")).size(10.5).strong().color(if routed { ACCENT() } else { TEXT_DIM() });
-        if ui.add(egui::Button::new(text).fill(BG()).min_size(egui::vec2(46.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Ruteo: salida, envíos y buses")).clicked() {
+        // Ancho de tres teclas: junto a la de polaridad ocupa la misma fila que M, S, R e I.
+        let ancho = 3.0 * widgets::TECLA + 8.0;
+        if widgets::tecla(ui, egui::vec2(ancho, widgets::TECLA), routed, ACCENT(), tr("ROUTE")).on_hover_text(tr("Ruteo: salida, envíos y buses")).clicked() {
             self.route_window = Some(i);
         }
     }

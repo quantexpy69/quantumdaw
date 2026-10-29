@@ -524,7 +524,7 @@ impl App {
         nombres.extend(FX_CATEGORIES.iter().map(|c| tr(c.0).to_string()));
         nombres.push(format!("★ {}", tr("Favoritos")));
         self.chips(ui, &nombres);
-        let destino = self.pista_destino_fx().map_or_else(|| tr("ninguna pista seleccionada").to_string(), |i| self.s.tracks[i].name.clone());
+        let destino = self.pista_destino_fx().map_or_else(|| tr("una pista nueva").to_string(), |i| self.s.tracks[i].name.clone());
         ui.label(RichText::new(format!("{} {destino} · {}", tr("Clic añade a:"), tr("o arrastra a una pista"))).size(11.0).color(TEXT_DIM()));
         let favoritos = nombres.len() - 1;
         for (k, (cat, kinds)) in FX_CATEGORIES.iter().enumerate() {
@@ -569,14 +569,29 @@ impl App {
         }
     }
 
-    /// Pista que recibe un efecto al hacer clic: la seleccionada o, si no hay, la que se ve en Dispositivos.
+    /// Pista que recibe un efecto al hacer clic: la seleccionada, la que se ve en Dispositivos o,
+    /// si no hay ninguna, la primera que admite efectos (None: el proyecto no tiene pistas de audio).
     fn pista_destino_fx(&self) -> Option<usize> {
-        self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video).or(self.last_track.filter(|&i| i < self.s.tracks.len())).filter(|&i| self.admite_efectos(i))
+        let elegida = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video).or(self.last_track.filter(|&i| i < self.s.tracks.len()));
+        elegida.filter(|&i| self.admite_efectos(i)).or_else(|| (0..self.s.tracks.len()).find(|&i| self.admite_efectos(i)))
+    }
+
+    /// Añade el efecto a la pista destino (o a una pista nueva) y lo abre abajo, en Dispositivos.
+    fn clic_efecto(&mut self, k: FxKind) {
+        let i = match self.pista_destino_fx() {
+            Some(i) => i,
+            None => {
+                self.add_track(tr("Audio").to_string(), TrackKind::AudioStereo);
+                self.s.tracks.len() - 1
+            }
+        };
+        self.add_fx(i, k);
+        self.abrir_efectos(i);
+        self.status = format!("{} {} {}", tr(k.name()), tr("añadido a"), self.s.tracks[i].name);
     }
 
     /// Efectos en tarjetas (tantas columnas como entren).
     fn fx_grid(&mut self, ui: &mut egui::Ui, lista: &[FxKind]) {
-        let target = self.pista_destino_fx();
         let cols = ((ui.available_width() + 6.0) / 150.0).floor().max(1.0) as usize;
         let w = (ui.available_width() - 6.0 * (cols as f32 - 1.0)) / cols as f32;
         for fila in lista.chunks(cols) {
@@ -635,13 +650,7 @@ impl App {
                     });
                     // Un clic lo añade a la pista y lo muestra abajo, en Dispositivos (como al arrastrarlo).
                     if resp.clicked() {
-                        match target {
-                            Some(i) => {
-                                self.add_fx(i, k);
-                                self.abrir_efectos(i);
-                            }
-                            None => self.status = tr("Selecciona una pista para añadirle el efecto, o arrástralo sobre una").into(),
-                        }
+                        self.clic_efecto(k);
                     }
                     let sr = self.sr() as f32;
                     resp.on_hover_ui(|ui| {

@@ -1426,21 +1426,12 @@ impl App {
                         ui.add(nombre).on_hover_text(tr("Nombre de la pista (clic para editar)"));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
-                            // ● grabación, S y M: texto sin fondo; con color cuando están activos.
-                            // ● grabación: círculo dibujado (la fuente no tiene el símbolo).
-                            let armada = flag(&self.s.tracks[i].params, 0).load(Relaxed);
-                            let (rc, rb) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
-                            ui.painter().circle(rc.center(), 5.5, if armada { METER[2] } else { Color32::TRANSPARENT }, Stroke::new(1.5, if armada || rb.hovered() { METER[2] } else { METER[2].gamma_multiply(0.6) }));
-                            if rb.on_hover_text(tr("Armar grabación")).clicked() {
-                                for m in self.flag_targets(i, 0) {
-                                    flag(&self.s.tracks[m].params, 0).store(!armada, Relaxed);
-                                }
-                            }
-                            for (k, texto, color, ayuda) in [(2, "S", METER[1], "Solo"), (1, "M", ACCENT(), "Mute")] {
+                            // R, S y M: teclas cuadradas con su color (de derecha a izquierda: M S R).
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            let lado = vec2(widgets::TECLA_CHICA, widgets::TECLA_CHICA);
+                            for (k, texto, ayuda) in [(0, "R", "Armar grabación"), (2, "S", "Solo"), (1, "M", "Mute")] {
                                 let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
-                                let tinta = if on { color } else if k == 0 { METER[2].gamma_multiply(0.55) } else { TEXT_DIM() };
-                                let b = egui::Button::new(RichText::new(texto).strong().size(if k == 0 { 13.0 } else { 12.5 }).color(if on && k != 0 { BG() } else { tinta })).fill(if on && k != 0 { color } else { Color32::TRANSPARENT }).frame(on && k != 0).min_size(vec2(18.0, 18.0));
-                                if ui.add(b).on_hover_text(tr(ayuda)).clicked() {
+                                if widgets::tecla(ui, lado, on, widgets::color_bandera(k), texto).on_hover_text(tr(ayuda)).clicked() {
                                     for m in self.flag_targets(i, k) {
                                         flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
                                     }
@@ -1490,7 +1481,9 @@ impl App {
         let midi = self.s.tracks[i].midi();
         let activo = n > 0 || midi;
         let texto = if n > 0 { format!("FX {n}") } else { "FX".to_string() };
-        let b = egui::Button::new(RichText::new(texto).strong().size(10.5).color(if activo { BG() } else { TEXT_DIM() })).fill(if activo { ACCENT() } else { Color32::from_white_alpha(10) }).min_size(vec2(34.0, 18.0)).corner_radius(rr(9.0));
+        // Misma altura que las teclas M, S y R de al lado.
+        (ui.spacing_mut().interact_size.y, ui.spacing_mut().button_padding.y) = (widgets::TECLA_CHICA, 0.0);
+        let b = egui::Button::new(RichText::new(texto).strong().size(10.5).color(if activo { BG() } else { TEXT_DIM() })).fill(if activo { ACCENT() } else { Color32::from_white_alpha(10) }).min_size(vec2(2.0 * widgets::TECLA_CHICA, widgets::TECLA_CHICA)).corner_radius(rr((widgets::TECLA_CHICA * 0.27).round()));
         let (mut quitar, mut agregar, mut abrir, mut instrumento) = (None, None, false, false);
         egui::containers::menu::MenuButton::from_button(b).ui(ui, |ui| {
             widgets::menu_style(ui);
@@ -1569,12 +1562,10 @@ impl App {
 
     /// Botones R/M/S/I: afectan a las pistas seleccionadas si esta lo está; si no, solo a ella.
     pub fn flag_buttons(&mut self, ui: &mut egui::Ui, i: usize) {
-        let buttons = [(0, "R", METER[2], "Armar grabación"), (1, "M", ACCENT(), "Mute"), (2, "S", METER[1], "Solo"), (3, "I", METER[0], "Monitoreo de entrada")];
-        for (k, label, color, tip) in buttons {
+        let buttons = [(1, "M", "Mute"), (2, "S", "Solo"), (0, "R", "Armar grabación"), (3, "I", "Monitoreo de entrada")];
+        for (k, label, tip) in buttons {
             let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
-            let text = RichText::new(tr(label)).strong().size(12.0).color(if on { BG() } else { TEXT_DIM() });
-            let b = egui::Button::new(text).fill(if on { color } else { BG() }).min_size(vec2(24.0, 22.0)).corner_radius(rr(11.0));
-            if ui.add(b).on_hover_text(tip).clicked() {
+            if widgets::tecla(ui, vec2(widgets::TECLA, widgets::TECLA), on, widgets::color_bandera(k), label).on_hover_text(tr(tip)).clicked() {
                 for m in self.flag_targets(i, k) {
                     flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
                 }
@@ -1586,13 +1577,11 @@ impl App {
     pub fn polarity_button(&mut self, ui: &mut egui::Ui, i: usize) {
         let inv = &self.s.tracks[i].params.invert;
         let on = inv.load(Relaxed);
-        let (r, resp) = ui.allocate_exact_size(vec2(26.0, 22.0), Sense::click());
-        let p = ui.painter();
-        p.rect_filled(r, rr(11.0), if on { METER[1] } else if resp.hovered() { BORDER() } else { BG() });
-        let c = if on { BG() } else { TEXT_DIM() };
-        for dx in [-3.0, 3.0] {
-            p.circle_stroke(r.center() + vec2(dx, 0.0), 5.5, Stroke::new(1.5, c));
-        }
+        let resp = widgets::tecla_dibujo(ui, vec2(widgets::TECLA, widgets::TECLA), on, METER[1], |p, r, c| {
+            for dx in [-2.5, 2.5] {
+                p.circle_stroke(r.center() + vec2(dx, 0.0), 4.5, Stroke::new(1.4, c));
+            }
+        });
         if resp.on_hover_text(tr("Invertir polaridad (fase) del audio")).clicked() {
             inv.store(!on, Relaxed);
             self.dirty = true;
@@ -1601,8 +1590,8 @@ impl App {
 
     pub fn fx_button(&mut self, ui: &mut egui::Ui, i: usize) {
         let n = self.s.tracks[i].fx.len();
-        let text = RichText::new(if n > 0 { format!("FX {n}") } else { "FX".into() }).size(12.0).color(if n > 0 { ACCENT() } else { TEXT_DIM() });
-        if ui.add(egui::Button::new(text).fill(BG()).min_size(vec2(34.0, 22.0)).corner_radius(rr(11.0))).on_hover_text(tr("Instrumento y efectos de la pista")).clicked() {
+        let texto = if n > 0 { format!("FX {n}") } else { "FX".into() };
+        if widgets::tecla(ui, vec2(2.0 * widgets::TECLA, widgets::TECLA), n > 0, ACCENT(), &texto).on_hover_text(tr("Instrumento y efectos de la pista")).clicked() {
             self.abrir_efectos(i);
         }
     }

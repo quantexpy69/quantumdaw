@@ -184,9 +184,10 @@ impl App {
                 sep(ui);
                 if let Some(i) = i {
                     self.s.tracks[i].touching |= touched;
-                    // Mute y Solo grandes y cuadrados; grabar y monitoreo al lado.
+                    // M, S, R e I: cuatro teclas iguales que llenan el ancho del canal.
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.add_space((STRIP_W - 4.0 * widgets::TECLA - 12.0) / 2.0);
                         self.mute_solo(ui, i);
                     });
                     let t = &self.s.tracks[i];
@@ -196,6 +197,8 @@ impl App {
                         ui.label(group.map_or(RichText::new(" "), |g| RichText::new(&g.name).color(g.color)).size(11.0));
                     });
                     ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.add_space((STRIP_W - 4.0 * widgets::TECLA - 12.0) / 2.0);
                         self.polarity_button(ui, i);
                         self.route_button(ui, i);
                     });
@@ -232,22 +235,11 @@ impl App {
         }
     }
 
-    /// Botones cuadrados M (rojo) y S (amarillo), y R / I pequeños.
+    /// Teclas M, S, R e I del mismo tamaño, cada una con su color.
     fn mute_solo(&mut self, ui: &mut egui::Ui, i: usize) {
-        for (k, label, on_color, tip, size) in [
-            (1, "M", METER[2], "Mute (silenciar)", vec2(30.0, 26.0)),
-            (2, "S", Color32::from_rgb(0xFF, 0xD2, 0x3F), "Solo", vec2(30.0, 26.0)),
-            (0, "R", METER[2], "Armar grabación", vec2(20.0, 20.0)),
-            (3, "I", METER[0], "Monitoreo de entrada", vec2(20.0, 20.0)),
-        ] {
+        for (k, label, tip) in [(1, "M", "Mute (silenciar)"), (2, "S", "Solo"), (0, "R", "Armar grabación"), (3, "I", "Monitoreo de entrada")] {
             let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
-            let (r, resp) = ui.allocate_exact_size(size, Sense::click());
-            let fill = if on { on_color } else if resp.hovered() { Color32::from_gray(70) } else { Color32::from_gray(48) };
-            let big = size.x > 24.0;
-            ui.painter().rect(r, rr(if big { 4.0 } else { 10.0 }), fill, Stroke::new(1.0, if on { on_color } else { Color32::from_gray(30) }), StrokeKind::Inside);
-            let ink = if on { if k == 2 { BG() } else { TEXT() } } else { Color32::from_gray(200) };
-            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(if big { 15.0 } else { 11.0 }), ink);
-            if resp.on_hover_text(tr(tip)).clicked() {
+            if widgets::tecla(ui, vec2(widgets::TECLA, widgets::TECLA), on, widgets::color_bandera(k), label).on_hover_text(tr(tip)).clicked() {
                 for m in self.flag_targets(i, k) {
                     flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
                 }

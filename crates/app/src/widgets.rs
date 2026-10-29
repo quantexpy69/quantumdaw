@@ -707,3 +707,49 @@ pub fn menu_style(ui: &mut egui::Ui) {
     st.spacing.item_spacing.y = 6.0;
     st.spacing.interact_size.y = 30.0;
 }
+
+/// Lado de las teclas de pista: en el mixer y el inspector, y en la cabecera de la pista (más baja).
+pub const TECLA: f32 = 24.0;
+pub const TECLA_CHICA: f32 = 20.0;
+
+/// Color de cada botón de pista: 0 grabar, 1 mute, 2 solo, 3 monitoreo de entrada.
+pub fn color_bandera(k: usize) -> Color32 {
+    match k {
+        0 => METER[2],
+        1 => Color32::from_rgb(0x4F, 0xA3, 0xFF),
+        2 => Color32::from_rgb(0xFF, 0xD2, 0x3F),
+        _ => METER[0],
+    }
+}
+
+/// Tecla cuadrada con esquinas redondeadas (estilo macOS) y una letra; encendida toma su color.
+pub fn tecla(ui: &mut egui::Ui, tam: egui::Vec2, on: bool, color: Color32, texto: &str) -> Response {
+    let fuente = FontId::proportional((tam.y * 0.5).round());
+    let texto = texto.to_string();
+    tecla_dibujo(ui, tam, on, color, move |p, r, tinta| _ = p.text(r.center(), Align2::CENTER_CENTER, texto, fuente, tinta))
+}
+
+/// Tecla con el contenido dibujado a mano (recibe el pintor, el rectángulo y el color de la tinta).
+pub fn tecla_dibujo(ui: &mut egui::Ui, tam: egui::Vec2, on: bool, color: Color32, dibujar: impl FnOnce(&Painter, Rect, Color32)) -> Response {
+    let (r, resp) = ui.allocate_exact_size(tam, Sense::click());
+    let radio = rr((tam.y * 0.27).round());
+    let p = ui.painter();
+    let (hover, apretada) = (resp.hovered(), resp.is_pointer_button_down_on());
+    let fondo = match (on, apretada, hover) {
+        (true, true, _) => color.gamma_multiply(0.8),
+        (true, _, _) => color,
+        (false, true, _) => BG(),
+        (false, false, true) => ELEVATED().lerp_to_gamma(TEXT(), 0.16),
+        _ => ELEVATED().lerp_to_gamma(TEXT(), 0.08),
+    };
+    let borde = if on { color.gamma_multiply(0.7) } else { BORDER().lerp_to_gamma(TEXT(), 0.12) };
+    p.rect(r, radio, fondo, Stroke::new(1.0, borde), egui::StrokeKind::Inside);
+    // Brillo superior, como las teclas de macOS.
+    if !apretada {
+        p.hline(r.x_range().shrink(radio), r.top() + 1.5, Stroke::new(1.0, Color32::from_white_alpha(if on { 50 } else { 14 })));
+    }
+    let luz = 0.299 * color.r() as f32 + 0.587 * color.g() as f32 + 0.114 * color.b() as f32;
+    let tinta = if on { if luz > 150.0 { Color32::from_gray(18) } else { Color32::WHITE } } else if hover { TEXT() } else { TEXT_DIM() };
+    dibujar(p, r, tinta);
+    resp
+}
