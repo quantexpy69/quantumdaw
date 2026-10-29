@@ -310,13 +310,13 @@ impl App {
     /// Ranuras de efectos: clic abre el plugin, clic derecho bypass/quitar, "+" añade.
     fn fx_slots(&mut self, ui: &mut egui::Ui, i: usize) {
         ui.label(RichText::new(tr("AUDIO FX")).size(9.0).color(TEXT_DIM()));
-        let (mut remove, mut add) = (None, None);
+        let (mut remove, mut add, mut abrir) = (None, None, false);
         for (j, fx) in self.s.tracks[i].fx.iter().enumerate().take(SLOTS) {
             let on = !fx.bypass.load(Relaxed);
             let text = RichText::new(fx.kind.name()).size(11.0).color(if on { TEXT() } else { TEXT_DIM() });
             let b = ui.add(egui::Button::new(text).fill(if on { ACCENT().gamma_multiply(0.4) } else { BG() }).min_size(vec2(STRIP_W - 8.0, 20.0)));
             if b.clicked() {
-                self.fx_window = Some(i);
+                abrir = true;
             }
             b.context_menu(|ui| {
                 widgets::menu_style(ui);
@@ -349,6 +349,11 @@ impl App {
         }
         if let Some(k) = add {
             self.add_fx(i, k);
+            abrir = true;
+        }
+        // Tocar un efecto (o añadir uno) lo muestra abajo, en Dispositivos.
+        if abrir {
+            self.abrir_efectos(i);
         }
     }
 }

@@ -82,12 +82,12 @@ pub fn meter_h(ui: &mut egui::Ui, level: f32, w: f32) -> Response {
     resp.on_hover_text(format!("Entrada: {} dB", db_text(level)))
 }
 
-/// Selector de color compacto: un círculo que abre la paleta al hacer clic.
-pub fn color_dot(ui: &mut egui::Ui, color: &mut Color32) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
-    ui.painter().circle_filled(rect.center(), 6.5, *color);
+/// Selector de color: una muestra cuadrada redondeada de `lado` px que abre la paleta al hacer clic.
+pub fn color_dot(ui: &mut egui::Ui, color: &mut Color32, lado: f32) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(lado, lado), Sense::click());
+    ui.painter().rect_filled(rect, rr(lado * 0.25), *color);
     if resp.hovered() {
-        ui.painter().circle_stroke(rect.center(), 7.5, Stroke::new(1.0, TEXT()));
+        ui.painter().rect_stroke(rect.expand(1.0), rr(lado * 0.25), Stroke::new(1.0, TEXT()), egui::StrokeKind::Outside);
     }
     egui::Popup::from_toggle_button_response(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         egui::widgets::color_picker::color_picker_color32(ui, color, egui::widgets::color_picker::Alpha::Opaque);
@@ -95,22 +95,22 @@ pub fn color_dot(ui: &mut egui::Ui, color: &mut Color32) -> Response {
     resp.on_hover_text(tr("Color de la pista"))
 }
 
+/// Fondo de los botones de icono: plano cuando están apagados (solo se marca al pasar el ratón),
+/// como los chips de la barra de herramientas.
+fn fondo_boton(p: &Painter, r: Rect, on: Option<Color32>, hover: bool) {
+    match on {
+        Some(c) => _ = p.rect_filled(r, rr(7.0), c),
+        None if hover => _ = p.rect_filled(r, rr(7.0), BORDER()),
+        None => {}
+    }
+}
+
 /// Botón con icono dibujado (se ve nítido en cualquier escala); `on` lo resalta.
 pub fn icon_button(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32)) -> Response {
-    let (r, resp) = ui.allocate_exact_size(vec2(38.0, 30.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(vec2(36.0, 28.0), Sense::click());
     let p = ui.painter();
-    p.rect_filled(
-        r,
-        rr(10.0),
-        if on {
-            ACCENT()
-        } else if resp.hovered() {
-            BORDER()
-        } else {
-            ELEVATED()
-        },
-    );
-    draw(p, r.shrink2(vec2(11.0, 6.0)), if on { BG() } else { TEXT() });
+    fondo_boton(p, r, on.then(ACCENT), resp.hovered());
+    draw(p, r.shrink2(vec2(11.0, 6.0)), if on { BG() } else if resp.hovered() { TEXT() } else { TEXT_DIM() });
     resp
 }
 
@@ -128,9 +128,9 @@ pub fn icon_text_button(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Co
 
 /// Botón de icono con color propio cuando está activo (play verde, loop naranja).
 pub fn icon_button_color(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), color: Color32) -> Response {
-    let (r, resp) = ui.allocate_exact_size(vec2(38.0, 30.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(vec2(36.0, 28.0), Sense::click());
     let p = ui.painter();
-    p.rect_filled(r, rr(8.0), if on { color } else if resp.hovered() { BORDER() } else { ELEVATED() });
+    fondo_boton(p, r, on.then_some(color), resp.hovered());
     draw(p, r.shrink2(vec2(11.0, 6.0)), if on { BG() } else { color });
     resp
 }
@@ -180,18 +180,6 @@ pub fn fader_h(ui: &mut egui::Ui, g: &AtomicF32, ancho: f32, nivel: Option<f32>)
     resp.on_hover_text(format!("{} {}", tr("Volumen"), db_text(g.get())))
 }
 
-/// Pestaña de texto (biblioteca): clara y subrayada con el acento cuando está activa; se puede arrastrar.
-pub fn pestana_texto(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
-    let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.0), TEXT());
-    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 14.0, 28.0), Sense::click_and_drag());
-    let color = if activa || resp.hovered() { TEXT() } else { TEXT_DIM() };
-    ui.painter().galley_with_override_text_color(pos2(r.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0 - 2.0), galley, color);
-    if activa {
-        ui.painter().rect_filled(Rect::from_min_max(pos2(r.left() + 4.0, r.bottom() - 3.0), pos2(r.right() - 4.0, r.bottom() - 1.0)), 1.0, ACCENT());
-    }
-    resp
-}
-
 /// Pestaña tipo píldora (panel inferior): rellena de acento cuando está activa.
 pub fn pildora(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
     let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.5), if activa { BG() } else { TEXT() });
@@ -204,19 +192,9 @@ pub fn pildora(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
 
 /// Botón de grabar: círculo rojo; fondo rojo mientras graba.
 pub fn record_button(ui: &mut egui::Ui, on: bool) -> Response {
-    let (r, resp) = ui.allocate_exact_size(vec2(38.0, 30.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(vec2(36.0, 28.0), Sense::click());
     let p = ui.painter();
-    p.rect_filled(
-        r,
-        rr(10.0),
-        if on {
-            METER[2]
-        } else if resp.hovered() {
-            BORDER()
-        } else {
-            ELEVATED()
-        },
-    );
+    fondo_boton(p, r, on.then_some(METER[2]), resp.hovered());
     p.circle_filled(r.center(), 6.5, if on { TEXT() } else { METER[2] });
     resp
 }
@@ -314,6 +292,133 @@ pub fn draw_pencil(p: &Painter, r: Rect, c: Color32) {
     p.add(egui::Shape::convex_polygon(vec![pos2(l + 3.0, bo - 5.0), pos2(l + 5.0, bo - 3.0), pos2(l, bo)], c, Stroke::NONE));
 }
 
+/// Inspector: panel con la columna izquierda marcada.
+pub fn draw_inspector(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    let s = Stroke::new(1.6, c);
+    p.rect_stroke(b, 2.5, s, egui::StrokeKind::Inside);
+    p.rect_filled(Rect::from_min_max(b.min, pos2(b.left() + 5.0, b.bottom())), 2.0, c);
+}
+
+/// Escenario de clips: cuadrícula de 3 × 2 celdas.
+pub fn draw_escenario(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    for f in 0..2 {
+        for k in 0..3 {
+            p.rect_filled(Rect::from_min_size(pos2(b.left() + k as f32 * 5.0, b.top() + 2.0 + f as f32 * 6.0), vec2(4.0, 4.5)), 1.0, c);
+        }
+    }
+}
+
+/// Editor (panel inferior): ventana con la franja de abajo marcada.
+pub fn draw_editor(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    p.rect_stroke(b, 2.5, Stroke::new(1.6, c), egui::StrokeKind::Inside);
+    p.rect_filled(Rect::from_min_max(pos2(b.left(), b.bottom() - 5.0), b.max), 2.0, c);
+}
+
+/// Automatización: curva con dos puntos de control.
+pub fn draw_automatizacion(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    let pts = [pos2(b.left(), b.bottom() - 3.0), pos2(b.left() + 4.5, b.bottom() - 3.0), pos2(b.right() - 4.5, b.top() + 3.0), pos2(b.right(), b.top() + 3.0)];
+    p.add(egui::Shape::line(pts.to_vec(), Stroke::new(1.6, c)));
+    p.circle_filled(pts[1], 2.2, c);
+    p.circle_filled(pts[2], 2.2, c);
+}
+
+/// Importar: flecha hacia abajo entrando en una bandeja.
+pub fn draw_importar(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    let s = Stroke::new(1.6, c);
+    let x = b.center().x;
+    p.line_segment([pos2(x, b.top()), pos2(x, b.bottom() - 5.0)], s);
+    p.line_segment([pos2(x - 3.5, b.bottom() - 8.5), pos2(x, b.bottom() - 5.0)], s);
+    p.line_segment([pos2(x + 3.5, b.bottom() - 8.5), pos2(x, b.bottom() - 5.0)], s);
+    p.add(egui::Shape::line(vec![pos2(b.left(), b.bottom() - 5.0), pos2(b.left(), b.bottom()), pos2(b.right(), b.bottom()), pos2(b.right(), b.bottom() - 5.0)], s));
+}
+
+/// Ajustar a la rejilla: imán en U.
+pub fn draw_iman(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    let s = Stroke::new(2.4, c);
+    let centro = pos2(b.center().x, b.top() + 7.5);
+    let arco: Vec<Pos2> = (0..=12).map(|k| std::f32::consts::PI * k as f32 / 12.0).map(|a| centro + vec2(a.cos() * 5.0, a.sin() * 5.0)).collect();
+    p.add(egui::Shape::line(arco, s));
+    p.line_segment([pos2(b.center().x - 5.0, b.top() + 1.0), pos2(b.center().x - 5.0, b.top() + 7.5)], s);
+    p.line_segment([pos2(b.center().x + 5.0, b.top() + 1.0), pos2(b.center().x + 5.0, b.top() + 7.5)], s);
+}
+
+/// Deshacer y rehacer: flecha curva hacia la izquierda o la derecha.
+fn draw_flecha_curva(p: &Painter, r: Rect, c: Color32, izquierda: bool) {
+    let b = caja_icono(r);
+    let s = Stroke::new(1.6, c);
+    let sg = if izquierda { 1.0 } else { -1.0 };
+    let centro = pos2(b.center().x + sg * 1.0, b.center().y + 2.0);
+    let arco: Vec<Pos2> = (0..=10).map(|k| -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * k as f32 / 10.0).map(|a| centro + vec2(sg * a.cos() * 5.0, a.sin() * 4.5)).collect();
+    p.add(egui::Shape::line(arco, s));
+    let punta = pos2(centro.x - sg * 1.0, centro.y - 4.5);
+    p.line_segment([punta + vec2(-sg * 5.0, 0.0), punta], s);
+    p.line_segment([punta + vec2(-sg * 5.0, 0.0), punta + vec2(-sg * 2.0, -3.0)], s);
+    p.line_segment([punta + vec2(-sg * 5.0, 0.0), punta + vec2(-sg * 2.0, 3.0)], s);
+}
+
+pub fn draw_deshacer(p: &Painter, r: Rect, c: Color32) {
+    draw_flecha_curva(p, r, c, true);
+}
+
+pub fn draw_rehacer(p: &Painter, r: Rect, c: Color32) {
+    draw_flecha_curva(p, r, c, false);
+}
+
+/// Biblioteca: tres lomos de libros, el último inclinado.
+pub fn draw_biblioteca(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    let s = Stroke::new(1.6, c);
+    p.rect_stroke(Rect::from_min_size(b.left_top() + vec2(0.0, 1.0), vec2(3.5, 13.0)), 1.0, s, egui::StrokeKind::Inside);
+    p.rect_stroke(Rect::from_min_size(b.left_top() + vec2(4.5, 3.0), vec2(3.5, 11.0)), 1.0, s, egui::StrokeKind::Inside);
+    p.line_segment([pos2(b.left() + 9.5, b.top() + 4.0), pos2(b.right() - 0.5, b.bottom())], Stroke::new(3.0, c));
+}
+
+/// Botón de la barra de herramientas: icono y texto; con `on`, fondo suave e icono y texto del color
+/// `color` (como un interruptor encendido). Mismo alto que el resto de los botones de la barra.
+pub fn chip(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), texto: &str, color: Color32) -> Response {
+    let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(12.5), TEXT());
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 36.0, 28.0), Sense::click());
+    let activo = ui.is_enabled();
+    let tinta = if !activo {
+        TEXT_DIM().gamma_multiply(0.6)
+    } else if on {
+        color
+    } else if resp.hovered() {
+        TEXT()
+    } else {
+        TEXT_DIM()
+    };
+    let p = ui.painter();
+    if on {
+        p.rect(r, rr(7.0), color.gamma_multiply(0.16), Stroke::new(1.0, color.gamma_multiply(0.45)), egui::StrokeKind::Inside);
+    } else if resp.hovered() && activo {
+        p.rect_filled(r, rr(7.0), BORDER());
+    }
+    draw(p, Rect::from_center_size(r.left_center() + vec2(15.0, 0.0), vec2(16.0, 16.0)), tinta);
+    p.galley_with_override_text_color(pos2(r.left() + 27.0, r.center().y - galley.size().y / 2.0), galley, tinta);
+    resp
+}
+
+/// Grupo de botones de una barra: fondo hundido redondeado que los reúne (como un control segmentado).
+pub fn grupo<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::new()
+        .fill(BG())
+        .stroke(Stroke::new(1.0, BORDER()))
+        .corner_radius(rr(9.0))
+        .inner_margin(egui::Margin::same(2))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            add(ui)
+        })
+        .inner
+}
+
 /// Tijeras: dos anillos y dos hojas cruzadas.
 pub fn draw_scissors(p: &Painter, r: Rect, c: Color32) {
     let b = caja_icono(r);
@@ -323,6 +428,57 @@ pub fn draw_scissors(p: &Painter, r: Rect, c: Color32) {
     p.circle_stroke(d, 2.8, s);
     p.line_segment([a + vec2(2.0, -2.0), pos2(b.right() - 1.0, b.top())], s);
     p.line_segment([d + vec2(-2.0, -2.0), pos2(b.left() + 1.0, b.top())], s);
+}
+
+/// Panorama horizontal a lo ancho: carril con la marca del centro y el tramo desde el centro hasta el
+/// valor. Arrastrar mueve, doble clic centra; marca el cambio para que se aplique.
+pub fn pan_h(ui: &mut egui::Ui, v: &mut f32, ancho: f32) -> Response {
+    let (r, mut resp) = ui.allocate_exact_size(vec2(ancho, 18.0), Sense::click_and_drag());
+    let antes = *v;
+    if resp.dragged()
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        *v = (((p.x - r.left()) / r.width()) * 2.0 - 1.0).clamp(-1.0, 1.0);
+    }
+    if resp.double_clicked() {
+        *v = 0.0;
+    }
+    if *v != antes {
+        resp.mark_changed();
+    }
+    let p = ui.painter();
+    let carril = Rect::from_center_size(r.center(), vec2(r.width(), 6.0));
+    p.rect_filled(carril, rr(3.0), BG());
+    let x = r.center().x + *v * r.width() / 2.0;
+    p.rect_filled(Rect::from_x_y_ranges(x.min(r.center().x)..=x.max(r.center().x), carril.y_range()), rr(3.0), ACCENT().gamma_multiply(0.7));
+    p.vline(r.center().x, r.y_range().shrink(3.0), Stroke::new(1.0, TEXT_DIM()));
+    p.rect_filled(Rect::from_center_size(pos2(x, r.center().y), vec2(3.0, 14.0)), 1.0, if resp.hovered() || resp.dragged() { ACCENT() } else { TEXT() });
+    resp
+}
+
+/// Control segmentado a lo ancho (No / Auto / Sí): la opción elegida con fondo y borde de acento.
+pub fn segmentado(ui: &mut egui::Ui, sel: &mut usize, opciones: &[&str]) -> bool {
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
+    let p = ui.painter().clone();
+    p.rect(r, rr(7.0), BG(), Stroke::new(1.0, BORDER()), egui::StrokeKind::Inside);
+    let w = r.width() / opciones.len() as f32;
+    let mut cambio = false;
+    for (k, texto) in opciones.iter().enumerate() {
+        let celda = Rect::from_min_size(pos2(r.left() + w * k as f32, r.top()), vec2(w, r.height())).shrink(2.0);
+        let c = ui.interact(celda, resp.id.with(k), Sense::click());
+        let on = *sel == k;
+        if on {
+            p.rect(celda, rr(6.0), ACCENT().gamma_multiply(0.18), Stroke::new(1.0, ACCENT().gamma_multiply(0.6)), egui::StrokeKind::Inside);
+        } else if c.hovered() {
+            p.rect_filled(celda, rr(6.0), BORDER());
+        }
+        p.text(celda.center(), Align2::CENTER_CENTER, tr(texto), FontId::proportional(12.0), if on { ACCENT() } else if c.hovered() { TEXT() } else { TEXT_DIM() });
+        if c.clicked() && !on {
+            *sel = k;
+            cambio = true;
+        }
+    }
+    cambio
 }
 
 /// Perilla de panorama: anillo de fondo, arco de color desde el centro, marcas L/C/R y disco con brillo.

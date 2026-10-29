@@ -34,10 +34,17 @@ pub enum Cmd {
     Marker,
     Capture,
     Inspector,
+    VistaArreglo,
+    VistaPiano,
+    VistaMix,
+    VistaInst,
+    VistaAnalisis,
+    VistaPartitura,
+    VistaPatron,
 }
 
 impl Cmd {
-    pub const ALL: [Cmd; 29] = [
+    pub const ALL: [Cmd; 36] = [
         Cmd::Play,
         Cmd::Record,
         Cmd::Home,
@@ -67,6 +74,13 @@ impl Cmd {
         Cmd::Marker,
         Cmd::Capture,
         Cmd::Inspector,
+        Cmd::VistaArreglo,
+        Cmd::VistaPiano,
+        Cmd::VistaMix,
+        Cmd::VistaInst,
+        Cmd::VistaAnalisis,
+        Cmd::VistaPartitura,
+        Cmd::VistaPatron,
     ];
 
     fn id(self) -> String {
@@ -104,6 +118,13 @@ impl Cmd {
             Cmd::Marker => "Añadir marca en el cursor",
             Cmd::Capture => "Capturar lo último tocado (grabación retrospectiva)",
             Cmd::Inspector => "Mostrar el inspector",
+            Cmd::VistaArreglo => "Vista Arreglo",
+            Cmd::VistaPiano => "Vista Piano",
+            Cmd::VistaMix => "Vista Mix",
+            Cmd::VistaInst => "Vista Inst (instrumento y efectos)",
+            Cmd::VistaAnalisis => "Vista Análisis",
+            Cmd::VistaPartitura => "Vista Partitura",
+            Cmd::VistaPatron => "Vista Patrón",
         }
     }
 
@@ -138,6 +159,13 @@ impl Cmd {
             Cmd::Marker => "M",
             Cmd::Capture => "Shift+R",
             Cmd::Inspector => "I",
+            Cmd::VistaArreglo => "Ctrl+1",
+            Cmd::VistaPiano => "Ctrl+2",
+            Cmd::VistaMix => "Ctrl+3",
+            Cmd::VistaInst => "Ctrl+4",
+            Cmd::VistaAnalisis => "Ctrl+5",
+            Cmd::VistaPartitura => "Ctrl+6",
+            Cmd::VistaPatron => "Ctrl+7",
         }
     }
 }
@@ -195,7 +223,7 @@ fn key_text(key: Key, m: Modifiers) -> String {
 const MUSIC_KEYS: [Key; 16] = [Key::A, Key::W, Key::S, Key::E, Key::D, Key::F, Key::T, Key::G, Key::Y, Key::H, Key::U, Key::J, Key::K, Key::O, Key::L, Key::P];
 
 impl App {
-    fn key_for(&self, c: Cmd) -> String {
+    pub fn key_for(&self, c: Cmd) -> String {
         self.config.keys.get(&c.id()).cloned().unwrap_or_else(|| c.default_key().into())
     }
     fn wheel_for(&self, w: Wheel) -> String {
@@ -262,6 +290,13 @@ impl App {
             Cmd::Marker => self.add_marker(self.pos()),
             Cmd::Capture => self.capturar(),
             Cmd::Inspector => self.show_inspector = !self.show_inspector,
+            Cmd::VistaArreglo => self.ir_a_vista(None),
+            Cmd::VistaPiano => self.ir_a_vista(Some(1)),
+            Cmd::VistaMix => self.ir_a_vista(Some(0)),
+            Cmd::VistaInst => self.ir_a_vista(Some(6)),
+            Cmd::VistaAnalisis => self.ir_a_vista(Some(2)),
+            Cmd::VistaPartitura => self.ir_a_vista(Some(4)),
+            Cmd::VistaPatron => self.ir_a_vista(Some(5)),
         }
     }
 

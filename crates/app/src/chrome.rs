@@ -338,75 +338,152 @@ impl App {
         });
     }
 
-    /// Grupos de la barra de control en filas: todo en una línea si cabe; si no, herramientas abajo.
+    /// Filas de la barra de control: una si entra todo; si no, las vistas bajan a una segunda fila.
     pub fn bar_rows(&self) -> Vec<&'static [&'static str]> {
         const ALL: [&str; 3] = ["transport", "lcd", "views"];
         if self.bar_two_rows { vec![&ALL[..2], &ALL[2..]] } else { vec![&ALL] }
     }
 
-    /// Barra de control fija: vistas | transporte | tiempo, metrónomo y tempo | herramientas, en una
-    /// caja de altura uniforme con líneas separadoras, centrada en la ventana.
+    /// Barra de control: transporte y tiempo a la izquierda, vistas en el centro de la ventana y el
+    /// medidor del máster a la derecha. Cada zona se mide en el cuadro anterior para ubicarla; si no
+    /// caben en una línea, las vistas pasan a una segunda fila centrada.
     pub fn control_bar(&mut self, ui: &mut egui::Ui) {
-        let width = ui.available_width();
-        let rows = self.bar_rows();
-        self.bar_widths.resize(rows.len(), 0.0);
-        ui.spacing_mut().item_spacing.y = 6.0;
-        for (ri, row) in rows.iter().enumerate() {
-            let lead = ((width - self.bar_widths[ri]) / 2.0).max(4.0);
-            let r = ui.horizontal(|ui| {
-                ui.add_space(lead);
-                let frame = egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 3));
-                frame.show(ui, |ui| {
-                    ui.allocate_ui_with_layout(vec2(ui.available_width(), BOX_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.set_min_height(BOX_H);
-                        ui.spacing_mut().interact_size.y = 30.0;
-                        for (k, id) in row.iter().enumerate() {
-                            if k > 0 {
-                                ui.add_space(6.0);
-                                let (line, _) = ui.allocate_exact_size(vec2(1.0, BOX_H - 4.0), egui::Sense::hover());
-                                ui.painter().rect_filled(line, 0.0, BORDER());
-                                ui.add_space(6.0);
-                            }
-                            self.bar_group(ui, id);
-                        }
-                    });
-                });
-            });
-            // En el primer cuadro aún no se conoce el ancho de la fila: se repite el cuadro centrado.
-            let w = r.response.rect.width() - lead;
-            if (self.bar_widths[ri] - w).abs() > 1.0 {
-                ui.ctx().request_discard("centrar la barra de control");
-            }
-            self.bar_widths[ri] = w;
+        self.bar_widths.resize(3, 0.0);
+        let ancho = ui.available_width();
+        let alto = BOX_H;
+        let (fila, _) = ui.allocate_exact_size(vec2(ancho, alto), egui::Sense::hover());
+        // Cada zona se dibuja de izquierda a derecha en su lugar; devuelve el ancho que ocupó.
+        fn zona(ui: &mut egui::Ui, izquierda: f32, r: egui::Rect, add: impl FnOnce(&mut egui::Ui)) -> f32 {
+            let caja = egui::Rect::from_min_max(egui::pos2(izquierda, r.top()), egui::pos2(r.right().max(izquierda + 1.0), r.bottom()));
+            let mut hijo = ui.new_child(egui::UiBuilder::new().max_rect(caja).layout(egui::Layout::left_to_right(egui::Align::Center)));
+            hijo.spacing_mut().interact_size.y = 30.0;
+            add(&mut hijo);
+            hijo.min_rect().width()
         }
-        let single = self.bar_widths.iter().sum::<f32>() + 12.0 * (self.bar_widths.len() as f32 - 1.0);
-        let two = single > width - 8.0;
-        if two != self.bar_two_rows {
-            self.bar_two_rows = two;
-            self.bar_widths.clear();
-            ui.ctx().request_discard("filas de la barra de control");
+        let margen = 10.0;
+        // Izquierda: transporte agrupado y el tiempo.
+        let w_izq = zona(ui, fila.left() + margen, fila, |ui| {
+            widgets::grupo(ui, |ui| self.transport_box(ui));
+            ui.add_space(14.0);
+            self.lcd_box(ui);
+        });
+        // Derecha: medidor del máster, pegado al borde (con el ancho medido en el cuadro anterior).
+        let w_der = zona(ui, fila.right() - margen - self.bar_widths[2], fila, |ui| self.medidor_master(ui));
+        // Centro: vistas centradas en la ventana; si chocan con los lados, en una segunda fila.
+        let w_vistas = self.bar_widths[1];
+        let centro_x = fila.center().x - w_vistas / 2.0;
+        let dos = centro_x < fila.left() + margen + w_izq + 16.0 || centro_x + w_vistas > fila.right() - margen - w_der - 16.0;
+        let r_vistas = if dos {
+            ui.add_space(6.0);
+            ui.allocate_exact_size(vec2(ancho, alto), egui::Sense::hover()).0
+        } else {
+            fila
+        };
+        let w = zona(ui, r_vistas.center().x - w_vistas / 2.0, r_vistas, |ui| self.bar_group(ui, "views"));
+        // En el primer cuadro aún no se conocen los anchos: se repite el cuadro ya ubicado.
+        if (self.bar_widths[1] - w).abs() > 1.0 || (self.bar_widths[2] - w_der).abs() > 1.0 || dos != self.bar_two_rows {
+            (self.bar_widths[1], self.bar_widths[2], self.bar_two_rows) = (w, w_der, dos);
+            ui.ctx().request_discard("ubicar la barra de control");
         }
     }
 
-    /// Barra superior del arreglo: título, herramientas, rejilla y paneles.
-    pub fn barra_herramientas(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_centered(|ui| {
-            ui.toggle_value(&mut self.show_inspector, RichText::new(tr("Inspector")).size(12.5)).on_hover_text("I");
-            // Arreglo o escenario de clips (Clip Stage).
-            if widgets::pestana_texto(ui, !self.ver_escenario, tr("Arreglo")).clicked() {
-                self.ver_escenario = false;
-            }
-            if widgets::pestana_texto(ui, self.ver_escenario, tr("Escenario")).on_hover_text(tr("Escenario de clips: lanza regiones y escenas en bucle")).clicked() {
-                self.ver_escenario = true;
-            }
-            ui.label(RichText::new(format!("{} {}", self.s.tracks.len(), tr("pistas"))).size(11.5).color(TEXT_DIM()));
-            ui.add_space(10.0);
-            self.bar_group(ui, "tools");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.toggle_value(&mut self.show_lib, RichText::new(tr("Biblioteca")).size(12.5)).on_hover_text("Y");
-                ui.toggle_value(&mut self.show_auto, RichText::new(tr("Automatización")).size(12.5)).on_hover_text("A");
+    /// Medidor del máster en la barra: nivel, pico retenido (clic para reiniciar) y su escala.
+    fn medidor_master(&mut self, ui: &mut egui::Ui) {
+        let i = self.s.tracks.len();
+        let (nivel, pico) = (self.levels.get(i).copied().unwrap_or(0.0), self.peaks.get(i).copied().unwrap_or(0.0));
+        egui::Frame::new().fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(8.0)).inner_margin(egui::Margin::symmetric(10, 4)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.label(RichText::new("MASTER").size(9.5).strong().color(TEXT_DIM()));
+                    widgets::meter_h(ui, nivel, 170.0);
+                });
+                let color = if widgets::db(pico) > 0.0 { METER[2] } else { TEXT() };
+                let r = ui.add(egui::Label::new(RichText::new(widgets::db_text(pico)).monospace().size(12.0).color(color)).sense(egui::Sense::click()));
+                if r.on_hover_text(tr("Pico del máster · clic para reiniciar")).clicked()
+                    && let Some(p) = self.peaks.get_mut(i)
+                {
+                    *p = 0.0;
+                }
             });
         });
+    }
+
+    /// Barra de herramientas del arreglo: paneles, herramientas de edición, automatización, importar,
+    /// ajuste a la rejilla y deshacer/rehacer, en grupos; la biblioteca a la derecha.
+    pub fn barra_herramientas(&mut self, ui: &mut egui::Ui) {
+        let atajo = |app: &Self, texto: &str, c: keys::Cmd| {
+            let k = app.key_for(c);
+            if k.is_empty() { tr(texto).to_string() } else { format!("{} ({k})", tr(texto)) }
+        };
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.label(RichText::new(tr(if self.ver_escenario { "Escenario" } else { "Arreglo" })).size(13.5).strong().color(TEXT()));
+            ui.label(RichText::new(format!("{} {}", self.s.tracks.len(), tr("pistas"))).size(11.5).color(TEXT_DIM()));
+            widgets::grupo(ui, |ui| {
+                if widgets::chip(ui, self.show_inspector, widgets::draw_inspector, tr("Inspector"), VERDE_PLAY).on_hover_text(atajo(self, "Inspector", keys::Cmd::Inspector)).clicked() {
+                    self.show_inspector = !self.show_inspector;
+                }
+                if widgets::chip(ui, self.ver_escenario, widgets::draw_escenario, tr("Escenario"), VERDE_PLAY).on_hover_text(tr("Escenario de clips: lanza regiones y escenas en bucle")).clicked() {
+                    self.ver_escenario = !self.ver_escenario;
+                }
+                if widgets::chip(ui, self.show_mixer, widgets::draw_editor, tr("Editor"), VERDE_PLAY).on_hover_text(tr("Panel inferior: mixer, dispositivos, piano roll y editores")).clicked() {
+                    self.show_mixer = !self.show_mixer;
+                }
+            });
+            widgets::grupo(ui, |ui| {
+                type Draw = fn(&egui::Painter, egui::Rect, Color32);
+                let tools: [(Tool, Draw, &str, keys::Cmd); 3] = [
+                    (Tool::Select, widgets::draw_pointer, "Puntero", keys::Cmd::Select),
+                    (Tool::Pencil, widgets::draw_pencil, "Lápiz", keys::Cmd::Pencil),
+                    (Tool::Blade, widgets::draw_scissors, "Cuchilla", keys::Cmd::Blade),
+                ];
+                for (tool, draw, nombre, cmd) in tools {
+                    if widgets::chip(ui, self.tool == tool, draw, tr(nombre), ACCENT()).on_hover_text(atajo(self, cmd.label(), cmd)).clicked() {
+                        self.set_tool(tool);
+                    }
+                }
+            });
+            widgets::grupo(ui, |ui| {
+                if widgets::chip(ui, self.show_auto, widgets::draw_automatizacion, tr("Automatización"), ACCENT()).on_hover_text(atajo(self, "Automatización", keys::Cmd::Automation)).clicked() {
+                    self.show_auto = !self.show_auto;
+                }
+                if widgets::chip(ui, false, widgets::draw_importar, tr("Importar audio"), ACCENT()).on_hover_text(atajo(self, "Importar audio", keys::Cmd::Import)).clicked() {
+                    self.run(keys::Cmd::Import);
+                }
+            });
+            widgets::grupo(ui, |ui| {
+                if widgets::chip(ui, self.snap, widgets::draw_iman, tr("Ajustar"), ACCENT()).on_hover_text(atajo(self, "Ajustar a la rejilla de tiempos", keys::Cmd::Snap)).clicked() {
+                    self.snap = !self.snap;
+                }
+            });
+            widgets::grupo(ui, |ui| {
+                let (hay_deshacer, hay_rehacer) = (!self.undo.is_empty(), !self.redo.is_empty());
+                if ui.add_enabled_ui(hay_deshacer, |ui| widgets::chip(ui, false, widgets::draw_deshacer, tr("Deshacer"), ACCENT())).inner.on_hover_text(atajo(self, "Deshacer", keys::Cmd::Undo)).clicked() {
+                    self.undo();
+                }
+                if ui.add_enabled_ui(hay_rehacer, |ui| widgets::chip(ui, false, widgets::draw_rehacer, tr("Rehacer"), ACCENT())).inner.on_hover_text(atajo(self, "Rehacer", keys::Cmd::Redo)).clicked() {
+                    self.redo();
+                }
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                widgets::grupo(ui, |ui| {
+                    if widgets::chip(ui, self.show_lib, widgets::draw_biblioteca, tr("Biblioteca"), VERDE_PLAY).on_hover_text(atajo(self, "Biblioteca", keys::Cmd::Library)).clicked() {
+                        self.show_lib = !self.show_lib;
+                    }
+                });
+            });
+        });
+    }
+
+    /// Cambia de vista: Arreglo (`None`), o el panel inferior en la pestaña `k`; MIX (0) es la consola a
+    /// pantalla completa en el área central.
+    pub fn ir_a_vista(&mut self, vista: Option<u8>) {
+        match vista {
+            None => (self.show_mixer, self.vista_mix) = (false, false),
+            Some(0) => (self.show_mixer, self.vista_mix) = (false, true),
+            Some(k) => (self.show_mixer, self.bottom_tab, self.vista_mix) = (true, k, false),
+        }
     }
 
     /// Contenido de un grupo de la barra de control.
@@ -416,14 +493,20 @@ impl App {
             // editor de audio abajo.
             "views" => {
                 let actual = if self.vista_mix { Some(0) } else if self.show_mixer { Some(self.bottom_tab) } else { None };
-                for (vista, nombre, tecla) in [(None, "Arreglo", ""), (Some(1), "Piano", ""), (Some(0), "Mix", "X"), (Some(6), "Inst", "Instrumento y efectos de la pista"), (Some(2), "Análisis", ""), (Some(3), "Audio", ""), (Some(4), "Partitura", ""), (Some(5), "Patrón", "")] {
-                    if widgets::pestana(ui, actual == vista, tr(nombre)).on_hover_text(tecla).clicked() {
-                        // MIX: consola a pantalla completa en el área central (como en el panel, pero alta).
-                        match vista {
-                            None => (self.show_mixer, self.vista_mix) = (false, false),
-                            Some(0) => (self.show_mixer, self.vista_mix) = (false, true),
-                            Some(k) => (self.show_mixer, self.bottom_tab, self.vista_mix) = (true, k, false),
-                        }
+                use keys::Cmd;
+                for (vista, nombre, cmd) in [
+                    (None, "Arreglo", Some(Cmd::VistaArreglo)),
+                    (Some(1), "Piano", Some(Cmd::VistaPiano)),
+                    (Some(0), "Mix", Some(Cmd::VistaMix)),
+                    (Some(6), "Inst", Some(Cmd::VistaInst)),
+                    (Some(2), "Análisis", Some(Cmd::VistaAnalisis)),
+                    (Some(3), "Audio", None),
+                    (Some(4), "Partitura", Some(Cmd::VistaPartitura)),
+                    (Some(5), "Patrón", Some(Cmd::VistaPatron)),
+                ] {
+                    let ayuda = cmd.map_or_else(|| tr("Editor de audio").to_string(), |c| format!("{} ({})", tr(c.label()), self.key_for(c)));
+                    if widgets::pestana(ui, actual == vista, tr(nombre)).on_hover_text(ayuda).clicked() {
+                        self.ir_a_vista(vista);
                     }
                 }
             }

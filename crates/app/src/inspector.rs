@@ -12,11 +12,22 @@ fn seccion(ui: &mut egui::Ui, id: &str, texto: &str, add: impl FnOnce(&mut egui:
     });
 }
 
-/// Fila con etiqueta a la izquierda (columna fija) y el control a la derecha.
+/// Columna de las etiquetas: todos los controles empiezan en el mismo lugar y llegan al mismo borde.
+const ETIQUETA: f32 = 84.0;
+
+/// Fila con etiqueta a la izquierda (columna fija) y el control ocupando el resto del ancho.
 fn fila(ui: &mut egui::Ui, etiqueta: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.add_sized([70.0, 20.0], egui::Label::new(RichText::new(tr(etiqueta)).size(12.5).color(TEXT_DIM())));
-        add(ui);
+        let (r, _) = ui.allocate_exact_size(vec2(ETIQUETA, 26.0), egui::Sense::hover());
+        ui.painter().text(r.left_center(), egui::Align2::LEFT_CENTER, tr(etiqueta), egui::FontId::proportional(12.5), TEXT_DIM());
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), 26.0), egui::Layout::left_to_right(egui::Align::Center), add);
+    });
+}
+
+/// Valor a la derecha de un control, con ancho fijo para que todos los controles terminen igual.
+fn valor(ui: &mut egui::Ui, texto: String) {
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), 20.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.label(RichText::new(texto).monospace().size(11.5).color(TEXT()));
     });
 }
 
@@ -44,8 +55,9 @@ impl App {
             seccion(ui, "pista", "PISTA", |ui| {
                 ui.horizontal(|ui| {
                     let t = &mut self.s.tracks[i];
-                    widgets::color_dot(ui, &mut t.color);
-                    ui.add(egui::TextEdit::singleline(&mut t.name).font(egui::FontId::proportional(14.5)).desired_width(f32::INFINITY));
+                    // Muestra de color del alto del nombre, y el nombre a lo ancho.
+                    widgets::color_dot(ui, &mut t.color, 26.0);
+                    ui.add(egui::TextEdit::singleline(&mut t.name).font(egui::FontId::proportional(14.0)).desired_width(f32::INFINITY).min_size(vec2(0.0, 26.0)).margin(egui::Margin::symmetric(8, 4)).vertical_align(egui::Align::Center));
                 });
                 let tipo = match self.s.tracks[i].kind {
                     TrackKind::AudioMono => tr("Pista de audio mono"),
@@ -56,24 +68,22 @@ impl App {
                 };
                 ui.label(RichText::new(tipo).size(12.0).color(TEXT_DIM()));
                 let params = self.s.tracks[i].params.clone();
+                // Volumen con el medidor de la pista dentro del carril, y panorama a lo ancho.
+                let nivel = self.levels.get(i).copied();
                 fila(ui, "Volumen", |ui| {
-                    widgets::fader_h(ui, &params.gain, 120.0, None);
-                    ui.label(RichText::new(widgets::db_text(params.gain.get())).monospace().size(11.5));
+                    widgets::fader_h(ui, &params.gain, ui.available_width() - 76.0, nivel);
+                    valor(ui, widgets::db_text(params.gain.get()));
                 });
                 fila(ui, "Panorama", |ui| {
                     let mut pan = params.pan.get();
-                    if widgets::pan_knob(ui, &mut pan).changed() {
+                    if widgets::pan_h(ui, &mut pan, ui.available_width() - 76.0).on_hover_text(tr("Arrastra para mover · doble clic: centro")).changed() {
                         params.pan.set(pan);
                     }
-                    let lado = if pan.abs() < 0.01 { "C".to_string() } else if pan < 0.0 { format!("L {:.0}", -pan * 100.0) } else { format!("R {:.0}", pan * 100.0) };
-                    ui.label(RichText::new(lado).monospace().size(11.5));
+                    valor(ui, if pan.abs() < 0.01 { "C".to_string() } else if pan < 0.0 { format!("L {:.0}", -pan * 100.0) } else { format!("R {:.0}", pan * 100.0) });
                 });
-                ui.horizontal(|ui| {
-                    ui.add_space(74.0);
+                fila(ui, "Pista", |ui| {
                     self.flag_buttons(ui, i);
-                });
-                ui.horizontal(|ui| {
-                    ui.add_space(74.0);
+                    ui.add_space(6.0);
                     self.polarity_button(ui, i);
                     self.fx_button(ui, i);
                     self.route_button(ui, i);
@@ -85,18 +95,18 @@ impl App {
                         if widgets::mini_knob(ui, &mut d, -24.0, 24.0, 0.0, METER[0]).changed() {
                             params.in_gain.set(10f32.powf(d / 20.0));
                         }
-                        ui.label(RichText::new(format!("{d:+.1} dB")).monospace().size(11.5));
+                        valor(ui, format!("{d:+.1} dB"));
                     });
                     fila(ui, "Señal", |ui| {
                         let escucha = params.arm.load(Relaxed) || params.monitor.load(Relaxed);
-                        widgets::meter_h(ui, if escucha { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, 150.0);
+                        widgets::meter_h(ui, if escucha { self.in_levels.get(i).copied().unwrap_or(0.0) } else { 0.0 }, ui.available_width());
                     });
                 }
                 fila(ui, "Monitoreo", |ui| {
-                    let mut on = params.monitor.load(Relaxed);
-                    ui.selectable_value(&mut on, false, tr("Apagado"));
-                    ui.selectable_value(&mut on, true, tr("Encendido"));
-                    params.monitor.store(on, Relaxed);
+                    let mut k = usize::from(params.monitor.load(Relaxed));
+                    if widgets::segmentado(ui, &mut k, &["Apagado", "Encendido"]) {
+                        params.monitor.store(k == 1, Relaxed);
+                    }
                 });
             });
             seccion(ui, "envios", "ENVÍOS", |ui| {

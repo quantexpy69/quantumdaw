@@ -1295,11 +1295,11 @@ impl App {
         self.abrir_efectos(i);
     }
 
-    /// Muestra el instrumento y los efectos de la pista en la pestaña Dispositivos; con el mixer a la
-    /// vista (para no taparlo) o la ventana de plugins ya abierta, en esa ventana, al frente.
+    /// Muestra el instrumento y los efectos de la pista abajo, en la pestaña Dispositivos (también bajo
+    /// la consola de la vista MIX). Si la ventana de plugins ya está abierta, se usa esa, al frente.
     fn abrir_efectos(&mut self, i: usize) {
         self.last_track = Some(i);
-        if (self.show_mixer && self.bottom_tab == 0) || self.fx_window.is_some() {
+        if self.fx_window.is_some() {
             self.fx_window = Some(i);
             self.enfocar_ventana = Some("fx");
         } else {
