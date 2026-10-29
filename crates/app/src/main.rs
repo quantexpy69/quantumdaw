@@ -265,10 +265,13 @@ fn main() -> eframe::Result {
     if let Some(icon) = logo_icon() {
         viewport = viewport.with_icon(icon);
     }
-    // Sin vsync: con NVIDIA en Wayland, eglSwapBuffers espera el «frame callback» de cada ventana y con
-    // ventanas separadas (o tapadas) esa espera no termina nunca y el programa se congela. El ritmo de
-    // refresco lo limita la propia app (ver `limitar_fps`).
-    let options = eframe::NativeOptions { viewport, glow_options: eframe::egui_glow::GlowConfiguration { vsync: false, ..Default::default() }, ..Default::default() };
+    // Sin vsync en Wayland: con NVIDIA, eglSwapBuffers espera el «frame callback» de cada ventana y con
+    // ventanas separadas (o tapadas) esa espera no termina nunca y el programa se congela. Ahí el ritmo
+    // de refresco lo limita la propia app (ver `limitar_fps`). En X11 no pasa: con vsync cada cuadro
+    // sale al ritmo de la pantalla, sin cortes en la imagen ni saltos del cursor de reproducción.
+    let vsync = cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_none();
+    VSYNC.store(vsync, Relaxed);
+    let options = eframe::NativeOptions { viewport, glow_options: eframe::egui_glow::GlowConfiguration { vsync, ..Default::default() }, ..Default::default() };
     // glow (OpenGL): con wgpu el redibujado se detenía en Wayland durante la reproducción.
     eframe::run_native(
         "QUANTUM",
@@ -2676,9 +2679,15 @@ impl eframe::App for App {
     }
 }
 
+/// Si la ventana usa vsync (X11), es la pantalla la que marca el ritmo de los cuadros.
+static VSYNC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Sin vsync el redibujado continuo (reproducción, analizadores) iría tan rápido como pueda la GPU:
 /// se limita a unos 60 cuadros por segundo para no gastar procesador.
 fn limitar_fps() {
+    if VSYNC.load(Relaxed) {
+        return;
+    }
     static ULTIMO: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
     const CUADRO: Duration = Duration::from_micros(16_667);
     let Ok(mut ultimo) = ULTIMO.lock() else { return };

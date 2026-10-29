@@ -50,6 +50,12 @@ pub fn iniciar() {
         let hilo = std::thread::current().name().unwrap_or("sin nombre").to_string();
         let msg = info.payload().downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| info.payload().downcast_ref::<String>().cloned()).unwrap_or_default();
         let lugar = info.location().map(|l| l.to_string()).unwrap_or_default();
+        // Al cerrar la sesión o reiniciar con el programa abierto, el servidor X se va y winit aborta al
+        // perder la conexión: no es un fallo de QUANTUM, así que no se ofrece enviar un informe.
+        if lugar.contains("platform_impl/linux/x11") && msg.contains("Connection(") {
+            registrar("INFO", &format!("Se cerró la sesión gráfica con el programa abierto ({msg})"));
+            return previo(info);
+        }
         let resumen = format!("Fallo en el hilo «{hilo}»: {msg}");
         registrar("FALLO", &format!("{resumen} ({lugar})"));
         guardar("fallo", &resumen, &format!("Lugar: {lugar}\n\n{}", std::backtrace::Backtrace::force_capture()));
