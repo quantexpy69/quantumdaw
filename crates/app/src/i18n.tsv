@@ -1564,3 +1564,140 @@ Curves, compresor, reverb, delay, saturación, Tune y más.	Curves, compressor, 
 Abrir y reproducir	Open and play	Abrir e reproduzir
 Incluidos	Included	Incluídos
 DEMO	DEMO	DEMO
+AMPLIAR	EXTEND	AMPLIAR
+AUTOGUARDADO	AUTOSAVE	SALVAMENTO AUTOMÁTICO
+Abrir carpeta	Open folder	Abrir pasta
+Abrir la tienda en el navegador	Open the store in the browser	Abrir a loja no navegador
+Acción o tecla	Action or key	Ação ou tecla
+Actualizar dispositivos	Refresh devices	Atualizar dispositivos
+Actualizar lista	Refresh list	Atualizar lista
+Al abrir el programa se carga el último proyecto; este panel queda encima para elegir otro.	When the app starts it loads the last project; this panel stays on top so you can pick another.	Ao abrir o programa, o último projeto é carregado; este painel fica por cima para escolher outro.
+Al hacer clic en un audio de la biblioteca se escucha al momento; si no, solo con el botón ▶.	Clicking an audio file in the library plays it right away; otherwise only with the ▶ button.	Ao clicar em um áudio da biblioteca ele toca na hora; caso contrário, só com o botão ▶.
+Aplicar y reiniciar audio	Apply and restart audio	Aplicar e reiniciar o áudio
+Atajo repetido en otro comando	Shortcut used by another command	Atalho repetido em outro comando
+Atajos de teclado	Keyboard shortcuts	Atalhos de teclado
+Autoguardado	Autosave	Salvamento automático
+Autoguardado, copias de seguridad y registros	Autosave, backups and logs	Salvamento automático, cópias de segurança e registros
+Autores de la música y la letra	Authors of the music and lyrics	Autores da música e da letra
+Año	Year	Ano
+BIBLIOTECA	LIBRARY	BIBLIOTECA
+BUSCAR	SEARCH	BUSCAR
+Botón de instrumento y efectos	Instrument and effects button	Botão de instrumento e efeitos
+Botón de instrumento y efectos en las pistas	Instrument and effects button on tracks	Botão de instrumento e efeitos nas faixas
+Buscar en las preferencias…	Search preferences…	Buscar nas preferências…
+CANCIÓN ABIERTA	OPEN SONG	MÚSICA ABERTA
+CARPETAS DE PLUGINS	PLUGIN FOLDERS	PASTAS DE PLUGINS
+COMPILACIÓN Y SISTEMA	BUILD AND SYSTEM	COMPILAÇÃO E SISTEMA
+COPIAS DE SEGURIDAD	BACKUPS	CÓPIAS DE SEGURANÇA
+Cada	Every	A cada
+Cada forma de trabajar con los paneles que necesita a mano	Each way of working with the panels it needs at hand	Cada forma de trabalhar com os painéis de que precisa à mão
+Cada minuto	Every minute	A cada minuto
+Cada vez que guardas, la versión anterior queda en la carpeta Backups/ de la canción con su fecha y hora; se conservan las 20 últimas.	Each time you save, the previous version is kept in the song's Backups/ folder with its date and time; the last 20 are kept.	Cada vez que você salva, a versão anterior fica na pasta Backups/ da música com data e hora; as 20 últimas são mantidas.
+Cambia al momento en toda la interfaz.	Changes the whole interface right away.	Muda na hora em toda a interface.
+Carpeta	Folder	Pasta
+Carpeta de proyectos	Projects folder	Pasta de projetos
+Carpeta de registros	Logs folder	Pasta de registros
+Carpetas de plugins	Plugin folders	Pastas de plugins
+Carpetas donde se buscan los plugins VST3, LV2 y CLAP	Folders searched for VST3, LV2 and CLAP plugins	Pastas onde os plugins VST3, LV2 e CLAP são procurados
+Clic para cambiar	Click to change	Clique para mudar
+Comportamiento	Behavior	Comportamento
+Compositor/es	Composer(s)	Compositor(es)
+Copias de esta canción	Backups of this song	Cópias desta música
+Copias de seguridad	Backups	Cópias de segurança
+DATOS Y DERECHOS	DETAILS AND RIGHTS	DADOS E DIREITOS
+DISPOSITIVO	DEVICE	DISPOSITIVO
+DISPOSITIVOS DETECTADOS	DETECTED DEVICES	DISPOSITIVOS DETECTADOS
+Demo abierta	Demo opened	Demo aberta
+Detenido	Stopped	Parado
+Dispositivo de entrada	Input device	Dispositivo de entrada
+Dispositivo de salida	Output device	Dispositivo de saída
+Dispositivos de entrada y salida, frecuencia, búfer y metrónomo	Input and output devices, sample rate, buffer and metronome	Dispositivos de entrada e saída, frequência, buffer e metrônomo
+Donde se crean las canciones nuevas, cada una en su carpeta con su audio y sus copias.	Where new songs are created, each in its own folder with its audio and backups.	Onde as músicas novas são criadas, cada uma em sua pasta com seu áudio e cópias.
+ENTRADA MIDI	MIDI INPUT	ENTRADA MIDI
+ESPACIOS DE TRABAJO	WORKSPACES	ESPAÇOS DE TRABALHO
+ESTADO	STATUS	ESTADO
+Editorial / sello	Publisher / label	Editora / selo
+El botón FX en la cabecera de cada pista abre su instrumento y sus efectos.	The FX button on each track header opens its instrument and effects.	O botão FX no cabeçalho de cada faixa abre seu instrumento e seus efeitos.
+En marcha	Running	Em funcionamento
+Enviar informe de error	Send error report	Enviar relatório de erro
+Esquinas redondeadas en botones, paneles y regiones; sin ella, todo es recto.	Rounded corners on buttons, panels and regions; without it, everything is square.	Cantos arredondados em botões, painéis e regiões; sem ela, tudo fica reto.
+Estación de audio digital escrita en Rust: graba, edita, arregla y mezcla con instrumentos y efectos propios.	Digital audio workstation written in Rust: record, edit, arrange and mix with its own instruments and effects.	Estação de áudio digital escrita em Rust: grave, edite, arranje e mixe com instrumentos e efeitos próprios.
+Estado del motor de audio	Audio engine status	Estado do motor de áudio
+FORMATO Y TEMPO	FORMAT AND TEMPO	FORMATO E ANDAMENTO
+Guarda el trabajo sin guardar en Backups/autoguardado.qproj (no toca el proyecto) para recuperarlo tras un cierre inesperado. Nunca mientras se graba.	Saves unsaved work to Backups/autoguardado.qproj (the project is not touched) to recover it after an unexpected exit. Never while recording.	Salva o trabalho não salvo em Backups/autoguardado.qproj (sem tocar no projeto) para recuperá-lo após um fechamento inesperado. Nunca durante a gravação.
+Guardado	Saving	Salvamento
+Género	Genre	Gênero
+Hay cambios sin aplicar	There are unapplied changes	Há alterações não aplicadas
+Haz clic en un atajo y pulsa la nueva combinación	Click a shortcut and press the new combination	Clique em um atalho e pressione a nova combinação
+IDIOMA	LANGUAGE	IDIOMA
+INICIO	STARTUP	INÍCIO
+Instrumentos, efectos y sonidos de quantumdaw.com	Instruments, effects and sounds from quantumdaw.com	Instrumentos, efeitos e sons de quantumdaw.com
+Intervalo de autoguardado	Autosave interval	Intervalo de salvamento automático
+Intérprete o banda	Performer or band	Intérprete ou banda
+LICENCIAS	LICENSES	LICENÇAS
+Las pistas con instrumento o efectos suenan desde un render previo guardado en Proxies/: ahorra procesador en proyectos grandes.	Tracks with an instrument or effects play from a pre-render saved in Proxies/: saves CPU in large projects.	As faixas com instrumento ou efeitos tocam a partir de um render prévio salvo em Proxies/: economiza processador em projetos grandes.
+Latencia	Latency	Latência
+Latencia del búfer	Buffer latency	Latência do buffer
+Los búferes grandes dan más tiempo al procesamiento; los pequeños responden más rápido al tocar y grabar.	Large buffers give processing more time; small ones respond faster when playing and recording.	Buffers grandes dão mais tempo ao processamento; os pequenos respondem mais rápido ao tocar e gravar.
+Los teclados y controladores conectados tocan la pista armada (o la seleccionada) y graban en ella.	Connected keyboards and controllers play the armed track (or the selected one) and record on it.	Os teclados e controladores conectados tocam a faixa armada (ou a selecionada) e gravam nela.
+METRÓNOMO	METRONOME	METRÔNOMO
+Mantén los modificadores y gira la rueda…	Hold the modifiers and turn the wheel…	Segure os modificadores e gire a roda…
+Mostrar el panel al iniciar	Show the panel at startup	Mostrar o painel ao iniciar
+Mostrar todos	Show all	Mostrar todos
+Motor de audio reiniciado	Audio engine restarted	Motor de áudio reiniciado
+Ninguna opción coincide con la búsqueda.	No option matches the search.	Nenhuma opção corresponde à busca.
+Ningún atajo coincide con la búsqueda.	No shortcut matches the search.	Nenhum atalho corresponde à busca.
+No hay dispositivos MIDI conectados.	No MIDI devices connected.	Não há dispositivos MIDI conectados.
+No hay plugins ocultos. Para ocultar uno, haz clic derecho sobre él en la Biblioteca.	No hidden plugins. To hide one, right-click it in the Library.	Não há plugins ocultos. Para ocultar um, clique com o botão direito nele na Biblioteca.
+No se pudo abrir	Could not open	Não foi possível abrir
+Nombre, formato, tempo y plantilla de la canción	Name, format, tempo and template of the song	Nome, formato, andamento e modelo da música
+OTRA UBICACIÓN	ANOTHER LOCATION	OUTRO LOCAL
+Ocultos en la biblioteca	Hidden in the library	Ocultos na biblioteca
+PISTAS	TRACKS	FAIXAS
+PLUGINS OCULTOS	HIDDEN PLUGINS	PLUGINS OCULTOS
+PROYECTOS	PROJECTS	PROJETOS
+Plantilla de la canción	Song template	Modelo da música
+Plugins ocultos	Hidden plugins	Plugins ocultos
+Por ejemplo: grabar, Ctrl+S…	For example: record, Ctrl+S…	Por exemplo: gravar, Ctrl+S…
+Predeterminado del sistema	System default	Padrão do sistema
+Previsualizar al hacer clic	Preview on click	Pré-escutar ao clicar
+Proyecto abierto	Project opened	Projeto aberto
+Proyectos y canciones de la carpeta de proyectos	Projects and songs in the projects folder	Projetos e músicas da pasta de projetos
+Proyectos, qué se muestra al iniciar, pistas y biblioteca	Projects, what shows at startup, tracks and library	Projetos, o que aparece ao iniciar, faixas e biblioteca
+Pulsa la combinación…	Press the combination…	Pressione a combinação…
+REGISTROS E INFORMES	LOGS AND REPORTS	REGISTROS E RELATÓRIOS
+RESULTADOS	RESULTS	RESULTADOS
+RUEDA DEL RATÓN	MOUSE WHEEL	RODA DO MOUSE
+Restaurar atajos	Reset shortcuts	Restaurar atalhos
+Rueda	Wheel	Roda
+Se buscan plugins en las carpetas estándar de cada formato. Los que encuentra aparecen en la pestaña Plugins de la Biblioteca.	Plugins are searched in each format's standard folders. The ones found appear in the Library's Plugins tab.	Os plugins são procurados nas pastas padrão de cada formato. Os encontrados aparecem na aba Plugins da Biblioteca.
+Se guarda en los datos de cada canción nueva y en el saludo del panel de inicio.	It is saved in each new song's details and in the start panel greeting.	É salvo nos dados de cada música nova e na saudação do painel inicial.
+Si el programa se cierra por un fallo o deja de responder, aquí queda un informe con lo que estaba pasando.	If the program closes because of a failure or stops responding, a report of what was happening is left here.	Se o programa fechar por uma falha ou parar de responder, aqui fica um relatório do que estava acontecendo.
+Sin conexión con quantumdaw.com por ahora. Los instrumentos gratuitos siguen disponibles en la Biblioteca.	No connection to quantumdaw.com for now. The free instruments are still available in the Library.	Sem conexão com quantumdaw.com por enquanto. Os instrumentos gratuitos continuam disponíveis na Biblioteca.
+Sin entrada (solo reproducción). Elige un dispositivo arriba para grabar.	No input (playback only). Choose a device above to record.	Sem entrada (só reprodução). Escolha um dispositivo acima para gravar.
+Sistema	System	Sistema
+Sistema y tarjeta gráfica	System and graphics card	Sistema e placa de vídeo
+TAMAÑO Y FORMA	SIZE AND SHAPE	TAMANHO E FORMA
+TECLADO	KEYBOARD	TECLADO
+TEMA DE COLOR	COLOR THEME	TEMA DE CORES
+Tamaño de búfer	Buffer size	Tamanho do buffer
+Tarjeta gráfica	Graphics card	Placa de vídeo
+Teclados y controladores MIDI	MIDI keyboards and controllers	Teclados e controladores MIDI
+Teclados y controladores MIDI que tocan las pistas	MIDI keyboards and controllers that play the tracks	Teclados e controladores MIDI que tocam as faixas
+Tema de color	Color theme	Tema de cores
+Tema de color, tamaño, idioma y forma de la interfaz	Color theme, size, language and shape of the interface	Tema de cores, tamanho, idioma e forma da interface
+Todavía no hay canciones en la carpeta de proyectos.	There are no songs in the projects folder yet.	Ainda não há músicas na pasta de projetos.
+Todavía no hay productos publicados.	No products published yet.	Ainda não há produtos publicados.
+Trabajar con proxys	Work with proxies	Trabalhar com proxies
+Título, artista y derechos de la canción abierta	Title, artist and rights of the open song	Título, artista e direitos da música aberta
+Versión	Version	Versão
+Versión, sistema, licencias y enlaces	Version, system, licenses and links	Versão, sistema, licenças e links
+Volver a buscar plugins	Rescan plugins	Procurar plugins novamente
+búfer del sistema	system buffer	buffer do sistema
+canales	channels	canais
+la del sistema	the system's	a do sistema
+minutos	minutes	minutos
+no existe	doesn't exist	não existe
+rueda	wheel	roda
+Álbum	Album	Álbum
+Ocultar	Hide	Ocultar

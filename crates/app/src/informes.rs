@@ -83,6 +83,11 @@ pub fn contexto(clave: &'static str, valor: String) {
     c.push((clave, valor));
 }
 
+/// Dato del contexto de los informes (por ejemplo la tarjeta gráfica), para mostrarlo en Acerca de.
+pub fn dato(clave: &str) -> Option<String> {
+    CONTEXTO.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == clave).map(|(_, v)| v.clone())
+}
+
 /// La interfaz dibujó un cuadro: el vigilante sabe que no está colgada. Sin foco el sistema puede
 /// dejar de pedir cuadros (ventana tapada, en otro escritorio o minimizada) y eso no es un cuelgue.
 pub fn latido(con_foco: bool) {

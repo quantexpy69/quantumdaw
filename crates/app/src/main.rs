@@ -33,6 +33,7 @@ mod pro;
 mod partitura;
 mod pianoroll;
 mod plugins;
+mod preferencias;
 mod proxies;
 mod routing;
 mod timeline;
@@ -228,6 +229,9 @@ struct Config {
     proxies: bool,
     /// Ocultar el botón de instrumento y plugins en la cabecera de cada pista.
     ocultar_plugins_pista: bool,
+    /// Autoguardado desactivado y cada cuántos minutos se hace (0 = cada minuto).
+    autoguardado_off: bool,
+    autoguardado_min: u32,
 }
 
 impl Config {
@@ -2661,7 +2665,8 @@ impl eframe::App for App {
         self.ventana_pie(&ctx);
         self.ventana_partitura(&ctx);
         // Autoguardado cada minuto si hay cambios (no mientras se graba).
-        if self.cambios && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > Duration::from_secs(60) {
+        let cada = Duration::from_secs(60 * u64::from(self.config.autoguardado_min.max(1)));
+        if self.cambios && !self.config.autoguardado_off && !self.recording() && self.recuperar.is_none() && self.autoguardado.elapsed() > cada {
             self.autoguardado = std::time::Instant::now();
             if let Err(e) = self.to_project().autoguardar(&self.dir) {
                 informes::registrar("ERROR", &format!("Autoguardado: {e:#}"));

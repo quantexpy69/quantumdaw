@@ -640,8 +640,8 @@ impl App {
         if let Some(Dialog::Keys(mut capture)) = self.dialog {
             let mut close = false;
             let resp = egui::Modal::new(Id::new("keys")).show(ctx, |ui| {
-                ui.set_width(560.0);
-                self.keys_editor(ui, &mut capture);
+                ui.set_width(640.0);
+                self.keys_editor(ui, &mut capture, false);
                 close |= ui.button(tr("Cerrar")).clicked();
             });
             self.dialog = if close || (resp.should_close() && capture.is_none()) { None } else { Some(Dialog::Keys(capture)) };
@@ -1016,13 +1016,7 @@ impl App {
                 self.dialog = None;
             }
             Some(Act::Settings(cfg, bits, midi)) => {
-                self.config.midi_port = midi;
-                let mut p = self.to_project();
-                (p.output_device, p.input_device, p.sample_rate, p.buffer, p.rec_bits) = (cfg.output, cfg.input, cfg.rate, cfg.buffer, bits);
-                let r = self.reload(self.dir.clone(), p);
-                if r.is_err() || self.engine.input_error.is_none() {
-                    self.report("Motor de audio reiniciado", r);
-                }
+                self.aplicar_audio(cfg, bits, midi);
                 self.dialog = None;
             }
             Some(Act::Export(format, range, source, track)) => {

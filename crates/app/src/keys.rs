@@ -266,7 +266,8 @@ impl App {
     }
 
     pub fn shortcuts(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() || matches!(self.dialog, Some(Dialog::Keys(Some(_)))) {
+        // Mientras se captura un atajo nuevo (en su ventana o en Preferencias), las teclas son para él.
+        if ctx.egui_wants_keyboard_input() || matches!(self.dialog, Some(Dialog::Keys(Some(_)))) || self.welcome.as_ref().is_some_and(|w| w.captura.is_some()) {
             return;
         }
         let typing = self.roll.typing && self.show_mixer && self.bottom_tab == 1;
@@ -323,9 +324,14 @@ impl App {
     }
 
     /// Editor de atajos: clic en un atajo y pulsa la nueva combinación (o gira la rueda con los modificadores).
-    pub fn keys_editor(&mut self, ui: &mut egui::Ui, capture: &mut Option<Capture>) {
-        ui.heading(tr("Atajos de teclado y ratón"));
-        ui.label(RichText::new(tr("Haz clic en un atajo y pulsa la nueva combinación. Esc cancela, Retroceso lo deja vacío.")).size(11.0).color(TEXT_DIM()));
+    /// Editor de atajos: en su ventana (con desplazamiento propio) o `embebido` en Preferencias → Atajos,
+    /// donde desplaza la página entera. Mismo diseño que el resto de las preferencias.
+    pub fn keys_editor(&mut self, ui: &mut egui::Ui, capture: &mut Option<Capture>, embebido: bool) {
+        use crate::preferencias::{fila, tarjeta};
+        if !embebido {
+            ui.heading(tr("Atajos de teclado y ratón"));
+            ui.label(RichText::new(tr("Haz clic en un atajo y pulsa la nueva combinación. Esc cancela, Retroceso lo deja vacío.")).size(11.0).color(TEXT_DIM()));
+        }
         // Captura de la combinación pulsada.
         if let Some(c) = *capture {
             for e in ui.input(|i| i.events.clone()) {
@@ -347,47 +353,74 @@ impl App {
                 self.config.save();
             }
         }
-        egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-            egui::Grid::new("keys").num_columns(2).striped(true).spacing([24.0, 6.0]).show(ui, |ui| {
-                ui.label(RichText::new(tr("Rueda del ratón")).strong());
-                ui.end_row();
-                for w in Wheel::ALL {
-                    ui.label(tr(w.label()));
-                    let current = self.wheel_for(w);
-                    let text = match (*capture == Some(Capture::Wheel(w)), current.as_str()) {
-                        (true, _) => "Mantén los modificadores y gira la rueda…".to_string(),
-                        (false, "") => "Rueda".to_string(),
-                        (false, m) => format!("{m} + rueda"),
-                    };
-                    if ui.button(text).clicked() {
-                        *capture = Some(Capture::Wheel(w));
+        // Filtro de acciones (se recuerda mientras la ventana está abierta).
+        let id_filtro = egui::Id::new("filtro-atajos");
+        let mut filtro: String = ui.data_mut(|d| d.get_temp_mut_or_default::<String>(id_filtro).clone());
+        let busca = crate::preferencias::sin_tildes(filtro.trim());
+        let coincide = |texto: &str, atajo: &str| busca.is_empty() || crate::preferencias::sin_tildes(tr(texto)).contains(&busca) || atajo.to_lowercase().contains(&busca);
+        // Botón de atajo: tecla con aspecto de chip; en rojo si se repite en otro comando.
+        let chip = |ui: &mut egui::Ui, texto: String, activo: bool, repetido: bool| {
+            let color = if repetido { METER[2] } else if activo { ACCENT() } else { TEXT() };
+            ui.add(egui::Button::new(RichText::new(texto).size(13.0).color(color)).fill(if activo { ACCENT().gamma_multiply(0.15) } else { BG() }).stroke(egui::Stroke::new(1.0, if activo { ACCENT() } else { BORDER() })).min_size(egui::vec2(240.0, 28.0)).corner_radius(widgets::rr(7.0)))
+        };
+        let mut cuerpo = |app: &mut Self, ui: &mut egui::Ui| {
+            tarjeta(ui, "BUSCAR", |ui| {
+                fila(ui, "Acción o tecla", |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut filtro).hint_text(tr("Por ejemplo: grabar, Ctrl+S…")).desired_width(ui.available_width()).min_size(egui::vec2(0.0, 28.0)).margin(egui::Margin::symmetric(10, 4)).vertical_align(egui::Align::Center));
+                });
+            });
+            let ruedas: Vec<Wheel> = Wheel::ALL.into_iter().filter(|w| coincide(w.label(), &app.wheel_for(*w))).collect();
+            if !ruedas.is_empty() {
+                tarjeta(ui, "RUEDA DEL RATÓN", |ui| {
+                    for w in ruedas {
+                        let current = app.wheel_for(w);
+                        let activo = *capture == Some(Capture::Wheel(w));
+                        let text = match (activo, current.as_str()) {
+                            (true, _) => tr("Mantén los modificadores y gira la rueda…").to_string(),
+                            (false, "") => tr("Rueda").to_string(),
+                            (false, m) => format!("{m} + {}", tr("rueda")),
+                        };
+                        if fila(ui, w.label(), |ui| chip(ui, text, activo, false)).clicked() {
+                            *capture = Some(Capture::Wheel(w));
+                        }
                     }
-                    ui.end_row();
+                });
+            }
+            let comandos: Vec<Cmd> = Cmd::ALL.into_iter().filter(|c| coincide(c.label(), &app.key_for(*c))).collect();
+            tarjeta(ui, "TECLADO", |ui| {
+                if comandos.is_empty() {
+                    ui.label(RichText::new(tr("Ningún atajo coincide con la búsqueda.")).color(TEXT_DIM()));
                 }
-                ui.label(RichText::new(tr("Teclado")).strong());
-                ui.end_row();
-                for c in Cmd::ALL {
-                    ui.label(tr(c.label()));
-                    let current = self.key_for(c);
-                    let dup = !current.is_empty() && Cmd::ALL.iter().filter(|o| self.key_for(**o) == current).count() > 1;
-                    let text = if *capture == Some(Capture::Key(c)) {
-                        "Pulsa la combinación…".to_string()
+                for c in comandos {
+                    let current = app.key_for(c);
+                    let dup = !current.is_empty() && Cmd::ALL.iter().filter(|o| app.key_for(**o) == current).count() > 1;
+                    let activo = *capture == Some(Capture::Key(c));
+                    let text = if activo {
+                        tr("Pulsa la combinación…").to_string()
                     } else if current.is_empty() {
                         "—".into()
                     } else {
                         current
                     };
-                    let b = ui.button(RichText::new(text).color(if dup { METER[2] } else { TEXT() }));
-                    if b.on_hover_text(if dup { "Atajo repetido en otro comando" } else { "Clic para cambiar" }).clicked() {
+                    let b = fila(ui, c.label(), |ui| chip(ui, text, activo, dup));
+                    if b.on_hover_text(tr(if dup { "Atajo repetido en otro comando" } else { "Clic para cambiar" })).clicked() {
                         *capture = Some(Capture::Key(c));
                     }
-                    ui.end_row();
                 }
+                ui.add_space(4.0);
+                crate::preferencias::a_la_derecha(ui, |ui| {
+                    if crate::preferencias::boton(ui, "Restaurar valores por defecto").clicked() {
+                        (app.config.keys, app.config.wheel) = Default::default();
+                        app.config.save();
+                    }
+                });
             });
-        });
-        if ui.button(tr("Restaurar valores por defecto")).clicked() {
-            (self.config.keys, self.config.wheel) = Default::default();
-            self.config.save();
+        };
+        if embebido {
+            cuerpo(self, ui);
+        } else {
+            egui::ScrollArea::vertical().max_height(520.0).show(ui, |ui| cuerpo(self, ui));
         }
+        ui.data_mut(|d| d.insert_temp(id_filtro, filtro));
     }
 }

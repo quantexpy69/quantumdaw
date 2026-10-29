@@ -138,14 +138,32 @@ fn list_dir(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
-/// Busca plugins VST3, LV2 y CLAP en las rutas estándar de Linux: (nombre, formato, ruta).
-pub fn scan_plugins() -> Vec<(String, &'static str, PathBuf)> {
+/// Rutas estándar de Linux de cada formato de plugin: (formato, extensión, carpetas).
+fn raices_plugins() -> [(&'static str, &'static str, Vec<PathBuf>); 3] {
     let h = home();
-    let roots: [(&'static str, &str, Vec<PathBuf>); 3] = [
+    [
         ("VST3", "vst3", vec![h.join(".vst3"), "/usr/lib64/vst3".into(), "/usr/lib/vst3".into(), "/usr/local/lib/vst3".into()]),
         ("LV2", "lv2", vec![h.join(".lv2"), "/usr/lib64/lv2".into(), "/usr/lib/lv2".into(), "/usr/local/lib/lv2".into()]),
         ("CLAP", "clap", vec![h.join(".clap"), "/usr/lib64/clap".into(), "/usr/lib/clap".into(), "/usr/local/lib/clap".into()]),
-    ];
+    ]
+}
+
+/// Cada carpeta donde se buscan plugins con lo que tiene (None si no existe), para Preferencias → Plugins.
+pub fn carpetas_plugins() -> Vec<crate::preferencias::Carpeta> {
+    raices_plugins()
+        .into_iter()
+        .flat_map(|(formato, ext, dirs)| {
+            dirs.into_iter().map(move |d| {
+                let n = fs::read_dir(&d).ok().map(|it| it.flatten().filter(|e| e.path().extension().is_some_and(|x| x == ext)).count());
+                (d, formato, n)
+            })
+        })
+        .collect()
+}
+
+/// Busca plugins VST3, LV2 y CLAP en las rutas estándar de Linux: (nombre, formato, ruta).
+pub fn scan_plugins() -> Vec<(String, &'static str, PathBuf)> {
+    let roots = raices_plugins();
     let mut found: Vec<_> = roots
         .iter()
         .flat_map(|(format, ext, dirs)| dirs.iter().flat_map(|d| fs::read_dir(d).into_iter().flatten().flatten()).map(move |e| (format, ext, e.path())))
