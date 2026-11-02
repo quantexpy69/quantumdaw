@@ -91,7 +91,9 @@ Versión actual: **0.57.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
   con su licencia indicada en cada uno, y opción de desinstalarlos.
 
 ### Proyecto e interfaz
-- Biblioteca con archivos (discos y carpetas), efectos, instrumentos y plugins VST3/LV2/CLAP instalados.
+- Biblioteca con archivos (discos y carpetas), efectos, instrumentos y **plugins LV2** instalados (Linux): efectos e
+  instrumentos de terceros en las pistas, con carátula dibujada, sus controles y diez recomendados (LSP, x42, Dragonfly,
+  Guitarix, Calf, ZynAddSubFX, synthv1, setBfree y AVL Drums).
 - **Pista de video** siempre arriba: la región lleva la imagen y su audio juntos, se mueve, corta y recorta
   como cualquier región; doble clic abre el visor con controles de reproducción.
 - Importación WAV/FLAC/OGG/MP3/M4A y video (vía ffmpeg) sincronizado; exportación WAV/FLAC/MP3/OGG
@@ -210,7 +212,7 @@ Todos los atajos se cambian en **Herramientas → Atajos de teclado y ratón**.
 
 ## Hoja de ruta
 
-Carga de plugins VST3/LV2/CLAP en las pistas · compensación de latencia · Flex Time / Flex Pitch ·
+Carga de plugins VST3/CLAP en las pistas · compensación de latencia · Flex Time / Flex Pitch ·
 pista de acordes · Mastering Assistant · separación de stems · Spatial Audio.
 
 ---

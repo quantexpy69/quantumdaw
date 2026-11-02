@@ -20,6 +20,7 @@ mod instruments;
 mod kits;
 mod keys;
 mod library;
+mod lv2ui;
 mod licencias;
 mod mastering;
 mod midi_archivo;
@@ -140,7 +141,7 @@ fn config_dir() -> PathBuf {
 /// %LOCALAPPDATA%\Quantum DAW (Windows).
 /// Parámetros que se guardan de un efecto: los de un plugin Pro sin licencia vuelven a los de fábrica.
 fn params_guardables(f: &Fx) -> Vec<f32> {
-    if engine::pro::licenciado(f.kind) { f.params.iter().map(|p| p.get()).collect() } else { f.kind.params().iter().map(|d| d.3).collect() }
+    if engine::pro::licenciado(f.kind) { f.params.iter().map(|p| p.get()).collect() } else { f.defs().iter().map(|d| d.3).collect() }
 }
 
 fn data_dir() -> PathBuf {
@@ -413,7 +414,9 @@ struct Track {
     /// Instrumento (solo pistas MIDI): sintetizador y, si se eligió, un instrumento real (sampler).
     synth: Option<Arc<Synth>>,
     sampler: Option<Arc<Sampler>>,
-    /// Id del catálogo de instrumentos o "synth:<preset>".
+    /// Instrumento LV2 de terceros (reemplaza al sintetizador).
+    plugin: Option<Arc<Fx>>,
+    /// Id del catálogo de instrumentos, "synth:<preset>" o "lv2:<uri>".
     instrument: String,
     selected: bool,
     /// Primer canal de entrada de la interfaz.
@@ -469,6 +472,7 @@ impl Track {
             fx: vec![],
             synth,
             sampler: None,
+            plugin: None,
             instrument: String::new(),
             selected: false,
             input: 0,
@@ -837,7 +841,11 @@ impl App {
             taps: vec![],
             tempo_guess: None,
             meta: Default::default(),
-            plugins: library::scan_plugins(),
+            plugins: {
+                // El catálogo de plugins LV2 tarda un momento: se arma en segundo plano.
+                std::thread::spawn(engine::lv2::catalogo);
+                library::scan_plugins()
+            },
             uninstall: None,
             pps: 60.0,
             scroll: egui::Vec2::ZERO,
@@ -960,7 +968,7 @@ impl App {
             .master_fx
             .iter()
             .filter_map(|f| {
-                let fx = Fx::new(FxKind::from_name(&f.kind)?, e.sample_rate);
+                let fx = Fx::desde_clave(&f.kind, e.sample_rate)?;
                 fx.params.iter().zip(&f.params).for_each(|(a, v)| a.set(*v));
                 fx.bypass.store(f.bypass, Relaxed);
                 Some(Arc::new(fx))
@@ -1006,7 +1014,10 @@ impl App {
                 .fx
                 .iter()
                 .filter_map(|f| {
-                    let fx = Fx::new(FxKind::from_name(&f.kind)?, e.sample_rate);
+                    let Some(fx) = Fx::desde_clave(&f.kind, e.sample_rate) else {
+                        missing.push(format!("{} ({})", ts.name, f.kind));
+                        return None;
+                    };
                     fx.params.iter().zip(&f.params).for_each(|(a, v)| a.set(*v));
                     fx.bypass.store(f.bypass, Relaxed);
                     Some(Arc::new(fx))
@@ -1016,6 +1027,13 @@ impl App {
                 s.params.iter().zip(&ts.synth).for_each(|(a, v)| a.set(*v));
             }
             (t.instrument, t.icon) = (ts.instrument.clone(), ts.icon.clone());
+            if let Some(uri) = ts.instrument.strip_prefix("lv2:") {
+                t.plugin = engine::lv2::info(uri).and_then(|i| Fx::lv2(&i, e.sample_rate)).map(Arc::new);
+                match &t.plugin {
+                    Some(p) => p.params.iter().zip(&ts.plugin_params).for_each(|(a, v)| a.set(*v)),
+                    None => missing.push(format!("{} (plugin LV2 {uri})", ts.name)),
+                }
+            }
             if let Some(s) = &t.synth {
                 s.kit.store(ts.instrument == format!("synth:{}", pianoroll::CAJA_RITMOS), Relaxed);
             }
@@ -1112,10 +1130,11 @@ impl App {
             ts.fx = t
                 .fx
                 .iter()
-                .map(|f| FxState { kind: f.kind.name().into(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)) })
+                .map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)) })
                 .collect();
             ts.synth = t.synth.as_ref().map(|s| s.params.iter().map(|p| p.get()).collect()).unwrap_or_default();
             (ts.instrument, ts.icon) = (t.instrument.clone(), t.icon.clone());
+            ts.plugin_params = t.plugin.as_ref().map(|p| p.params.iter().map(|a| a.get()).collect()).unwrap_or_default();
             if let Some(v) = &t.video {
                 (ts.video, ts.video_start) = (v.file.clone(), t.video_start as f64 / sr);
             }
@@ -1143,7 +1162,7 @@ impl App {
             chords: self.s.chords.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             partitura: (self.partitura_app.doc != project::partitura::Partitura::default()).then(|| self.partitura_app.doc.clone()),
-            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.kind.name().into(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
+            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
             ..Default::default()
         }
     }
@@ -1302,6 +1321,34 @@ impl App {
         self.abrir_efectos(i);
     }
 
+    /// Añade un plugin LV2 como efecto de la pista y lo muestra en Dispositivos.
+    fn add_fx_lv2(&mut self, i: usize, info: &Arc<engine::lv2::Info>) {
+        match Fx::lv2(info, self.engine.sample_rate) {
+            Some(fx) => {
+                self.edit();
+                self.s.tracks[i].fx.push(Arc::new(fx));
+                self.abrir_efectos(i);
+                self.status = format!("{} {} {}", info.nombre, tr("añadido a"), self.s.tracks[i].name);
+            }
+            None => self.status = format!("{} {}", tr("No se pudo abrir el plugin"), info.nombre),
+        }
+    }
+
+    /// Pone un instrumento LV2 en la pista MIDI `i` (reemplaza al sintetizador o al instrumento real).
+    fn set_instrumento_lv2(&mut self, i: usize, info: &Arc<engine::lv2::Info>) {
+        let Some(fx) = Fx::lv2(info, self.engine.sample_rate) else {
+            self.status = format!("{} {}", tr("No se pudo abrir el plugin"), info.nombre);
+            return;
+        };
+        self.edit();
+        let t = &mut self.s.tracks[i];
+        (t.instrument, t.sampler, t.plugin) = (format!("lv2:{}", info.uri), None, Some(Arc::new(fx)));
+        let id = t.id;
+        self.pending_inst.retain(|p| p.0 != id);
+        self.status = format!("{} {} «{}»", info.nombre, tr("suena en"), self.s.tracks[i].name);
+        self.abrir_efectos(i);
+    }
+
     /// Muestra el instrumento y los efectos de la pista abajo, en la pestaña Dispositivos (también bajo
     /// la consola de la vista MIX). Si la ventana de plugins ya está abierta, se usa esa, al frente.
     fn abrir_efectos(&mut self, i: usize) {
@@ -1319,7 +1366,7 @@ impl App {
         self.edit();
         let t = &mut self.s.tracks[i];
         let id = t.id;
-        (t.instrument, t.sampler) = (String::new(), None);
+        (t.instrument, t.sampler, t.plugin) = (String::new(), None, None);
         self.pending_inst.retain(|p| p.0 != id);
         self.loading.retain(|p| p.0 != id);
         self.dirty = true;
@@ -1528,8 +1575,9 @@ impl App {
                 },
                 fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
                 // Con un instrumento real (batería, piano…) no suena el sintetizador, ni mientras se carga.
-                synth: if congelada || instruments::es_real(&t.instrument) { None } else { t.synth.clone() },
+                synth: if congelada || instruments::es_real(&t.instrument) || t.plugin.is_some() { None } else { t.synth.clone() },
                 sampler: if congelada { None } else { t.sampler.clone() },
+                plugin: if congelada { None } else { t.plugin.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),
                 vol_auto: t.vol_auto.clone(),
                 pan_auto: t.pan_auto.clone(),
@@ -1558,7 +1606,7 @@ impl App {
     /// Asigna un instrumento real del catálogo a una pista MIDI (lo descarga si hace falta).
     fn set_instrument(&mut self, i: usize, id: &'static str) {
         let t = &mut self.s.tracks[i];
-        (t.instrument, t.sampler) = (id.to_string(), None);
+        (t.instrument, t.sampler, t.plugin) = (id.to_string(), None, None);
         self.pending_inst.retain(|p| p.0 != t.id);
         self.pending_inst.push((t.id, id));
         self.dirty = true;

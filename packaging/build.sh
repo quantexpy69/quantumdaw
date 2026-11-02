@@ -21,7 +21,9 @@ fi
 
 # ---------- Dentro de AlmaLinux 8 (glibc 2.28) ----------
 CACHE=${CACHE:-/cache}
-dnf -y -q install gcc gcc-c++ make diffutils alsa-lib-devel pkgconf-pkg-config curl git file xz findutils >/dev/null
+# lilv (plugins LV2) viene de EPEL.
+dnf -y -q install epel-release >/dev/null
+dnf -y -q install gcc gcc-c++ make diffutils alsa-lib-devel lilv-devel pkgconf-pkg-config curl git file xz findutils >/dev/null
 export CARGO_HOME="$CACHE/cargo" RUSTUP_HOME="$CACHE/rustup" CARGO_TARGET_DIR="$CACHE/target"
 export PATH="$CARGO_HOME/bin:$PATH" PKG_CONFIG_PATH=/usr/lib64/pkgconfig
 command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --no-modify-path

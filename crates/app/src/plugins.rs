@@ -46,6 +46,7 @@ pub fn kind_color(kind: Option<FxKind>) -> Color32 {
         Some(FxKind::SpacePro) => Color32::from_rgb(0x9D, 0x7C, 0xFF),
         Some(FxKind::VocalPro) => Color32::from_rgb(0xFF, 0x5C, 0xA8),
         Some(FxKind::MasterPro) => Color32::from_rgb(0x2E, 0xE6, 0xC8),
+        Some(FxKind::Externo) => Color32::from_rgb(0x4F, 0xC3, 0xF7),
         None => Color32::from_rgb(0xF2, 0x8C, 0xD0),
     }
 }
@@ -68,6 +69,7 @@ pub fn summary(k: FxKind) -> &'static str {
         FxKind::SpacePro => "Reverb de 8 líneas (sala, placa, catedral y shimmer) con eco sincronizado, ducking y congelar, en una sala 3D animada.",
         FxKind::VocalPro => "Cadena de voz completa: limpieza, de-esser, nivelador, dos compresores, tono, afinación y espacio, con un macro de carácter y presets.",
         FxKind::MasterPro => "Mastering en 3 bandas: compresión e imagen por banda, saturación, limitador y ganancia automática hacia Spotify, YouTube o Apple Music, con A/B al mismo volumen.",
+        FxKind::Externo => "Plugin LV2 instalado en el sistema.",
     }
 }
 
@@ -86,6 +88,9 @@ pub fn preview(ui: &mut egui::Ui, k: FxKind, sr: f32) {
 
 /// Texto del valor de un parámetro con su unidad (o su nombre, en los discretos).
 pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
+    if kind == Some(FxKind::Externo) {
+        return engine::lv2::param(name).map_or_else(|| format!("{v:.2}"), |m| m.texto(v));
+    }
     let pick = |names: &[&str]| tr(names[(v.round().max(0.0) as usize).min(names.len() - 1)]).to_string();
     let hz = |v: f32| {
         if v >= 1000.0 { format!("{:.1} kHz", v / 1000.0) } else { format!("{v:.0} Hz") }
@@ -153,7 +158,8 @@ pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (
             let r = widgets::console_knob_size(ui, &mut t, to_t(def), color, size);
             if r.dragged() || r.double_clicked() {
                 let v = from_t(t);
-                a.set(if DISCRETE.contains(&name) { v.round() } else { v });
+                let discreto = DISCRETE.contains(&name) || engine::lv2::param(name).is_some_and(|m| m.entero || m.conmutador);
+                a.set(if discreto { v.round() } else { v });
             }
             ui.label(RichText::new(value_text(kind, name, a.get())).monospace().size(11.0).strong().color(color));
             // Nombre en una sola línea: si no entra en la celda, la letra se achica un poco (no se corta).
@@ -253,6 +259,8 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
             let estado = if engine::pro::licenciado(k) { tr("Con licencia").to_string() } else { format!("{} · {} US$", tr("Modo demo"), k.pro().map_or(0, |p| p.2)) };
             label(r.center() + vec2(0.0, 18.0), Align2::CENTER_CENTER, estado, 11.0, TEXT_DIM());
         }
+        // Los plugins LV2 muestran su carátula (ver `lv2ui::visor`).
+        Some(FxKind::Externo) => {}
         None => {
             // Envolvente ADSR del sintetizador.
             let total = p[5] + p[6] + 400.0 + p[8];
@@ -288,6 +296,7 @@ impl App {
             Sincronizar,
             Remove(usize),
             Up(usize),
+            AddLv2(Arc<engine::lv2::Info>),
             MyPlugins,
             Licencias,
             Drums,
@@ -312,7 +321,9 @@ impl App {
                           j: Option<usize>,
                           fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
-                let accent = kind_color(kind);
+                let lv2 = fx.and_then(|f| f.lv2.as_ref());
+                let accent = lv2.map_or(kind_color(kind), |i| crate::lv2ui::color(i.categoria));
+                let firma = lv2.map_or(SIGNATURE.to_string(), |i| i.marca.to_uppercase());
                 let ancho = match (kind == Some(FxKind::Curves), en_fila) {
                     (true, true) => ANCHO_CURVES_FILA,
                     (true, false) => ANCHO_CURVES,
@@ -329,7 +340,7 @@ impl App {
                         }
                     }
                     ui.label(RichText::new(tr(name).trim_start_matches("QUANTUM ")).size(13.5).strong().color(TEXT()));
-                    ui.label(RichText::new(SIGNATURE).size(9.0).strong().color(accent));
+                    ui.label(RichText::new(&firma).size(9.0).strong().color(accent));
                     if let Some(j) = j {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if widgets::boton_cabecera(ui, widgets::draw_quitar, true).on_hover_text(tr("Quitar")).clicked() {
@@ -374,6 +385,7 @@ impl App {
                             }
                             display(ui, kind, &values, readout, accent, sr, alto_visor);
                         }
+                        (Some(FxKind::Externo), _, _) if let Some(i) = lv2 => crate::lv2ui::visor(ui, i, alto_visor + 20.0),
                         _ => display(ui, kind, &values, readout, accent, sr, alto_visor),
                     }
                     // Curves muestra solo los controles esenciales; el resto en «Avanzado».
@@ -382,9 +394,19 @@ impl App {
                         (Some(k), Some(_)) if k.pro().is_some() => false,
                         _ => true,
                     };
-                    if todos {
+                    let tam = if en_fila { PERILLA_FILA } else { PERILLA };
+                    // Los plugins LV2 pueden tener decenas de controles: los primeros a la vista y el resto plegado.
+                    const VISIBLES: usize = 12;
+                    if todos && lv2.is_some() && defs.len() > VISIBLES {
                         ui.add_space(4.0);
-                        rejilla_perillas(ui, kind, defs, params, if en_fila { PERILLA_FILA } else { PERILLA });
+                        rejilla_perillas(ui, kind, &defs[..VISIBLES], &params[..VISIBLES], tam);
+                        let id = fx.map_or(0, |f| f as *const engine::Fx as usize);
+                        egui::CollapsingHeader::new(RichText::new(format!("{} ({})", tr("Más controles"), defs.len() - VISIBLES)).size(11.5)).id_salt(("lv2-mas", id)).show(ui, |ui| {
+                            rejilla_perillas(ui, kind, &defs[VISIBLES..], &params[VISIBLES..], tam);
+                        });
+                    } else if todos {
+                        ui.add_space(4.0);
+                        rejilla_perillas(ui, kind, defs, params, tam);
                     }
                     });
                     alto_max.set(alto_max.get().max(natural));
@@ -394,7 +416,13 @@ impl App {
                 }
                 ui.add_space(6.0);
             };
-            if let Some(s) = &t.sampler {
+            if let Some(p) = &t.plugin {
+                // Instrumento LV2: su carátula y sus controles, como un efecto más.
+                if !en_fila {
+                    ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                }
+                plugin(ui, p.nombre(), Some(FxKind::Externo), &p.params, p.defs(), Some(&p.bypass), [0.0; 2], None, Some(p), &mut act);
+            } else if let Some(s) = &t.sampler {
                 // Instrumento real (sampler): volumen y créditos de la biblioteca.
                 columna(ui, en_fila, ANCHO_DISPOSITIVO, |ui| {
                 if !en_fila {
@@ -440,7 +468,7 @@ impl App {
             }
             for (j, fx) in t.fx.iter().enumerate() {
                 let readout = [fx.readout[0].get(), fx.readout[1].get()];
-                plugin(ui, fx.kind.name(), Some(fx.kind), &fx.params, fx.kind.params(), Some(&fx.bypass), readout, Some(j), Some(fx), &mut act);
+                plugin(ui, fx.nombre(), Some(fx.kind), &fx.params, fx.defs(), Some(&fx.bypass), readout, Some(j), Some(fx), &mut act);
             }
             // Al final de la cadena: añadir un efecto (en fila, como una ranura vacía más angosta).
             let mut anadir = |ui: &mut egui::Ui| {
@@ -453,8 +481,11 @@ impl App {
                             act = Some(Act::Add(k));
                         }
                     }
+                    if let Some(info) = App::menu_efectos_lv2(ui) {
+                        act = Some(Act::AddLv2(info));
+                    }
                     ui.separator();
-                    if ui.button(tr("Agregar mis efectos…")).on_hover_text(tr("Plugins VST3 / LV2 / CLAP instalados")).clicked() {
+                    if ui.button(tr("Todos los plugins…")).on_hover_text(tr("Plugins LV2 instalados, en la biblioteca")).clicked() {
                         act = Some(Act::MyPlugins);
                     }
                 });
@@ -488,6 +519,7 @@ impl App {
         }
         match act {
             Some(Act::Add(k)) => self.add_fx(i, k),
+            Some(Act::AddLv2(info)) => self.add_fx_lv2(i, &info),
             Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
             Some(Act::Sincronizar) => self.dirty = true,
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),

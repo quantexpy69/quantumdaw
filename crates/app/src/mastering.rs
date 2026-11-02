@@ -149,7 +149,7 @@ impl App {
                 egui::Frame::new().fill(ELEVATED()).corner_radius(rr(8.0)).inner_margin(8.0).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tr(fx.kind.name())).strong().color(color));
+                        ui.label(RichText::new(tr(fx.nombre())).strong().color(color));
                         let mut activo = !fx.bypass.load(Relaxed);
                         if ui.checkbox(&mut activo, tr("Activo")).changed() {
                             fx.bypass.store(!activo, Relaxed);
@@ -171,7 +171,7 @@ impl App {
                         licencias |= licencias::panel_pro(ui, fx).is_some();
                     } else {
                         ui.horizontal_wrapped(|ui| {
-                            for (p, def) in fx.kind.params().iter().enumerate() {
+                            for (p, def) in fx.defs().iter().enumerate() {
                                 plugins::param_knob(ui, Some(fx.kind), *def, &fx.params[p]);
                             }
                         });

@@ -8,6 +8,8 @@ use std::sync::mpsc;
 /// Elemento que se arrastra desde la biblioteca hacia pistas o canales.
 pub enum LibItem {
     Fx(FxKind),
+    /// Plugin LV2: efecto o instrumento según el plugin.
+    Plugin(Arc<engine::lv2::Info>),
     File(PathBuf),
     Instrument(&'static str),
     /// QUANTUM Drummer: sobre una pista MIDI le pone el kit y abre el plugin (en vacío crea la pista).
@@ -52,6 +54,7 @@ fn describe(k: FxKind) -> &'static str {
         FxKind::SpacePro => "Reverb 3D, shimmer y eco",
         FxKind::VocalPro => "Toda la cadena de voz en una pantalla",
         FxKind::MasterPro => "Mastering con objetivo de LUFS",
+        FxKind::Externo => "Plugin LV2",
     }
 }
 
@@ -204,7 +207,7 @@ impl App {
         let mut order: Vec<usize> = self.config.lib_order.iter().filter_map(|id| SECTIONS.iter().position(|s| s.0 == id)).collect();
         let missing: Vec<usize> = (0..SECTIONS.len()).filter(|k| !order.contains(k)).collect();
         order.extend(missing);
-        let cuentas = [0, FX_CATEGORIES.iter().flat_map(|c| c.1.iter()).filter(|k| visible(**k)).count(), instruments::CATALOG.len(), self.plugins.len()];
+        let cuentas = [0, FX_CATEGORIES.iter().flat_map(|c| c.1.iter()).filter(|k| visible(**k)).count(), instruments::CATALOG.len(), engine::lv2::listo().map_or(0, |c| c.len())];
         let mut moved = None;
         let ancho = ((ui.available_width() - 6.0) / SECTIONS.len() as f32).max(60.0);
         egui::Frame::new().fill(BG()).corner_radius(rr(10.0)).inner_margin(3.0).show(ui, |ui| {
@@ -300,7 +303,12 @@ impl App {
         let b = self.lib_buscar.trim().to_lowercase();
         let fx: Vec<FxKind> = FX_CATEGORIES.iter().flat_map(|c| c.1.iter().copied()).filter(|k| visible(*k)).filter(|k| tr(k.name()).to_lowercase().contains(&b) || tr(describe(*k)).to_lowercase().contains(&b) || tr(plugins::summary(*k)).to_lowercase().contains(&b)).collect();
         let inst: Vec<&'static instruments::Entry> = instruments::CATALOG.iter().filter(|e| e.name.to_lowercase().contains(&b) || e.family.to_lowercase().contains(&b) || tr(e.family).to_lowercase().contains(&b)).collect();
-        let plug: Vec<_> = self.plugins.iter().filter(|p| p.0.to_lowercase().contains(&b) || p.1.to_lowercase().contains(&b)).cloned().collect();
+        let plug: Vec<Arc<engine::lv2::Info>> = engine::lv2::listo()
+            .unwrap_or_default()
+            .iter()
+            .filter(|i| i.nombre.to_lowercase().contains(&b) || i.marca.to_lowercase().contains(&b) || tr(i.categoria.nombre()).to_lowercase().contains(&b))
+            .cloned()
+            .collect();
         if fx.is_empty() && inst.is_empty() && plug.is_empty() {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| ui.label(RichText::new(tr("Nada coincide con la búsqueda.")).color(TEXT_DIM())));
@@ -316,7 +324,7 @@ impl App {
         }
         if !plug.is_empty() {
             grupo(ui, "PLUGINS", plug.len());
-            self.plugin_rows(ui, &plug);
+            self.plugins_por_marca(ui, &plug);
         }
     }
 
@@ -333,7 +341,7 @@ impl App {
     }
 
     /// Fila de chips de filtro; devuelve el elegido.
-    fn chips(&mut self, ui: &mut egui::Ui, nombres: &[String]) {
+    pub(crate) fn chips(&mut self, ui: &mut egui::Ui, nombres: &[String]) {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
             for (k, n) in nombres.iter().enumerate() {
@@ -571,7 +579,7 @@ impl App {
 
     /// Pista que recibe un efecto al hacer clic: la seleccionada, la que se ve en Dispositivos o,
     /// si no hay ninguna, la primera que admite efectos (None: el proyecto no tiene pistas de audio).
-    fn pista_destino_fx(&self) -> Option<usize> {
+    pub(crate) fn pista_destino_fx(&self) -> Option<usize> {
         let elegida = self.s.tracks.iter().position(|t| t.selected && t.kind != TrackKind::Video).or(self.last_track.filter(|&i| i < self.s.tracks.len()));
         elegida.filter(|&i| self.admite_efectos(i)).or_else(|| (0..self.s.tracks.len()).find(|&i| self.admite_efectos(i)))
     }
@@ -802,65 +810,6 @@ impl App {
         }
     }
 
-    fn plugins_section(&mut self, ui: &mut egui::Ui) {
-        let formatos = ["VST3", "LV2", "CLAP"];
-        let mut nombres = vec![format!("{} {}", tr("Todos"), self.plugins.len())];
-        nombres.extend(formatos.iter().map(|f| format!("{f} {}", self.plugins.iter().filter(|p| p.1 == *f).count())));
-        self.chips(ui, &nombres);
-        ui.horizontal(|ui| {
-            if ui.button(tr("Volver a buscar")).clicked() {
-                self.plugins = scan_plugins();
-            }
-            ui.label(RichText::new(tr("Cargarlos en las pistas llega en la próxima versión.")).size(11.0).color(TEXT_DIM()));
-        });
-        if self.plugins.is_empty() {
-            ui.label(RichText::new(tr("No se encontraron plugins VST3/LV2/CLAP. Instala por ejemplo LSP o x42 y pulsa «Volver a buscar».")).color(TEXT_DIM()));
-        }
-        let f = self.lib_filtro;
-        let lista: Vec<_> = self.plugins.iter().filter(|p| f == 0 || formatos.get(f - 1) == Some(&p.1)).cloned().collect();
-        self.plugin_rows(ui, &lista);
-        if !self.config.hidden_plugins.is_empty() && ui.button(format!("{} ({})", tr("Mostrar plugins ocultos"), self.config.hidden_plugins.len())).clicked() {
-            self.config.hidden_plugins.clear();
-            self.config.save();
-        }
-    }
-
-    /// Plugins de terceros en filas con su formato.
-    fn plugin_rows(&mut self, ui: &mut egui::Ui, lista: &[(String, &'static str, PathBuf)]) {
-        for (name, format, path) in lista.iter().cloned() {
-            if self.config.hidden_plugins.contains(&path) {
-                continue;
-            }
-            let r = row(ui, 44.0, 0.0, false, |p, r| {
-                let c = match format {
-                    "VST3" => Color32::from_rgb(0x5B, 0x9C, 0xFF),
-                    "LV2" => Color32::from_rgb(0x3D, 0xDC, 0x84),
-                    _ => Color32::from_rgb(0xFF, 0xB0, 0x20),
-                };
-                let pill = Rect::from_min_size(r.left_top() + vec2(8.0, 12.0), vec2(40.0, 20.0));
-                p.rect_filled(pill, rr(6.0), c.gamma_multiply(0.2));
-                p.text(pill.center(), Align2::CENTER_CENTER, format, FontId::proportional(10.0), c);
-                p.text(pos2(pill.right() + 10.0, r.top() + 15.0), Align2::LEFT_CENTER, recortar(p, &name, 13.5, r.right() - pill.right() - 20.0), FontId::proportional(13.5), TEXT());
-                p.text(pos2(pill.right() + 10.0, r.top() + 31.0), Align2::LEFT_CENTER, recortar(p, &path.display().to_string(), 10.0, r.right() - pill.right() - 20.0), FontId::proportional(10.0), TEXT_DIM());
-            });
-            r.context_menu(|ui| {
-                widgets::menu_style(ui);
-                if path.starts_with(home()) {
-                    if ui.button(RichText::new(tr("Desinstalar (mover a la papelera)…")).color(METER[2])).clicked() {
-                        self.uninstall = Some((name.clone(), path.clone(), None));
-                    }
-                } else {
-                    if ui.button(tr("Ocultar de la lista")).clicked() {
-                        self.config.hidden_plugins.push(path.clone());
-                        self.config.save();
-                    }
-                    ui.label(RichText::new(tr("Instalado en el sistema: se desinstala con el gestor de paquetes (dnf).")).size(11.0).color(TEXT_DIM()));
-                }
-            });
-            r.on_hover_text(format!("{} · {}", path.display(), tr("clic derecho: desinstalar u ocultar")));
-        }
-    }
-
     /// Confirma y ejecuta la desinstalación de un instrumento o plugin de terceros (a la papelera si se puede).
     pub fn uninstall_dialog(&mut self, ctx: &egui::Context) {
         let Some((name, path, inst)) = self.uninstall.clone() else { return };
@@ -910,6 +859,14 @@ impl App {
                 Some(i) => self.set_instrument(i, id),
                 None => self.status = "Suelta el instrumento sobre una pista MIDI".into(),
             },
+            LibItem::Plugin(info) if info.instrumento => match track.filter(|&i| self.s.tracks[i].midi()) {
+                Some(i) => self.set_instrumento_lv2(i, info),
+                None => self.status = tr("Suelta el instrumento sobre una pista MIDI").into(),
+            },
+            LibItem::Plugin(info) => match track.filter(|&i| self.admite_efectos(i)) {
+                Some(i) => self.add_fx_lv2(i, info),
+                None => self.status = tr("Suelta el efecto sobre una pista o un canal").into(),
+            },
             LibItem::Drummer => self.soltar_drummer(track),
             LibItem::Patron(i, j) => self.soltar_patron(*i, *j, track, at),
             LibItem::File(path) if video::is_video(path) => self.import_video(path.clone(), at),
@@ -952,7 +909,7 @@ fn visible(k: FxKind) -> bool {
 }
 
 /// Título de grupo con contador.
-fn grupo(ui: &mut egui::Ui, texto: &str, n: usize) {
+pub(crate) fn grupo(ui: &mut egui::Ui, texto: &str, n: usize) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.label(RichText::new(tr(texto).to_uppercase()).size(10.5).strong().color(TEXT_DIM()));
@@ -961,7 +918,7 @@ fn grupo(ui: &mut egui::Ui, texto: &str, n: usize) {
 }
 
 /// Texto recortado con «…» para que entre en `ancho`.
-fn recortar(p: &Painter, texto: &str, tam: f32, ancho: f32) -> String {
+pub(crate) fn recortar(p: &Painter, texto: &str, tam: f32, ancho: f32) -> String {
     let cabe = |s: &str| p.layout_no_wrap(s.to_string(), FontId::proportional(tam), TEXT()).size().x <= ancho;
     if cabe(texto) {
         return texto.to_string();
@@ -1070,6 +1027,7 @@ pub fn icono_fx(p: &Painter, c: Pos2, k: FxKind, color: Color32) {
             }
         }
         FxKind::DeEsser => _ = p.text(c, Align2::CENTER_CENTER, "S", FontId::proportional(16.0), color),
+        FxKind::Externo => _ = p.circle_stroke(c, 7.0, s),
         FxKind::TapePro => {
             for x in [-5.0, 5.0] {
                 p.circle_stroke(c + vec2(x, -1.0), 4.0, s);

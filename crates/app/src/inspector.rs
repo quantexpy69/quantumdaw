@@ -151,7 +151,7 @@ impl App {
                 });
             }
             seccion(ui, "efectos", "EFECTOS", |ui| {
-                let efectos: Vec<(String, Arc<Fx>)> = self.s.tracks[i].fx.iter().map(|f| (tr(f.kind.name()).to_string(), f.clone())).collect();
+                let efectos: Vec<(String, Arc<Fx>)> = self.s.tracks[i].fx.iter().map(|f| (tr(f.nombre()).to_string(), f.clone())).collect();
                 if efectos.is_empty() {
                     ui.label(RichText::new(tr("Sin efectos. Arrastra uno desde la biblioteca.")).size(12.0).color(TEXT_DIM()));
                 }

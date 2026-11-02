@@ -135,7 +135,11 @@ impl App {
                     Some(i) if self.s.tracks[i].kind == TrackKind::Click => _ = ui.label(RichText::new(tr("Clic (metrónomo)")).size(11.0).color(TEXT_DIM())),
                     Some(i) if self.s.tracks[i].midi() => {
                         let t = &self.s.tracks[i];
-                        let name = if instruments::es_real(&t.instrument) { instruments::nombre(&t.instrument) } else { "QUANTUM Synth".to_string() };
+                        let name = match &t.plugin {
+                            Some(p) => p.nombre().to_string(),
+                            None if instruments::es_real(&t.instrument) => instruments::nombre(&t.instrument),
+                            None => "QUANTUM Synth".to_string(),
+                        };
                         let b = egui::Button::new(RichText::new(name).size(11.0)).fill(color.gamma_multiply(0.5)).min_size(vec2(STRIP_W - 8.0, 20.0)).truncate();
                         if ui.add(b).on_hover_text(tr("Instrumento")).clicked() {
                             self.abrir_instrumento(i);
@@ -302,10 +306,10 @@ impl App {
     /// Ranuras de efectos: clic abre el plugin, clic derecho bypass/quitar, "+" añade.
     fn fx_slots(&mut self, ui: &mut egui::Ui, i: usize) {
         ui.label(RichText::new(tr("AUDIO FX")).size(9.0).color(TEXT_DIM()));
-        let (mut remove, mut add, mut abrir) = (None, None, false);
+        let (mut remove, mut add, mut add_lv2, mut abrir) = (None, None, None, false);
         for (j, fx) in self.s.tracks[i].fx.iter().enumerate().take(SLOTS) {
             let on = !fx.bypass.load(Relaxed);
-            let text = RichText::new(fx.kind.name()).size(11.0).color(if on { TEXT() } else { TEXT_DIM() });
+            let text = RichText::new(fx.nombre()).size(11.0).color(if on { TEXT() } else { TEXT_DIM() });
             let b = ui.add(egui::Button::new(text).fill(if on { ACCENT().gamma_multiply(0.4) } else { BG() }).min_size(vec2(STRIP_W - 8.0, 20.0)));
             if b.clicked() {
                 abrir = true;
@@ -330,11 +334,17 @@ impl App {
                     add = Some(k);
                 }
             }
+            if let Some(info) = App::menu_efectos_lv2(ui) {
+                add_lv2 = Some(info);
+            }
             ui.separator();
-            if ui.button(tr("Agregar mis efectos…")).on_hover_text(tr("Plugins VST3 / LV2 / CLAP instalados")).clicked() {
+            if ui.button(tr("Todos los plugins…")).on_hover_text(tr("Plugins LV2 instalados, en la biblioteca")).clicked() {
                 (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB);
             }
         });
+        if let Some(info) = add_lv2 {
+            self.add_fx_lv2(i, &info);
+        }
         if let Some(j) = remove {
             self.edit();
             self.s.tracks[i].fx.remove(j);
