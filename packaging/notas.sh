@@ -5,8 +5,8 @@
 set -euo pipefail
 TAG=${1:?Uso: notas.sh vX.Y.Z [--solo-notas]}
 VERSION=${TAG#v}
-# Las líneas que no son viñetas ni continuación son títulos de sección.
-git log -1 --format=%b "$TAG^{commit}" | sed -E 's/^([^ -].*)$/### \1/'
+# Las líneas que no son viñetas ni continuación son títulos de sección; los trailers (Co-Authored-By…) no van.
+git log -1 --format=%b "$TAG^{commit}" | { grep -vE '^[A-Za-z-]+-[Bb]y: ' || true; } | sed -E 's/^([^ -].*)$/### \1/'
 [ "${2:-}" = "--solo-notas" ] && exit 0
 URL="https://github.com/quantexpy69/quantumdaw/releases/download/$TAG"
 cat <<EOF
