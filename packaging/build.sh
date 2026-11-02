@@ -27,7 +27,7 @@ pip3.9 install -q --user meson ninja
 PATH="$HOME/.local/bin:$PATH" packaging/linux/lilv.sh "$CACHE/lilv"
 export QUANTUM_LILV_ESTATICO="$CACHE/lilv"
 export CARGO_HOME="$CACHE/cargo" RUSTUP_HOME="$CACHE/rustup" CARGO_TARGET_DIR="$CACHE/target"
-export PATH="$CARGO_HOME/bin:$PATH" PKG_CONFIG_PATH=/usr/lib64/pkgconfig
+export PATH="$CARGO_HOME/bin:$PATH" PKG_CONFIG_PATH="$CACHE/lilv/lib/pkgconfig:/usr/lib64/pkgconfig"
 command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --no-modify-path
 command -v cargo-deb >/dev/null || cargo install -q cargo-deb --locked
 command -v cargo-generate-rpm >/dev/null || cargo install -q cargo-generate-rpm --locked
