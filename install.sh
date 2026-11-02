@@ -25,12 +25,22 @@ if ! pkg-config --exists alsa 2>/dev/null && [ ! -f .toolchain/sysroot/usr/lib64
   exit 1
 fi
 
+# El configure de LAME (mp3lame-sys) rechaza rutas con espacios: si la carpeta del proyecto los
+# tiene, el código de los crates y la compilación van a ~/.cache/quantum-daw.
+TARGET=target
+if [[ "$PWD" == *" "* ]]; then
+  CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/quantum-daw"
+  export CARGO_HOME="$CACHE/cargo" CARGO_TARGET_DIR="$CACHE/target"
+  TARGET="$CARGO_TARGET_DIR"
+  echo "La ruta del proyecto tiene espacios: se compila en $CACHE"
+fi
+
 # Con la carpeta pro/ (repositorio privado) se incluyen los plugins QUANTUM Pro.
 PRO=()
 [ -f pro/mod.rs ] && PRO=(--features pro)
 cargo build --release ${PRO[@]+"${PRO[@]}"}
 BIN="$HOME/.local/bin/quantum-daw"
-install -Dm755 target/release/quantum-daw "$BIN"
+install -Dm755 "$TARGET/release/quantum-daw" "$BIN"
 # Icono: SVG y PNG de cada tamaño (algunos paneles y docks prefieren PNG).
 ICONOS="$HOME/.local/share/icons/hicolor"
 install -Dm644 assets/quantumlogo.svg "$ICONOS/scalable/apps/quantum-daw.svg"
