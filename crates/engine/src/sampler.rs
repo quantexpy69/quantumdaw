@@ -315,7 +315,9 @@ impl Sampler {
                     env: if ataque > 0.0 { 0.0 } else { 1.0 },
                     att: if ataque > 0.0 { 1.0 - (-1.0 / (ataque * 0.001 * sr)).exp() } else { 1.0 },
                     attacking: ataque > 0.0,
-                    rel: (-1.0 / (z.release * sr)).exp(),
+                    // Liberación como en SFZ: `ampeg_release` es lo que tarda en apagarse (-60 dB), no la
+                    // constante de tiempo (así la cola era siete veces más larga y sonaba a reverb).
+                    rel: (-6.9 / (z.release * sr)).exp(),
                     age: st.clock,
                     // Caída: -40 dB al cabo de `decay` segundos.
                     dec: if z.decay > 0.0 { (-4.6 / (z.decay * sr)).exp() } else { 1.0 },

@@ -21,9 +21,11 @@ fi
 
 # ---------- Dentro de AlmaLinux 8 (glibc 2.28) ----------
 CACHE=${CACHE:-/cache}
-# lilv (plugins LV2) viene de EPEL.
-dnf -y -q install epel-release >/dev/null
-dnf -y -q install gcc gcc-c++ make diffutils alsa-lib-devel lilv-devel pkgconf-pkg-config curl git file xz findutils >/dev/null
+dnf -y -q install gcc gcc-c++ make diffutils alsa-lib-devel pkgconf-pkg-config curl git file xz findutils python39 python39-pip >/dev/null
+# lilv (plugins LV2): AlmaLinux 8 no lo trae (ni EPEL); se compila estático una vez y queda en la caché.
+pip3.9 install -q --user meson ninja
+PATH="$HOME/.local/bin:$PATH" packaging/linux/lilv.sh "$CACHE/lilv"
+export QUANTUM_LILV_ESTATICO="$CACHE/lilv"
 export CARGO_HOME="$CACHE/cargo" RUSTUP_HOME="$CACHE/rustup" CARGO_TARGET_DIR="$CACHE/target"
 export PATH="$CARGO_HOME/bin:$PATH" PKG_CONFIG_PATH=/usr/lib64/pkgconfig
 command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --no-modify-path

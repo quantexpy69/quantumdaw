@@ -302,6 +302,15 @@ fn etiqueta_dispositivo(dispositivos: &[DeviceInfo], id: &str) -> String {
     }
 }
 
+/// Tamaño de búfer: «Automático» (256 en Linux, el del sistema en los demás) o el número.
+fn bufer_o(v: u32) -> String {
+    match (v, engine::BUFFER_AUTOMATICO) {
+        (0, 0) => sistema_o(0, ""),
+        (0, n) => format!("{} ({n})", tr("Automático")),
+        (n, _) => format!("{n} {}", tr("muestras")),
+    }
+}
+
 fn sistema_o(v: u32, unidad: &str) -> String {
     if v == 0 { tr("Predeterminado del sistema").to_string() } else { format!("{v} {unidad}") }
 }
@@ -368,13 +377,14 @@ impl App {
                 });
             });
             fila(ui, "Tamaño de búfer", |ui| {
-                desplegable(ui, "pref-bufer", sistema_o(b.cfg.buffer, tr("muestras")), |ui| {
-                    BUFERES.iter().for_each(|&f| _ = ui.selectable_value(&mut b.cfg.buffer, f, sistema_o(f, tr("muestras"))));
+                desplegable(ui, "pref-bufer", bufer_o(b.cfg.buffer), |ui| {
+                    BUFERES.iter().for_each(|&f| _ = ui.selectable_value(&mut b.cfg.buffer, f, bufer_o(f)));
                 });
             });
             fila(ui, "", |ui| {
                 let sr = if b.cfg.rate == 0 { self.engine.sample_rate.max(1) } else { b.cfg.rate } as f32;
-                let latencia = if b.cfg.buffer == 0 { tr("la del sistema").to_string() } else { format!("{:.2} ms", b.cfg.buffer as f32 / sr * 1000.0) };
+                let n = if b.cfg.buffer == 0 { engine::BUFFER_AUTOMATICO } else { b.cfg.buffer };
+                let latencia = if n == 0 { tr("la del sistema").to_string() } else { format!("{:.2} ms", n as f32 / sr * 1000.0) };
                 dato(ui, "Latencia del búfer", &latencia);
             });
             nota(ui, "Los búferes grandes dan más tiempo al procesamiento; los pequeños responden más rápido al tocar y grabar.");
@@ -402,7 +412,7 @@ impl App {
             ui.horizontal(|ui| {
                 let en_marcha = !self.streams.is_empty();
                 estado(ui, en_marcha, if en_marcha { "En marcha" } else { "Detenido" });
-                let buf = match self.audio.buffer {
+                let buf = match if self.audio.buffer == 0 { engine::BUFFER_AUTOMATICO } else { self.audio.buffer } {
                     0 => tr("búfer del sistema").to_string(),
                     n => format!("{n} {} ({:.1} ms)", tr("muestras"), n as f64 / self.sr() * 1000.0),
                 };
@@ -668,6 +678,36 @@ impl App {
     pub fn pagina_plugins(&mut self, ui: &mut egui::Ui, w: &mut Welcome) {
         let carpetas = w.carpetas.get_or_insert_with(library::carpetas_plugins).clone();
         let mut reescanear = false;
+        tarjeta(ui, "MIS CARPETAS", |ui| {
+            parrafo(ui, "Carpetas donde tienes plugins (LV2, VST3, CLAP) o instrumentos SFZ, en cualquier disco. Se buscan también en sus subcarpetas.");
+            ui.add_space(2.0);
+            let mut quitar = None;
+            for (k, dir) in self.config.carpetas_usuario.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(dir.display().to_string()).size(12.5).color(if dir.is_dir() { TEXT() } else { TEXT_DIM() }));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if boton(ui, "Quitar").clicked() {
+                            quitar = Some(k);
+                        }
+                    });
+                });
+            }
+            if self.config.carpetas_usuario.is_empty() {
+                nota(ui, "Todavía no agregaste carpetas propias.");
+            }
+            let mut cambio = quitar.map(|k| _ = self.config.carpetas_usuario.remove(k)).is_some();
+            if boton_principal(ui, "Agregar carpeta…").clicked()
+                && let Some(d) = rfd::FileDialog::new().set_title(tr("Carpeta con plugins o instrumentos")).pick_folder()
+                && !self.config.carpetas_usuario.contains(&d)
+            {
+                self.config.carpetas_usuario.push(d);
+                cambio = true;
+            }
+            if cambio {
+                self.config.save();
+                reescanear = true;
+            }
+        });
         tarjeta(ui, "CARPETAS DE PLUGINS", |ui| {
             parrafo(ui, "Se buscan plugins en las carpetas estándar de cada formato. Los que encuentra aparecen en la pestaña Plugins de la Biblioteca.");
             ui.add_space(2.0);
@@ -694,7 +734,11 @@ impl App {
             });
         });
         if reescanear {
-            self.plugins = library::scan_plugins();
+            let dirs = &self.config.carpetas_usuario;
+            self.plugins = library::scan_plugins(dirs);
+            engine::lv2::carpetas(dirs);
+            instruments::set_carpetas(dirs);
+            std::thread::spawn(engine::lv2::recargar);
             w.carpetas = None;
         }
         tarjeta(ui, "PLUGINS OCULTOS", |ui| {

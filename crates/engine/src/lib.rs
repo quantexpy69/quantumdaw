@@ -32,6 +32,9 @@ use std::{
 };
 
 pub const BLOCK: usize = 1024;
+/// Búfer cuando no se eligió uno. En Linux el «del sistema» de ALSA sobre PipeWire es de 512 o más
+/// (10 ms o más por bloque y se nota al tocar); 256 muestras son unos 5 ms a 48 kHz.
+pub const BUFFER_AUTOMATICO: u32 = if cfg!(target_os = "linux") { 256 } else { 0 };
 pub const PEAK_BLOCK: usize = 256;
 const FADE: u64 = 64;
 const MAX_EVENTS: usize = 256;
@@ -576,14 +579,19 @@ pub fn avisos() -> Vec<String> {
 impl Engine {
     /// Abre salida y entrada con la misma frecuencia y prioridad de tiempo real.
     pub fn start(cfg: &AudioConfig) -> anyhow::Result<(Arc<Self>, Vec<cpal::Stream>)> {
+        Self::abrir(cfg, if cfg.buffer > 0 { cfg.buffer } else { BUFFER_AUTOMATICO })
+    }
+
+    /// `buffer` 0: el tamaño que elija el sistema.
+    fn abrir(cfg: &AudioConfig, buffer: u32) -> anyhow::Result<(Arc<Self>, Vec<cpal::Stream>)> {
         let cfg = &conectados(cfg);
         let out_dev = device(false, &cfg.output).ok_or_else(|| anyhow::anyhow!("sin dispositivo de salida"))?;
         let mut config = out_dev.default_output_config()?.config();
         if cfg.rate > 0 {
             config.sample_rate = cfg.rate;
         }
-        if cfg.buffer > 0 {
-            config.buffer_size = cpal::BufferSize::Fixed(cfg.buffer);
+        if buffer > 0 {
+            config.buffer_size = cpal::BufferSize::Fixed(buffer);
         }
         let mut streams = vec![];
         let in_dev = if cfg.input == "-" { None } else { device(true, &cfg.input) };
@@ -650,7 +658,7 @@ impl Engine {
                 Ok((engine, streams))
             }
             // Si el dispositivo no acepta el tamaño de buffer pedido, se usa el del sistema.
-            Err(_) if cfg.buffer > 0 => Self::start(&AudioConfig { buffer: 0, ..cfg.clone() }),
+            Err(_) if buffer > 0 => Self::abrir(cfg, 0),
             Err(e) => Err(e.into()),
         }
     }
