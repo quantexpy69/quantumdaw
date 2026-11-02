@@ -1760,3 +1760,41 @@ stems exportados	stems exported	stems exportados
 en	in	em
 añadido a	added to	adicionado a
 una pista nueva	a new track	uma faixa nova
+Agrega carpetas con instrumentos SFZ en Preferencias → Plugins.	Add folders with SFZ instruments in Preferences → Plugins.	Adicione pastas com instrumentos SFZ em Preferências → Plugins.
+Agregar carpeta…	Add folder…	Adicionar pasta…
+Amplificador	Amplifier	Amplificador
+Amplificador de guitarra a válvulas con pantalla y tono	Tube guitar amplifier with cabinet and tone	Amplificador de guitarra valvulado com gabinete e tom
+Batería acústica real: bombo, caja, toms y platillos	Real acoustic drums: kick, snare, toms and cymbals	Bateria acústica real: bumbo, caixa, tons e pratos
+Buscando los plugins instalados…	Looking for installed plugins…	Procurando os plugins instalados…
+Carpeta con plugins o instrumentos	Folder with plugins or instruments	Pasta com plugins ou instrumentos
+Carpetas donde tienes plugins (LV2, VST3, CLAP) o instrumentos SFZ, en cualquier disco. Se buscan también en sus subcarpetas.	Folders with your plugins (LV2, VST3, CLAP) or SFZ instruments, on any drive. Their subfolders are searched too.	Pastas com seus plugins (LV2, VST3, CLAP) ou instrumentos SFZ, em qualquer disco. As subpastas também são pesquisadas.
+Clic: añadir a la pista elegida · arrastrar: a una pista o canal	Click: add to the chosen track · drag: onto a track or channel	Clique: adicionar à faixa escolhida · arrastar: para uma faixa ou canal
+Clic: tocar en la pista MIDI elegida (o en una nueva) · arrastrar: sobre una pista MIDI	Click: play on the chosen MIDI track (or a new one) · drag: onto a MIDI track	Clique: tocar na faixa MIDI escolhida (ou numa nova) · arrastar: sobre uma faixa MIDI
+Compresor profesional con sidechain, rodilla y medidores	Professional compressor with sidechain, knee and meters	Compressor profissional com sidechain, joelho e medidores
+controles	controls	controles
+Delay de cinta con repeticiones sincronizadas al tempo	Tape delay with tempo-synced repeats	Delay de fita com repetições sincronizadas ao andamento
+Distorsión	Distortion	Distorção
+EQ paramétrico de 6 bandas con filtros de corte y analizador	6-band parametric EQ with cut filters and analyzer	EQ paramétrico de 6 bandas com filtros de corte e analisador
+Encontrados en tu equipo. Cargarlos en las pistas llega en la próxima versión; por ahora usa sus versiones LV2 si las tienen.	Found on your computer. Loading them on tracks comes in the next version; for now use their LV2 versions if they have them.	Encontrados no seu computador. Carregá-los nas faixas chega na próxima versão; por enquanto use as versões LV2, se houver.
+Los demás plugins instalados están en Efectos e Instrumentos, agrupados por marca.	The other installed plugins are in Effects and Instruments, grouped by brand.	Os demais plugins instalados estão em Efeitos e Instrumentos, agrupados por marca.
+MIS CARPETAS	MY FOLDERS	MINHAS PASTAS
+MIS LIBRERÍAS	MY LIBRARIES	MINHAS BIBLIOTECAS
+Más controles	More controls	Mais controles
+No se encontraron plugins LV2. Instala por ejemplo LSP, Calf o ZynAddSubFX y vuelve a abrir el programa.	No LV2 plugins found. Install for example LSP, Calf or ZynAddSubFX and reopen the program.	Nenhum plugin LV2 encontrado. Instale, por exemplo, LSP, Calf ou ZynAddSubFX e abra o programa de novo.
+No se pudo abrir el plugin	Could not open the plugin	Não foi possível abrir o plugin
+Órgano	Organ	Órgão
+Órgano Hammond de ruedas fónicas con Leslie	Tonewheel Hammond organ with Leslie	Órgão Hammond de rodas fônicas com Leslie
+Plugin LV2	LV2 plugin	Plugin LV2
+Plugin LV2 instalado en el sistema.	LV2 plugin installed on the system.	Plugin LV2 instalado no sistema.
+Plugins LV2 instalados, en la biblioteca	Installed LV2 plugins, in the library	Plugins LV2 instalados, na biblioteca
+Recomendados	Recommended	Recomendados
+Reverb de sala de conciertos, natural y envolvente	Natural, enveloping concert hall reverb	Reverb de sala de concerto, natural e envolvente
+Sintetizador	Synthesizer	Sintetizador
+Sintetizador analógico de dos osciladores, filtros y efectos	Two-oscillator analog synthesizer with filters and effects	Sintetizador analógico de dois osciladores, filtros e efeitos
+Sintetizador completo: pads, bajos, leads y cientos de sonidos	Full synthesizer: pads, basses, leads and hundreds of sounds	Sintetizador completo: pads, baixos, leads e centenas de sons
+Sintetizador monofónico para bajos y solos	Monophonic synthesizer for basses and leads	Sintetizador monofônico para baixos e solos
+Suelta el instrumento sobre una pista MIDI	Drop the instrument on a MIDI track	Solte o instrumento sobre uma faixa MIDI
+Todavía no agregaste carpetas propias.	You haven't added your own folders yet.	Você ainda não adicionou pastas próprias.
+Todos los plugins…	All plugins…	Todos os plugins…
+Utilidad	Utility	Utilitário
+suena en	plays on	toca em
