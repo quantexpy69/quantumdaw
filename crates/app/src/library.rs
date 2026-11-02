@@ -164,14 +164,27 @@ pub fn carpetas_plugins() -> Vec<crate::preferencias::Carpeta> {
         .collect()
 }
 
-/// Busca plugins VST3, LV2 y CLAP en las rutas estándar de Linux: (nombre, formato, ruta).
-pub fn scan_plugins() -> Vec<(String, &'static str, PathBuf)> {
+/// Busca plugins VST3, LV2 y CLAP en las rutas estándar de Linux y, hasta tres niveles de
+/// profundidad, en las carpetas propias: (nombre, formato, ruta).
+pub fn scan_plugins(propias: &[PathBuf]) -> Vec<(String, &'static str, PathBuf)> {
+    fn buscar(d: &Path, nivel: usize, v: &mut Vec<PathBuf>) {
+        for p in fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()) {
+            if p.extension().is_some_and(|e| e == "vst3" || e == "lv2" || e == "clap") {
+                v.push(p);
+            } else if p.is_dir() && nivel < 3 {
+                buscar(&p, nivel + 1, v);
+            }
+        }
+    }
     let roots = raices_plugins();
-    let mut found: Vec<_> = roots
-        .iter()
-        .flat_map(|(format, ext, dirs)| dirs.iter().flat_map(|d| fs::read_dir(d).into_iter().flatten().flatten()).map(move |e| (format, ext, e.path())))
-        .filter(|(_, ext, p)| p.extension().is_some_and(|e| e == **ext))
-        .map(|(format, _, p)| (p.file_stem().unwrap_or_default().to_string_lossy().to_string(), *format, p))
+    let mut rutas: Vec<PathBuf> = roots.iter().flat_map(|(_, _, dirs)| dirs.iter().flat_map(|d| fs::read_dir(d).into_iter().flatten().flatten()).map(|e| e.path())).collect();
+    propias.iter().for_each(|d| buscar(d, 0, &mut rutas));
+    let mut found: Vec<_> = rutas
+        .into_iter()
+        .filter_map(|p| {
+            let (format, _, _) = roots.iter().find(|(_, ext, _)| p.extension().is_some_and(|e| e == *ext))?;
+            Some((p.file_stem().unwrap_or_default().to_string_lossy().to_string(), *format, p))
+        })
         .collect();
     found.sort_by_key(|p| p.0.to_lowercase());
     found.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
@@ -303,13 +316,14 @@ impl App {
         let b = self.lib_buscar.trim().to_lowercase();
         let fx: Vec<FxKind> = FX_CATEGORIES.iter().flat_map(|c| c.1.iter().copied()).filter(|k| visible(*k)).filter(|k| tr(k.name()).to_lowercase().contains(&b) || tr(describe(*k)).to_lowercase().contains(&b) || tr(plugins::summary(*k)).to_lowercase().contains(&b)).collect();
         let inst: Vec<&'static instruments::Entry> = instruments::CATALOG.iter().filter(|e| e.name.to_lowercase().contains(&b) || e.family.to_lowercase().contains(&b) || tr(e.family).to_lowercase().contains(&b)).collect();
+        let otros: Vec<_> = self.plugins.iter().filter(|p| p.1 != "LV2" && p.0.to_lowercase().contains(&b)).cloned().collect();
         let plug: Vec<Arc<engine::lv2::Info>> = engine::lv2::listo()
             .unwrap_or_default()
             .iter()
             .filter(|i| i.nombre.to_lowercase().contains(&b) || i.marca.to_lowercase().contains(&b) || tr(i.categoria.nombre()).to_lowercase().contains(&b))
             .cloned()
             .collect();
-        if fx.is_empty() && inst.is_empty() && plug.is_empty() {
+        if fx.is_empty() && inst.is_empty() && plug.is_empty() && otros.is_empty() {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| ui.label(RichText::new(tr("Nada coincide con la búsqueda.")).color(TEXT_DIM())));
             return;
@@ -325,6 +339,9 @@ impl App {
         if !plug.is_empty() {
             grupo(ui, "PLUGINS", plug.len());
             self.plugins_por_marca(ui, &plug);
+        }
+        if !otros.is_empty() {
+            crate::lv2ui::otros_formatos(ui, &otros);
         }
     }
 
@@ -729,6 +746,33 @@ impl App {
                 self.abrir_kits();
             }
         }
+        // Librerías SFZ de las carpetas propias (Preferencias → Plugins).
+        if f == 0 || f == instalados {
+            let libs = instruments::librerias();
+            grupo(ui, "MIS LIBRERÍAS", libs.len());
+            if libs.is_empty() {
+                ui.label(RichText::new(tr("Agrega carpetas con instrumentos SFZ en Preferencias → Plugins.")).size(11.0).color(TEXT_DIM()));
+            }
+            for (id, nombre, carpeta) in libs {
+                let r = row(ui, 40.0, 0.0, false, |p, r| {
+                    p.text(pos2(r.left() + 12.0, r.top() + 13.0), Align2::LEFT_CENTER, recortar(p, &nombre, 13.5, r.width() - 70.0), FontId::proportional(13.5), TEXT());
+                    p.text(pos2(r.left() + 12.0, r.top() + 29.0), Align2::LEFT_CENTER, recortar(p, &carpeta, 10.5, r.width() - 70.0), FontId::proportional(10.5), TEXT_DIM());
+                    p.text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "SFZ", FontId::proportional(10.5), METER[0]);
+                });
+                let Some(sid) = instruments::id_estatico(&id) else { continue };
+                r.dnd_set_drag_payload(LibItem::Instrument(sid));
+                if r.on_hover_text(format!("{} · {}", id.trim_start_matches("sfz:"), tr("Clic: usar en la pista MIDI seleccionada (o en una nueva) · arrastrar: sobre una pista MIDI"))).clicked() {
+                    let i = match self.s.tracks.iter().position(|t| t.selected && t.midi()) {
+                        Some(i) => i,
+                        None => {
+                            self.add_track(nombre.clone(), TrackKind::Midi);
+                            self.s.tracks.len() - 1
+                        }
+                    };
+                    self.set_instrument(i, sid);
+                }
+            }
+        }
         ui.label(RichText::new(tr("Clic: usar en la pista MIDI seleccionada (o descargar) · arrastrar: sobre una pista MIDI")).size(11.0).color(TEXT_DIM()));
         self.inst_rows(ui, &lista);
     }
@@ -832,7 +876,7 @@ impl App {
                         }
                         self.dirty = true;
                     }
-                    self.plugins = scan_plugins();
+                    self.plugins = scan_plugins(&self.config.carpetas_usuario);
                     self.status = if ok { format!("{} {name}", tr("Desinstalado:")) } else { format!("{} {name}", tr("No se pudo desinstalar")) };
                     close = true;
                 }

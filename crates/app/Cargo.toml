@@ -40,7 +40,7 @@ copyright = "2026, Ivan Cheaib"
 extended-description = "Estación de audio digital moderna: pistas de audio y MIDI, mixer con automatización, plugins propios, editor de audio, piano roll con instrumentos reales gratuitos y video."
 section = "sound"
 priority = "optional"
-depends = "libasound2 | libasound2t64, liblilv-0-0, libc6 (>= 2.28)"
+depends = "libasound2 | libasound2t64, libc6 (>= 2.28)"
 recommends = "ffmpeg, p7zip-full, curl, xz-utils"
 suggests = "pipewire-bin"
 assets = [
@@ -80,7 +80,6 @@ auto-req = "no"
 [package.metadata.generate-rpm.requires]
 glibc = ">= 2.28"
 alsa-lib = "*"
-lilv-libs = "*"
 [package.metadata.generate-rpm.recommends]
 ffmpeg = "*"
 p7zip = "*"

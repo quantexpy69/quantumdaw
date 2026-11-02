@@ -223,6 +223,8 @@ struct Config {
     clic_acento: f32,
     /// Plugins del sistema ocultados de la biblioteca.
     hidden_plugins: Vec<PathBuf>,
+    /// Carpetas propias con plugins (LV2, VST3, CLAP) e instrumentos SFZ, además de las estándar.
+    carpetas_usuario: Vec<PathBuf>,
     /// Favoritos de la biblioteca ("fx:Compressor", "inst:guitarra-nylon").
     lib_favoritos: Vec<String>,
     /// Claves de licencia de los plugins QUANTUM Pro.
@@ -772,6 +774,11 @@ struct App {
 
 impl App {
     fn new(dir: PathBuf, config: Config, ctx: &egui::Context) -> anyhow::Result<Self> {
+        // El catálogo de plugins LV2 tarda un momento: se arma en segundo plano.
+        engine::lv2::carpetas(&config.carpetas_usuario);
+        instruments::set_carpetas(&config.carpetas_usuario);
+        std::thread::spawn(engine::lv2::catalogo);
+        let plugins = library::scan_plugins(&config.carpetas_usuario);
         TEMA.store(config.tema, Relaxed);
         // Fuente musical (Bravura, SMuFL) para la partitura.
         let mut fuentes = egui::FontDefinitions::default();
@@ -841,11 +848,7 @@ impl App {
             taps: vec![],
             tempo_guess: None,
             meta: Default::default(),
-            plugins: {
-                // El catálogo de plugins LV2 tarda un momento: se arma en segundo plano.
-                std::thread::spawn(engine::lv2::catalogo);
-                library::scan_plugins()
-            },
+            plugins,
             uninstall: None,
             pps: 60.0,
             scroll: egui::Vec2::ZERO,

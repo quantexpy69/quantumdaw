@@ -2,6 +2,8 @@
 //! El catálogo se arma una sola vez (tarda un momento con cientos de plugins). Los nombres y rangos
 //! de los parámetros quedan fijos (`&'static`), igual que los de los efectos nativos, para que la
 //! interfaz los trate del mismo modo.
+// Fuera de Linux el catálogo está vacío y casi nada de esto se usa.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 use crate::{AtomicF32, MidiEvent};
 use std::sync::Arc;
 
@@ -97,6 +99,58 @@ pub fn catalogo() -> &'static [Arc<Info>] {
     imp::catalogo()
 }
 
+/// Carpetas propias donde también se buscan bundles `.lv2` (además de las rutas estándar).
+pub fn carpetas(dirs: &[std::path::PathBuf]) {
+    if let Ok(mut c) = CARPETAS.lock() {
+        *c = dirs.to_vec();
+    }
+}
+
+static CARPETAS: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+/// Vuelve a buscar los plugins (tras instalar alguno o cambiar las carpetas). Tarda: va en otro hilo.
+/// Los plugins ya abiertos siguen funcionando con el catálogo anterior.
+pub fn recargar() {
+    imp::recargar()
+}
+
+/// Bundles `.lv2` dentro de las carpetas propias (hasta tres niveles de profundidad).
+fn bundles_propios() -> Vec<std::path::PathBuf> {
+    fn buscar(d: &std::path::Path, nivel: usize, v: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if !p.is_dir() {
+                continue;
+            }
+            if p.extension().is_some_and(|x| x == "lv2") {
+                v.push(p);
+            } else if nivel < 3 {
+                buscar(&p, nivel + 1, v);
+            }
+        }
+    }
+    let mut v = vec![];
+    for d in CARPETAS.lock().map(|c| c.clone()).unwrap_or_default() {
+        if d.extension().is_some_and(|x| x == "lv2") { v.push(d) } else { buscar(&d, 0, &mut v) }
+    }
+    v
+}
+
+/// URI `file://` de una carpeta (con los espacios y acentos codificados), terminada en `/`.
+fn uri_archivo(p: &std::path::Path) -> String {
+    let mut s = String::from("file://");
+    for b in p.to_string_lossy().bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => s.push(b as char),
+            _ => s.push_str(&format!("%{b:02X}")),
+        }
+    }
+    if !s.ends_with('/') {
+        s.push('/');
+    }
+    s
+}
+
 /// Catálogo si ya está armado (la interfaz no espera a que termine).
 pub fn listo() -> Option<&'static [Arc<Info>]> {
     imp::listo()
@@ -171,20 +225,48 @@ mod imp {
     use super::*;
     use crate::BLOCK;
     use livi::{PortIndex, PortType, event::LV2AtomSequence};
-    use std::{collections::HashMap, sync::OnceLock};
+    use std::{
+        collections::{HashMap, HashSet},
+        sync::{Mutex, RwLock},
+    };
 
+    /// Las rutas estándar en un mundo de lilv y cada bundle de las carpetas propias en el suyo
+    /// (lilv solo amplía su búsqueda con LV2_PATH, que no se puede cambiar con el programa abierto).
     struct Mundo {
-        world: livi::World,
-        features: Arc<livi::Features>,
+        mundos: Vec<(livi::World, Arc<livi::Features>)>,
         infos: Vec<Arc<Info>>,
-        /// Parámetro por la dirección de su nombre.
-        params: HashMap<usize, &'static Param>,
     }
 
-    static MUNDO: OnceLock<Mundo> = OnceLock::new();
+    /// El catálogo vigente. Al recargar, el anterior queda vivo (lo usan los plugins ya abiertos).
+    static MUNDO: RwLock<Option<&'static Mundo>> = RwLock::new(None);
+    static CARGANDO: Mutex<()> = Mutex::new(());
+    /// Parámetro por la dirección de su nombre (de todos los catálogos armados).
+    static PARAMS: RwLock<Option<HashMap<usize, &'static Param>>> = RwLock::new(None);
+
+    fn actual() -> Option<&'static Mundo> {
+        *MUNDO.read().ok()?
+    }
 
     fn mundo() -> &'static Mundo {
-        MUNDO.get_or_init(cargar)
+        if let Some(m) = actual() {
+            return m;
+        }
+        let _uno = CARGANDO.lock();
+        actual().unwrap_or_else(|| {
+            let m: &'static Mundo = Box::leak(Box::new(cargar()));
+            if let Ok(mut w) = MUNDO.write() {
+                *w = Some(m);
+            }
+            m
+        })
+    }
+
+    pub fn recargar() {
+        let _uno = CARGANDO.lock();
+        let m: &'static Mundo = Box::leak(Box::new(cargar()));
+        if let Ok(mut w) = MUNDO.write() {
+            *w = Some(m);
+        }
     }
 
     pub fn catalogo() -> &'static [Arc<Info>] {
@@ -192,16 +274,41 @@ mod imp {
     }
 
     pub fn listo() -> Option<&'static [Arc<Info>]> {
-        MUNDO.get().map(|m| m.infos.as_slice())
+        actual().map(|m| m.infos.as_slice())
     }
 
     pub fn param(nombre: &str) -> Option<&'static Param> {
-        MUNDO.get()?.params.get(&(nombre.as_ptr() as usize)).copied()
+        PARAMS.read().ok()?.as_ref()?.get(&(nombre.as_ptr() as usize)).copied()
     }
 
     fn cargar() -> Mundo {
-        let world = livi::World::new();
-        let features = world.try_build_features(livi::FeaturesBuilder { min_block_length: 1, max_block_length: BLOCK }).expect("BLOCK es un tamaño de bloque válido");
+        let mut mundos = vec![livi::World::new()];
+        mundos.extend(bundles_propios().iter().map(|b| livi::World::with_load_bundle(&uri_archivo(b))));
+        let mundos: Vec<_> = mundos
+            .into_iter()
+            .map(|w| {
+                let f = w.try_build_features(livi::FeaturesBuilder { min_block_length: 1, max_block_length: BLOCK }).expect("BLOCK es un tamaño de bloque válido");
+                (w, f)
+            })
+            .collect();
+        let mut params = HashMap::new();
+        let mut vistos = HashSet::new();
+        let mut infos = vec![];
+        for (world, _) in &mundos {
+            for i in leer(world, &mut params) {
+                if vistos.insert(i.uri.clone()) {
+                    infos.push(i);
+                }
+            }
+        }
+        infos.sort_by_cached_key(|i| (i.marca.to_lowercase(), i.nombre.to_lowercase()));
+        if let Ok(mut p) = PARAMS.write() {
+            p.get_or_insert_with(HashMap::new).extend(params);
+        }
+        Mundo { mundos, infos }
+    }
+
+    fn leer(world: &livi::World, params: &mut HashMap<usize, &'static Param>) -> Vec<Arc<Info>> {
         let raw = world.raw();
         let prop = |uri: &str| raw.new_uri(uri);
         let (entero, conmutador, enumeracion, oculto) = (
@@ -210,8 +317,7 @@ mod imp {
             prop("http://lv2plug.in/ns/lv2core#enumeration"),
             prop("http://lv2plug.in/ns/ext/port-props#notOnGUI"),
         );
-        let mut params = HashMap::new();
-        let mut infos: Vec<Arc<Info>> = world
+        world
             .iter_plugins()
             .map(|p| {
                 let (uri, nombre, instrumento) = (p.uri(), p.name(), p.is_instrument());
@@ -255,9 +361,7 @@ mod imp {
             })
             // Solo lo que se puede usar en una pista: con salida de audio y, si no es instrumento, con entrada.
             .filter(|i| i.salidas > 0 && (i.instrumento || i.entradas > 0))
-            .collect();
-        infos.sort_by_cached_key(|i| (i.marca.to_lowercase(), i.nombre.to_lowercase()));
-        Mundo { world, features, infos, params }
+            .collect()
     }
 
     /// Un plugin funcionando, con sus buffers (el hilo de audio no reserva memoria).
@@ -273,17 +377,16 @@ mod imp {
 
     impl Instancia {
         pub fn nueva(info: &Arc<Info>, sample_rate: u32) -> Option<Self> {
-            let m = mundo();
-            let p = m.world.plugin_by_uri(&info.uri)?;
-            let inst = unsafe { p.instantiate(m.features.clone(), sample_rate as f64) }.ok()?;
+            let (p, features) = mundo().mundos.iter().find_map(|(w, f)| Some((w.plugin_by_uri(&info.uri)?, f)))?;
+            let inst = unsafe { p.instantiate(features.clone(), sample_rate as f64) }.ok()?;
             let c = inst.port_counts();
-            let seq = |n| (0..n).map(|_| LV2AtomSequence::new(&m.features, 16 * 1024)).collect();
+            let seq = |n| (0..n).map(|_| LV2AtomSequence::new(features, 16 * 1024)).collect();
             Some(Self {
                 ent: vec![vec![0.0; BLOCK]; c.audio_inputs],
                 sal: vec![vec![0.0; BLOCK]; c.audio_outputs],
                 seq_in: seq(c.atom_sequence_inputs),
                 seq_out: seq(c.atom_sequence_outputs),
-                midi: m.features.midi_urid(),
+                midi: features.midi_urid(),
                 info: info.clone(),
                 inst,
             })
@@ -354,6 +457,7 @@ mod imp {
     pub fn param(_: &str) -> Option<&'static Param> {
         None
     }
+    pub fn recargar() {}
 
     pub struct Instancia;
 

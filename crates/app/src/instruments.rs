@@ -138,9 +138,57 @@ pub fn es_kit(id: &str) -> bool {
     id.starts_with("kit-")
 }
 
-/// ¿Es un instrumento con muestras (del catálogo o un kit propio)?
+/// ¿Es un instrumento con muestras (del catálogo, un kit propio o una librería SFZ propia)?
 pub fn es_real(id: &str) -> bool {
-    find(id).is_some() || es_kit(id)
+    find(id).is_some() || es_kit(id) || es_sfz(id)
+}
+
+/// Librería SFZ de las carpetas propias: «sfz:<ruta del archivo>» (se usa donde está, sin copiarla).
+pub fn es_sfz(id: &str) -> bool {
+    id.starts_with("sfz:")
+}
+
+static CARPETAS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+static LIBRERIAS: Mutex<Option<Vec<(String, String, String)>>> = Mutex::new(None);
+
+/// Carpetas propias donde se buscan librerías SFZ (se vuelven a buscar al cambiarlas).
+pub fn set_carpetas(dirs: &[PathBuf]) {
+    if let (Ok(mut c), Ok(mut l)) = (CARPETAS.lock(), LIBRERIAS.lock()) {
+        (*c, *l) = (dirs.to_vec(), None);
+    }
+}
+
+/// Librerías SFZ propias: (id, nombre, carpeta que la contiene). Se buscan una vez y se recuerdan.
+pub fn librerias() -> Vec<(String, String, String)> {
+    fn buscar(d: &Path, nivel: usize, v: &mut Vec<PathBuf>) {
+        let mut hijos: Vec<PathBuf> = fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()).collect();
+        hijos.sort();
+        for p in hijos {
+            if v.len() >= 2000 {
+                return;
+            }
+            if p.is_dir() && nivel < 5 && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
+                buscar(&p, nivel + 1, v);
+            } else if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("sfz")) {
+                v.push(p);
+            }
+        }
+    }
+    let Ok(mut cache) = LIBRERIAS.lock() else { return vec![] };
+    cache
+        .get_or_insert_with(|| {
+            let mut v = vec![];
+            for d in CARPETAS.lock().map(|c| c.clone()).unwrap_or_default() {
+                buscar(&d, 0, &mut v);
+            }
+            v.iter()
+                .map(|p| {
+                    let carpeta = p.parent().and_then(|c| c.file_name()).map(|c| c.to_string_lossy().to_string()).unwrap_or_default();
+                    (format!("sfz:{}", p.display()), p.file_stem().unwrap_or_default().to_string_lossy().replace('_', " "), carpeta)
+                })
+                .collect()
+        })
+        .clone()
 }
 
 /// Kits propios guardados: (id, nombre).
@@ -161,6 +209,9 @@ pub fn kits() -> Vec<(String, String)> {
 
 /// Nombre visible de un instrumento (del catálogo o kit propio).
 pub fn nombre(id: &str) -> String {
+    if let Some(ruta) = id.strip_prefix("sfz:") {
+        return Path::new(ruta).file_stem().map_or_else(|| id.to_string(), |s| s.to_string_lossy().replace('_', " "));
+    }
     find(id).map(|e| e.name.to_string()).or_else(|| kits().into_iter().find(|k| k.0 == id).map(|k| k.1)).unwrap_or_else(|| id.to_string())
 }
 
@@ -170,7 +221,7 @@ pub fn id_estatico(id: &str) -> Option<&'static str> {
     if let Some(e) = find(id) {
         return Some(e.id);
     }
-    if !es_kit(id) {
+    if !es_kit(id) && !es_sfz(id) {
         return None;
     }
     let mut k = KITS.lock().ok()?;
@@ -349,11 +400,17 @@ pub fn dir(id: &str) -> PathBuf {
 }
 
 pub fn installed(id: &str) -> bool {
-    dir(id).join(".listo").exists()
+    match id.strip_prefix("sfz:") {
+        Some(ruta) => Path::new(ruta).is_file(),
+        None => dir(id).join(".listo").exists(),
+    }
 }
 
 /// Primer .sfz dentro de la carpeta del instrumento.
 pub fn sfz_path(id: &str) -> Option<PathBuf> {
+    if let Some(ruta) = id.strip_prefix("sfz:") {
+        return Some(PathBuf::from(ruta));
+    }
     fn walk(p: &Path) -> Option<PathBuf> {
         let mut entries: Vec<PathBuf> = fs::read_dir(p).ok()?.flatten().map(|e| e.path()).collect();
         entries.sort();
@@ -561,6 +618,23 @@ mod tests {
         assert!(sfz.contains("lokey=48 hikey=62 pitch_keycenter=60 lovel=0 hivel=63"));
         let kit = super::generate_sfz(&[("P/Bongos".into(), "P/Bongos/BongoH_Hit1_v1_rr1_Mid.wav".into())]);
         assert!(kit.contains("// Bongos BongoH Hit1\n<group> key=48"));
+    }
+
+    #[test]
+    fn librerias_sfz_de_carpetas_propias() {
+        let dir = std::env::temp_dir().join(format!("quantum-sfz-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("Pianos/Mi Piano")).unwrap();
+        std::fs::write(dir.join("Pianos/Mi Piano/Gran_Piano.sfz"), "<region> sample=a.wav").unwrap();
+        super::set_carpetas(std::slice::from_ref(&dir));
+        let libs = super::librerias();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(libs.len(), 1);
+        let (id, nombre, carpeta) = &libs[0];
+        assert!(super::es_sfz(id) && super::es_real(id));
+        assert_eq!((nombre.as_str(), carpeta.as_str()), ("Gran Piano", "Mi Piano"));
+        assert_eq!(super::nombre(id), "Gran Piano");
+        assert!(super::sfz_path(id).unwrap().ends_with("Gran_Piano.sfz"));
+        assert_eq!(super::id_estatico(id), Some(id.as_str()));
     }
 
     #[test]

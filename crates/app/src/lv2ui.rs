@@ -246,8 +246,16 @@ impl App {
             return;
         };
         let (efectos, instrumentos) = (catalogo.iter().filter(|i| !i.instrumento).count(), catalogo.iter().filter(|i| i.instrumento).count());
-        let nombres = [tr("Recomendados").to_string(), format!("{} {efectos}", tr("Efectos")), format!("{} {instrumentos}", tr("Instrumentos"))];
+        let otros: Vec<_> = self.plugins.iter().filter(|p| p.1 != "LV2").cloned().collect();
+        let mut nombres = vec![tr("Recomendados").to_string(), format!("{} {efectos}", tr("Efectos")), format!("{} {instrumentos}", tr("Instrumentos"))];
+        if !otros.is_empty() {
+            nombres.push(format!("VST3 / CLAP {}", otros.len()));
+        }
         self.chips(ui, &nombres);
+        if self.lib_filtro == 3 {
+            otros_formatos(ui, &otros);
+            return;
+        }
         if catalogo.is_empty() {
             ui.label(RichText::new(tr("No se encontraron plugins LV2. Instala por ejemplo LSP, Calf o ZynAddSubFX y vuelve a abrir el programa.")).color(TEXT_DIM()));
             return;
@@ -371,6 +379,21 @@ impl App {
             }
         }
         elegido
+    }
+}
+
+/// Plugins VST3 y CLAP encontrados: se listan, pero todavía no se pueden cargar en las pistas.
+pub fn otros_formatos(ui: &mut egui::Ui, lista: &[(String, &'static str, PathBuf)]) {
+    grupo(ui, "VST3 / CLAP", lista.len());
+    ui.label(RichText::new(tr("Encontrados en tu equipo. Cargarlos en las pistas llega en la próxima versión; por ahora usa sus versiones LV2 si las tienen.")).size(11.0).color(TEXT_DIM()));
+    for (nombre, formato, ruta) in lista {
+        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
+        let p = ui.painter();
+        let pill = Rect::from_min_size(r.left_top() + vec2(6.0, 9.0), vec2(40.0, 18.0));
+        p.rect_filled(pill, rr(6.0), BORDER());
+        p.text(pill.center(), Align2::CENTER_CENTER, *formato, FontId::proportional(10.0), TEXT_DIM());
+        p.text(pos2(pill.right() + 10.0, r.center().y), Align2::LEFT_CENTER, recortar(p, nombre, 13.0, r.right() - pill.right() - 16.0), FontId::proportional(13.0), TEXT_DIM());
+        resp.on_hover_text(ruta.display().to_string());
     }
 }
 
