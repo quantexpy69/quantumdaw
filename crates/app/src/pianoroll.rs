@@ -216,9 +216,11 @@ impl App {
         enum Pick {
             Preset(usize),
             Real(&'static str),
+            Lv2(Arc<engine::lv2::Info>),
         }
         let t = &self.s.tracks[i];
         let current = match (instruments::es_real(&t.instrument), t.instrument.strip_prefix("synth:")) {
+            _ if let Some(p) = &t.plugin => p.nombre().to_string(),
             (true, _) if t.sampler.is_some() => instruments::nombre(&t.instrument),
             (true, _) => format!("{} (preparando…)", instruments::nombre(&t.instrument)),
             (false, Some(p)) => format!("Synth · {p}"),
@@ -258,6 +260,17 @@ impl App {
             if ui.button(tr("+ Crear kit desde una carpeta…")).clicked() {
                 crear_kit = true;
             }
+            let plugins: Vec<Arc<engine::lv2::Info>> = engine::lv2::listo().unwrap_or_default().iter().filter(|p| p.instrumento).cloned().collect();
+            if !plugins.is_empty() {
+                ui.separator();
+                ui.label(RichText::new(tr("PLUGINS")).size(10.0).color(TEXT_DIM()));
+                for p in plugins {
+                    let actual = self.s.tracks[i].instrument == format!("lv2:{}", p.uri);
+                    if ui.selectable_label(actual, &p.nombre).on_hover_ui(|ui| crate::lv2ui::vista_previa(ui, &p)).clicked() {
+                        pick = Some(Pick::Lv2(p));
+                    }
+                }
+            }
             ui.separator();
             ui.label(RichText::new(tr("QUANTUM SYNTH")).size(10.0).color(TEXT_DIM()));
             for (k, (name, _)) in PRESETS.iter().enumerate() {
@@ -274,6 +287,7 @@ impl App {
         }
         match pick {
             Some(Pick::Real(id)) => self.set_instrument(i, id),
+            Some(Pick::Lv2(p)) => self.set_instrumento_lv2(i, &p),
             Some(Pick::Preset(k)) => {
                 let (name, values) = PRESETS[k];
                 let t = &mut self.s.tracks[i];
@@ -281,7 +295,7 @@ impl App {
                     s.params.iter().zip(values).for_each(|(a, v)| a.set(v));
                     s.kit.store(name == CAJA_RITMOS, Relaxed);
                 }
-                (t.instrument, t.sampler, self.dirty) = (format!("synth:{name}"), None, true);
+                (t.instrument, t.sampler, t.plugin, self.dirty) = (format!("synth:{name}"), None, None, true);
             }
             None => {}
         }

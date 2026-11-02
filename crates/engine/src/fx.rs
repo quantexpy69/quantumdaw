@@ -32,6 +32,8 @@ pub enum FxKind {
     SpacePro,
     VocalPro,
     MasterPro,
+    /// Plugin LV2 de terceros (ver `lv2.rs`): sus datos están en `Fx::lv2`.
+    Externo,
 }
 
 const SCALES: [&[u8]; 3] = [&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], &[0, 2, 4, 5, 7, 9, 11], &[0, 2, 3, 5, 7, 8, 10]];
@@ -80,6 +82,7 @@ impl FxKind {
             Self::SpacePro => "QUANTUM Space Pro",
             Self::VocalPro => "QUANTUM Vocal Pro",
             Self::MasterPro => "QUANTUM Master Pro",
+            Self::Externo => "Plugin",
         }
     }
 
@@ -235,6 +238,7 @@ impl FxKind {
                 ("Auto", 0.0, 1.0, 1.0),
                 ("A/B", 0.0, 1.0, 0.0),
             ],
+            Self::Externo => &[],
         }
     }
 }
@@ -265,6 +269,7 @@ struct State {
     /// Plugins Pro: su procesador y el contador del modo demo.
     pro: Option<Box<dyn crate::pro::ProDsp>>,
     demo_n: u64,
+    lv2: Option<Box<crate::lv2::Instancia>>,
 }
 
 pub struct Fx {
@@ -286,6 +291,8 @@ pub struct Fx {
     pub vu: [AtomicF32; 2],
     /// Plugins Pro: lecturas para su interfaz (ver los índices en `pro.rs`).
     pub medidores: Vec<AtomicF32>,
+    /// Plugin LV2 (tipo `Externo`): nombre, parámetros y su instancia en `State`.
+    pub lv2: Option<Arc<crate::lv2::Info>>,
     state: Mutex<State>,
 }
 
@@ -315,7 +322,52 @@ impl Fx {
         let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
         let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
         let medidores = if kind.pro().is_some() { (0..crate::pro::MEDIDORES).map(|_| AtomicF32::new(-120.0)).collect() } else { vec![] };
-        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, state: Mutex::new(st) }
+        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, lv2: None, state: Mutex::new(st) }
+    }
+
+    /// Plugin LV2 como efecto o instrumento (None si no se puede abrir).
+    pub fn lv2(info: &Arc<crate::lv2::Info>, sample_rate: u32) -> Option<Self> {
+        let inst = crate::lv2::Instancia::nueva(info, sample_rate)?;
+        let mut fx = Self::new(FxKind::Externo, sample_rate);
+        fx.params = info.defs.iter().map(|p| AtomicF32::new(p.3)).collect();
+        fx.lv2 = Some(info.clone());
+        fx.state.get_mut().ok()?.lv2 = Some(Box::new(inst));
+        Some(fx)
+    }
+
+    /// Lo que se guarda en el proyecto: el nombre del efecto o «lv2:<uri>».
+    pub fn clave(&self) -> String {
+        self.lv2.as_ref().map_or_else(|| self.kind.name().to_string(), |i| format!("lv2:{}", i.uri))
+    }
+
+    /// Crea el efecto guardado con `clave` (None si el plugin ya no está instalado).
+    pub fn desde_clave(clave: &str, sample_rate: u32) -> Option<Self> {
+        match clave.strip_prefix("lv2:") {
+            Some(uri) => Self::lv2(&crate::lv2::info(uri)?, sample_rate),
+            None => Some(Self::new(FxKind::from_name(clave)?, sample_rate)),
+        }
+    }
+
+    pub fn nombre(&self) -> &str {
+        self.lv2.as_ref().map_or(self.kind.name(), |i| i.nombre.as_str())
+    }
+
+    /// (nombre, mínimo, máximo, valor por defecto) de cada parámetro.
+    pub fn defs(&self) -> &'static [(&'static str, f32, f32, f32)] {
+        self.lv2.as_ref().map_or(self.kind.params(), |i| i.defs)
+    }
+
+    /// Instrumento LV2: toca los eventos MIDI del bloque y suma su sonido a `buf`.
+    pub fn tocar(&self, buf: &mut [[f32; 2]], eventos: &[(usize, crate::MidiEvent)], offline: bool) {
+        if self.bypass.load(Relaxed) {
+            return;
+        }
+        let st = if offline { self.state.lock().ok() } else { self.state.try_lock().ok() };
+        if let Some(mut st) = st
+            && let Some(p) = st.lv2.as_mut()
+        {
+            p.procesar(buf, &self.params, eventos);
+        }
     }
 
     /// `bpm`: tempo actual (para el delay sincronizado).
@@ -332,6 +384,10 @@ impl Fx {
             return;
         };
         let st = &mut *st;
+        if let Some(lv2) = st.lv2.as_mut() {
+            lv2.procesar(buf, &self.params, &[]);
+            return;
+        }
         let p: [f32; 32] = std::array::from_fn(|i| self.params.get(i).map_or(0.0, |a| a.get()));
         if let Some(pro) = st.pro.as_mut() {
             pro.process(buf, sr, bpm, &p, &self.medidores, offline);
@@ -564,7 +620,7 @@ impl Fx {
                 self.vu[1].set(rms(buf));
             }
             // Los Pro se procesan arriba (con su estado propio).
-            FxKind::TapePro | FxKind::SpacePro | FxKind::VocalPro | FxKind::MasterPro => {}
+            FxKind::TapePro | FxKind::SpacePro | FxKind::VocalPro | FxKind::MasterPro | FxKind::Externo => {}
         }
     }
 
@@ -1005,5 +1061,44 @@ mod pruebas_sidechain {
         let mut solo = vec![[0.1f32; 2]; 4800];
         comp.process_clave(&mut solo, 48_000.0, 120.0, true, Some(&vec![[0.0f32; 2]; 4800]));
         assert!(solo[4000][0] > 0.099, "sin clave no debe agacharse");
+    }
+}
+
+/// Plugins LV2 del sistema: se saltan si no están instalados (no hay plugins en la integración continua).
+#[cfg(all(test, target_os = "linux"))]
+mod pruebas_lv2 {
+    use super::*;
+
+    fn abrir(uri: &str) -> Option<Fx> {
+        let fx = Fx::desde_clave(&format!("lv2:{uri}"), 48_000);
+        if fx.is_none() {
+            eprintln!("{uri} no está instalado: se salta");
+        }
+        fx
+    }
+
+    #[test]
+    fn reverb_lv2_procesa_y_se_guarda() {
+        let Some(fx) = abrir("https://github.com/michaelwillis/dragonfly-reverb") else { return };
+        assert_eq!(fx.kind, FxKind::Externo);
+        assert_eq!(fx.clave(), "lv2:https://github.com/michaelwillis/dragonfly-reverb");
+        assert_eq!(fx.params.len(), fx.defs().len());
+        // Un golpe seguido de silencio: la reverb deja cola.
+        let mut buf = vec![[0f32; 2]; 48_000];
+        buf[0] = [1.0, 1.0];
+        buf.chunks_mut(512).for_each(|c| fx.process(c, 48_000.0, 120.0, true));
+        let cola = buf[4_800..24_000].iter().fold(0f32, |m, s| m.max(s[0].abs()));
+        assert!(cola > 1e-4, "sin cola de reverb: {cola}");
+    }
+
+    #[test]
+    fn instrumento_lv2_suena_con_notas() {
+        let Some(fx) = abrir("http://synthv1.sourceforge.net/lv2") else { return };
+        let mut buf = vec![[0f32; 2]; 512];
+        fx.tocar(&mut buf, &[(0, [0x90, 60, 100])], true);
+        for _ in 0..20 {
+            fx.tocar(&mut buf, &[], true);
+        }
+        assert!(buf.iter().any(|s| s[0].abs() > 1e-3), "el sintetizador no sonó");
     }
 }

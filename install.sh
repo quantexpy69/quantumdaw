@@ -11,16 +11,16 @@ if ! command -v cargo >/dev/null; then
   curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --no-modify-path
 fi
 
-# Cabeceras de ALSA (necesarias para compilar el audio).
-if ! pkg-config --exists alsa 2>/dev/null && [ ! -f .toolchain/sysroot/usr/lib64/pkgconfig/alsa.pc ]; then
+# Cabeceras de ALSA (audio) y de lilv (plugins LV2), necesarias para compilar.
+if ! pkg-config --exists lilv-0 2>/dev/null || { ! pkg-config --exists alsa 2>/dev/null && [ ! -f .toolchain/sysroot/usr/lib64/pkgconfig/alsa.pc ]; }; then
   . /etc/os-release 2>/dev/null || true
-  echo "Faltan las herramientas de compilación o las cabeceras de ALSA. Instálalas con:"
+  echo "Faltan las herramientas de compilación o las cabeceras de ALSA o lilv. Instálalas con:"
   case "${ID:-} ${ID_LIKE:-}" in
-    *debian* | *ubuntu*) echo "  sudo apt install build-essential pkg-config libasound2-dev" ;;
-    *fedora* | *rhel* | *centos* | *rocky* | *alma*) echo "  sudo dnf install gcc pkgconf-pkg-config alsa-lib-devel" ;;
-    *arch* | *manjaro* | *endeavouros*) echo "  sudo pacman -S --needed base-devel alsa-lib" ;;
-    *suse*) echo "  sudo zypper install gcc pkg-config alsa-devel" ;;
-    *) echo "  el compilador de C, pkg-config y el paquete de desarrollo de ALSA de tu distribución" ;;
+    *debian* | *ubuntu*) echo "  sudo apt install build-essential pkg-config libasound2-dev liblilv-dev" ;;
+    *fedora* | *rhel* | *centos* | *rocky* | *alma*) echo "  sudo dnf install gcc pkgconf-pkg-config alsa-lib-devel lilv-devel" ;;
+    *arch* | *manjaro* | *endeavouros*) echo "  sudo pacman -S --needed base-devel alsa-lib lilv" ;;
+    *suse*) echo "  sudo zypper install gcc pkg-config alsa-devel lilv-devel" ;;
+    *) echo "  el compilador de C, pkg-config y los paquetes de desarrollo de ALSA y lilv de tu distribución" ;;
   esac
   exit 1
 fi

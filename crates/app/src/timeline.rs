@@ -1506,7 +1506,7 @@ impl App {
                     if ui.checkbox(&mut on, "").on_hover_text(tr("Encendido / bypass")).changed() {
                         fx.bypass.store(!on, Relaxed);
                     }
-                    if ui.button(fx.kind.name()).on_hover_text(tr("Abrir el plugin")).clicked() {
+                    if ui.button(fx.nombre()).on_hover_text(tr("Abrir el plugin")).clicked() {
                         abrir = true;
                     }
                     if ui.small_button("✕").on_hover_text(tr("Quitar")).clicked() {

@@ -162,8 +162,11 @@ pub struct TrackState {
     pub pan_auto: Vec<(f64, f32)>,
     /// Parámetros del QUANTUM Synth (pistas MIDI).
     pub synth: Vec<f32>,
-    /// Instrumento de la pista MIDI: id del catálogo (instrumento real) o "synth:<preset>".
+    /// Instrumento de la pista MIDI: id del catálogo (instrumento real), "synth:<preset>" o "lv2:<uri>".
     pub instrument: String,
+    /// Parámetros del instrumento LV2 (en el orden de sus controles).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub plugin_params: Vec<f32>,
     /// Icono de la pista ("" = automático).
     pub icon: String,
     /// Pista de video: archivo (relativo al proyecto) y posición de inicio en segundos.

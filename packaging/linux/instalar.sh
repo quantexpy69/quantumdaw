@@ -33,18 +33,19 @@ gtk-update-icon-cache -q -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 FAMILIA="${ID:-} ${ID_LIKE:-}"
 faltan=()
 ldconfig -p 2>/dev/null | grep -q 'libasound\.so\.2' || [ -e /usr/lib/libasound.so.2 ] || faltan+=(alsa)
+ldconfig -p 2>/dev/null | grep -q 'liblilv-0\.so\.0' || [ -e /usr/lib/liblilv-0.so.0 ] || faltan+=(lilv)
 for c in ffmpeg 7z curl; do command -v "$c" >/dev/null || faltan+=("$c"); done
 if ((${#faltan[@]})); then
   echo "Faltan algunos componentes: ${faltan[*]}"
   case "$FAMILIA" in
-    *debian* | *ubuntu*) echo "  sudo apt install libasound2 ffmpeg p7zip-full curl" ;;
-    *fedora*) echo "  sudo dnf install alsa-lib ffmpeg-free p7zip curl" ;;
-    *rhel* | *centos* | *rocky* | *alma*) echo "  sudo dnf install epel-release && sudo dnf install alsa-lib p7zip curl" \
+    *debian* | *ubuntu*) echo "  sudo apt install libasound2 liblilv-0-0 ffmpeg p7zip-full curl" ;;
+    *fedora*) echo "  sudo dnf install alsa-lib lilv-libs ffmpeg-free p7zip curl" ;;
+    *rhel* | *centos* | *rocky* | *alma*) echo "  sudo dnf install epel-release && sudo dnf install alsa-lib lilv-libs p7zip curl" \
       "  (ffmpeg: activa RPM Fusion → https://rpmfusion.org/Configuration)" ;;
-    *arch* | *manjaro* | *endeavouros*) echo "  sudo pacman -S alsa-lib ffmpeg 7zip curl" ;;
-    *suse*) echo "  sudo zypper install alsa ffmpeg p7zip curl" ;;
+    *arch* | *manjaro* | *endeavouros*) echo "  sudo pacman -S alsa-lib lilv ffmpeg 7zip curl" ;;
+    *suse*) echo "  sudo zypper install alsa liblilv-0-0 ffmpeg p7zip curl" ;;
     *) echo "  Instálalos con el gestor de paquetes de tu distribución." ;;
   esac
-  echo "  (ALSA es necesaria para el audio; el resto solo para video e instrumentos descargables)."
+  echo "  (ALSA y lilv son necesarias para el audio y los plugins; el resto solo para video e instrumentos descargables)."
 fi
 echo "Listo: busca «QUANTUM» en el menú de aplicaciones o ejecuta: $PREFIX/bin/quantum-daw"

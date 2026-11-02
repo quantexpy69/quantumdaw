@@ -3,6 +3,7 @@
 mod caja;
 mod devices;
 pub mod loudness;
+pub mod lv2;
 pub mod pro;
 mod dsp;
 mod fx;
@@ -334,6 +335,8 @@ pub struct Node {
     /// Instrumento de las pistas MIDI: sampler (instrumento real) si lo hay, si no el sintetizador.
     pub synth: Option<Arc<Synth>>,
     pub sampler: Option<Arc<Sampler>>,
+    /// Instrumento LV2 de terceros (tiene prioridad sobre el sampler y el sintetizador).
+    pub plugin: Option<Arc<Fx>>,
     /// Canales de la interfaz (izquierdo, derecho) que alimentan la pista.
     pub input: Option<(usize, usize)>,
     /// Automatización en (frame, valor): volumen como posición de fader 0..1, panorama -1..1.
@@ -693,7 +696,7 @@ impl Engine {
                 node.clips.iter().for_each(|c| c.read(pos, tmp));
             }
             let listening = p.monitor.load(Relaxed) || p.arm.load(Relaxed);
-            if node.synth.is_some() || node.sampler.is_some() {
+            if node.synth.is_some() || node.sampler.is_some() || node.plugin.is_some() {
                 let mut ev = Events::new();
                 if playing {
                     node.clips.iter().for_each(|c| c.events(pos, end, &mut ev));
@@ -703,24 +706,28 @@ impl Engine {
                     secuencia.as_slice().iter().for_each(|&(at, e)| ev.push(at, e));
                 }
                 ev.sort();
-                match (&node.sampler, &node.synth) {
-                    (Some(s), _) => match node.salidas.as_ref().and_then(|m| Some((m, m.buffers.try_lock().ok()?))) {
-                        Some((m, mut b)) => {
-                            b.iter_mut().for_each(|x| x.fill([0.0; 2]));
-                            s.render_salidas(tmp, &mut b, &m.ruta, ev.as_slice(), sr, offline, pos, playing);
-                            // Cada pieza va a su canal (salvo que la pista esté silenciada).
-                            if !p.mute.load(Relaxed) {
-                                for (x, &d) in b.iter().zip(&m.destinos) {
-                                    if let Some(mut recv) = graph.get(d).and_then(|t| t.recv.try_lock().ok()) {
-                                        recv.iter_mut().zip(&x[..tmp.len()]).for_each(|(r, s)| *r = [r[0] + s[0], r[1] + s[1]]);
+                if let Some(plugin) = &node.plugin {
+                    plugin.tocar(tmp, ev.as_slice(), offline);
+                } else {
+                    match (&node.sampler, &node.synth) {
+                        (Some(s), _) => match node.salidas.as_ref().and_then(|m| Some((m, m.buffers.try_lock().ok()?))) {
+                            Some((m, mut b)) => {
+                                b.iter_mut().for_each(|x| x.fill([0.0; 2]));
+                                s.render_salidas(tmp, &mut b, &m.ruta, ev.as_slice(), sr, offline, pos, playing);
+                                // Cada pieza va a su canal (salvo que la pista esté silenciada).
+                                if !p.mute.load(Relaxed) {
+                                    for (x, &d) in b.iter().zip(&m.destinos) {
+                                        if let Some(mut recv) = graph.get(d).and_then(|t| t.recv.try_lock().ok()) {
+                                            recv.iter_mut().zip(&x[..tmp.len()]).for_each(|(r, s)| *r = [r[0] + s[0], r[1] + s[1]]);
+                                        }
                                     }
                                 }
                             }
-                        }
-                        None => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
-                    },
-                    (None, Some(s)) => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
-                    _ => {}
+                            None => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
+                        },
+                        (None, Some(s)) => s.render(tmp, ev.as_slice(), sr, offline, pos, playing),
+                        _ => {}
+                    }
                 }
             } else if let Some((l, r)) = node.input.filter(|&(l, r)| listening && l.max(r) < ich) {
                 // Entrada de la interfaz: medidor si la pista está armada o monitoreando; sonido solo con I.
