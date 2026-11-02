@@ -1,4 +1,5 @@
 //! Consola de mezcla al estilo Logic. Los canales se adaptan a la altura del panel.
+use crate::controlador::{Destino, Pedido};
 use crate::{
     library::LibItem,
     widgets::{self, rr},
@@ -131,7 +132,12 @@ impl App {
                     ui.add(welcome::logo(24.0));
                 }
                 let top = ui.scope(|ui| match i {
-                    Some(i) if compact => self.fx_button(ui, i),
+                    Some(i) if compact => {
+                        if matches!(self.s.tracks[i].kind, TrackKind::AudioMono | TrackKind::AudioStereo) {
+                            self.input_combo(ui, i);
+                        }
+                        self.fx_button(ui, i);
+                    }
                     Some(i) if self.s.tracks[i].kind == TrackKind::Click => _ = ui.label(RichText::new(tr("Clic (metrónomo)")).size(11.0).color(TEXT_DIM())),
                     Some(i) if self.s.tracks[i].midi() => {
                         let t = &self.s.tracks[i];
@@ -168,7 +174,11 @@ impl App {
                             v if v < 0 => format!("L{}", -v),
                             v => format!("R{v}"),
                         };
-                        touched |= widgets::pan_knob(ui, &mut pan).on_hover_text(tr("Panorama · arrastra arriba/abajo · doble clic: centro")).dragged();
+                        let r = widgets::pan_knob(ui, &mut pan).on_hover_text(tr("Panorama · arrastra arriba/abajo · doble clic: centro"));
+                        if let Some(i) = i {
+                            crate::controlador::menu(&r, Pedido::Destino(Destino::Panorama(self.s.tracks[i].id)));
+                        }
+                        touched |= r.dragged();
                         p.pan.set(pan);
                         ui.label(RichText::new(text).size(11.0).strong().color(if pan.abs() < 0.005 { TEXT_DIM() } else { ACCENT() }));
                     }
@@ -184,7 +194,9 @@ impl App {
                         self.peaks[li] = 0.0;
                     }
                 });
-                touched |= widgets::fader(ui, gain, level, fader_h).dragged();
+                let r = widgets::fader(ui, gain, level, fader_h);
+                crate::controlador::menu(&r, Pedido::Destino(i.map_or(Destino::VolumenMaster, |i| Destino::Volumen(self.s.tracks[i].id))));
+                touched |= r.dragged();
                 sep(ui);
                 if let Some(i) = i {
                     self.s.tracks[i].touching |= touched;
@@ -196,9 +208,13 @@ impl App {
                     });
                     let t = &self.s.tracks[i];
                     let group = t.group.and_then(|g| self.s.groups.get(g));
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("{}", i + 1)).monospace().strong().color(TEXT_DIM()));
-                        ui.label(group.map_or(RichText::new(" "), |g| RichText::new(&g.name).color(g.color)).size(11.0));
+                    // Número de canal grande en una placa del color de la pista, centrado; el grupo, debajo.
+                    ui.vertical_centered(|ui| {
+                        let numero = RichText::new(format!("{}", i + 1)).size(17.0).strong().color(BG());
+                        ui.add(egui::Button::new(numero).fill(t.color).min_size(vec2(40.0, 26.0)).corner_radius(rr(7.0)).sense(egui::Sense::hover()));
+                        if let Some(g) = group {
+                            ui.label(RichText::new(&g.name).size(11.0).color(g.color));
+                        }
                     });
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;

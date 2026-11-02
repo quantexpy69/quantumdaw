@@ -4,8 +4,11 @@ use crate::{keys::Wheel, library::LibItem, widgets::rr, *};
 use egui::{Align2, CornerRadius, CursorIcon, FontId, Id, Mesh, Painter, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, UiBuilder, pos2, vec2};
 use engine::{PEAK_BLOCK, fader_pos};
 
+/// Ancho de la columna del número de pista en la cabecera.
+const NUMERO_W: f32 = 22.0;
+
 /// Ancho por defecto, mínimo y máximo de la columna de cabeceras.
-pub const HEADER_W: f32 = 340.0;
+pub const HEADER_W: f32 = 356.0;
 pub const HEADER_MIN: f32 = 280.0;
 pub const HEADER_MAX: f32 = 720.0;
 const RULER_H: f32 = 30.0;
@@ -1199,7 +1202,7 @@ impl App {
             return;
         }
         let ich = self.engine.in_channels.max(1);
-        let (l, g) = ((t.input as usize).min(ich - 1), t.params.in_gain.get());
+        let ((l, der), g) = (canales_entrada(t, ich), t.params.in_gain.get());
         let frames = self.rec_data.len() / ich;
         let (mid, half) = (lane.center().y, lane.height() / 2.0 - 4.0);
         let mut mesh = Mesh::default();
@@ -1207,8 +1210,10 @@ impl App {
             let f0 = (frame_at(x as f32) as u64).saturating_sub(start) as usize;
             let f1 = ((frame_at(x as f32 + 1.0) as u64).saturating_sub(start) as usize).min(frames);
             let stride = ((f1.saturating_sub(f0)) / 64).max(1);
-            let peak = (f0..f1).step_by(stride).map(|k| self.rec_data[k * ich + l].abs() * g).fold(0f32, f32::max);
-            let h = (peak * half).clamp(0.5, half);
+            // Lo que entra por cualquiera de los dos lados (un micrófono suele ir en una sola entrada).
+            let peak = (f0..f1).step_by(stride).map(|k| self.rec_data[k * ich + l].abs().max(self.rec_data[k * ich + der].abs()) * g).fold(0f32, f32::max);
+            // En dB (desde -72): la voz o un instrumento se ven aunque entren bajos.
+            let h = (((20.0 * peak.max(1e-6).log10() + 72.0) / 72.0).clamp(0.0, 1.0) * half).max(0.5);
             mesh.add_colored_rect(Rect::from_x_y_ranges(x as f32..=x as f32 + 1.0, mid - h..=mid + h), TEXT());
         }
         p.add(mesh);
@@ -1379,7 +1384,9 @@ impl App {
         // Franja fina de color a la izquierda y número de pista pequeño.
         let k4 = rr(4.0) as u8;
         p.rect_filled(Rect::from_min_size(r.min, vec2(5.0, r.height())), CornerRadius { nw: k4, sw: k4, ne: 0, se: 0 }, t.color);
-        p.text(pos2(r.left() + 18.0, r.top() + 15.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(12.0), TEXT_DIM());
+        // Número de pista grande, en su propia columna junto a la franja de color, a la altura del icono.
+        let numero = if (i + 1) >= 100 { 13.0 } else { 17.0 };
+        p.text(pos2(r.left() + 5.0 + NUMERO_W / 2.0, r.top() + 28.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::new(numero, egui::FontFamily::Proportional), TEXT());
 
         // Medidor de salida de la pista (vertical, en el borde derecho).
         let meter = Rect::from_x_y_ranges(r.right() - 9.0..=r.right() - 4.0, r.top() + 6.0..=r.bottom() - 6.0);
@@ -1390,9 +1397,8 @@ impl App {
         p.rect_filled(Rect::from_min_max(pos2(meter.left(), meter.bottom() - fill * meter.height()), meter.max), rr(2.0), METER[(db > -12.0) as usize + (db > -3.0) as usize]);
         // Cabecera compacta: icono en un cuadro del color de la pista, nombre y subtítulo, M S ● arriba a
         // la derecha, fader horizontal y perilla de panorama. El resto está en el inspector (tecla I).
-        let tile = Rect::from_min_size(r.min + vec2(14.0, 8.0), vec2(40.0, 40.0));
+        let tile = Rect::from_min_size(r.min + vec2(NUMERO_W + 8.0, 8.0), vec2(40.0, 40.0));
         p.rect_filled(tile, rr(10.0), self.s.tracks[i].color.lerp_to_gamma(BG(), 0.72));
-        p.text(pos2(r.left() + 9.0, r.bottom() - 9.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(9.5), TEXT_DIM());
         let proxy = self.usa_proxy(i);
         let subtitulo = {
             let t = &self.s.tracks[i];
@@ -1400,7 +1406,7 @@ impl App {
                 TrackKind::Midi => instruments::find(&t.instrument).map_or_else(|| t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth").to_string(), |e| e.name.to_string()),
                 TrackKind::Click => tr("Metrónomo como audio").to_string(),
                 TrackKind::Video => t.video.as_ref().map_or(tr("sin video").to_string(), |v| format!("Video · {:.1} s", v.duration())),
-                _ => format!("In {} / {} {}", t.input + 1, t.clips.len(), tr("regiones")),
+                _ => format!("{} {}", t.clips.len(), tr("regiones")),
             };
             if t.congelada {
                 format!("{base} · {}", tr("CONGELADA"))
@@ -1410,7 +1416,7 @@ impl App {
                 base
             }
         };
-        ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(14.0, 8.0), r.max - vec2(14.0, 6.0))), |ui| {
+        ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(NUMERO_W + 8.0, 8.0), r.max - vec2(14.0, 6.0))), |ui| {
             ui.set_clip_rect(clip.intersect(r));
             ui.spacing_mut().item_spacing = vec2(4.0, 2.0);
             ui.horizontal(|ui| {
@@ -1422,14 +1428,15 @@ impl App {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         let t = &mut self.s.tracks[i];
-                        let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(14.0)).text_color(TEXT()).desired_width((r.width() - 210.0).max(70.0));
+                        let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(14.0)).text_color(TEXT()).desired_width((r.width() - 232.0 - NUMERO_W).max(70.0));
                         ui.add(nombre).on_hover_text(tr("Nombre de la pista (clic para editar)"));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
-                            // R, S y M: teclas cuadradas con su color (de derecha a izquierda: M S R).
+                            // R, I, S y M: teclas cuadradas con su color (de derecha a izquierda: M S I R). I junto a
+                            // R: escucharse en vivo (retorno) mientras se graba.
                             ui.spacing_mut().item_spacing.x = 4.0;
                             let lado = vec2(widgets::TECLA_CHICA, widgets::TECLA_CHICA);
-                            for (k, texto, ayuda) in [(0, "R", "Armar grabación"), (2, "S", "Solo"), (1, "M", "Mute")] {
+                            for (k, texto, ayuda) in [(0, "R", "Armar grabación"), (3, "I", "Monitoreo de entrada: escucharte en vivo por los auriculares o monitores"), (2, "S", "Solo"), (1, "M", "Mute")] {
                                 let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
                                 if widgets::tecla(ui, lado, on, widgets::color_bandera(k), texto).on_hover_text(tr(ayuda)).clicked() {
                                     for m in self.flag_targets(i, k) {
@@ -1442,7 +1449,16 @@ impl App {
                             }
                         });
                     });
-                    ui.label(RichText::new(&subtitulo).size(11.5).color(if proxy { METER[0] } else { TEXT_DIM() }));
+                    ui.horizontal(|ui| {
+                        if matches!(self.s.tracks[i].kind, TrackKind::AudioMono | TrackKind::AudioStereo) {
+                            self.input_combo(ui, i);
+                        }
+                        // Versiones grabadas (tomas): en la fila del subtítulo, donde siempre hay lugar.
+                        if self.s.tracks[i].takes.len() > 1 {
+                            self.boton_versiones(ui, i);
+                        }
+                        ui.add(egui::Label::new(RichText::new(&subtitulo).size(11.5).color(if proxy { METER[0] } else { TEXT_DIM() })).truncate());
+                    });
                 });
             });
             if r.height() < 76.0 {
@@ -1451,24 +1467,35 @@ impl App {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 let params = self.s.tracks[i].params.clone();
-                widgets::fader_h(ui, &params.gain, (r.width() - 90.0).max(60.0), self.levels.get(i).copied());
+                let id = self.s.tracks[i].id;
+                // Armada o monitoreando, una pista de audio muestra lo que entra por su entrada (para ver
+                // si llega sonido antes de grabar); si no, lo que suena.
+                let t = &self.s.tracks[i];
+                let entrada = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo) && (params.arm.load(Relaxed) || params.monitor.load(Relaxed));
+                let nivel = if entrada { self.in_levels.get(i) } else { self.levels.get(i) }.copied();
+                let f = widgets::fader_h(ui, &params.gain, (r.width() - 90.0 - NUMERO_W).max(60.0), nivel);
+                crate::controlador::menu(&f, crate::controlador::Pedido::Destino(crate::controlador::Destino::Volumen(id)));
                 let mut pan = params.pan.get();
-                if widgets::pan_knob(ui, &mut pan).changed() {
+                let p = widgets::pan_knob(ui, &mut pan);
+                crate::controlador::menu(&p, crate::controlador::Pedido::Destino(crate::controlador::Destino::Panorama(id)));
+                if p.changed() {
                     params.pan.set(pan);
-                }
-                let t = &mut self.s.tracks[i];
-                if t.takes.len() > 1 {
-                    let label = RichText::new(format!("{} {}", tr("Tomas"), t.takes.len())).size(10.0).color(if t.show_takes { ACCENT() } else { TEXT_DIM() });
-                    if ui.add(egui::Button::new(label).small()).on_hover_text(tr("Mostrar u ocultar los carriles de tomas (comping)")).clicked() {
-                        t.show_takes = !t.show_takes;
-                    }
                 }
             });
             if self.show_auto && r.height() >= 96.0 {
                 let t = &mut self.s.tracks[i];
-                egui::ComboBox::from_id_salt(("auto", i)).width(70.0).selected_text(if t.auto_param == 0 { tr("Volumen") } else { tr("Panorama") }).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut t.auto_param, 0, tr("Volumen"));
-                    ui.selectable_value(&mut t.auto_param, 1, tr("Panorama"));
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt(("auto", i)).width(70.0).selected_text(if t.auto_param == 0 { tr("Volumen") } else { tr("Panorama") }).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut t.auto_param, 0, tr("Volumen"));
+                        ui.selectable_value(&mut t.auto_param, 1, tr("Panorama"));
+                    });
+                    // Modo de escritura: con la vista de automatización abierta, «Lectura» graba como «Toque».
+                    const MODOS: [&str; 5] = ["Toque", "Apagado", "Toque", "Retención", "Escritura"];
+                    egui::ComboBox::from_id_salt(("auto-modo", i)).width(80.0).selected_text(tr(MODOS[t.auto_mode.min(4) as usize])).show_ui(ui, |ui| {
+                        for (k, ayuda) in [(2u8, "Graba mientras mueves el fader, la perilla o un control del teclado"), (3, "Graba desde que tocas un control hasta parar"), (4, "Graba siempre mientras se reproduce"), (1, "Ignora la automatización")] {
+                            ui.selectable_value(&mut t.auto_mode, k, tr(MODOS[k as usize])).on_hover_text(tr(ayuda));
+                        }
+                    });
                 });
             }
         });
@@ -1541,22 +1568,143 @@ impl App {
     }
 
     /// Selector del canal de la interfaz que alimenta la pista.
+    /// Versiones de una pista de audio: cada vez que se graba encima queda una toma nueva en la misma
+    /// pista. Se elige cuál suena entera, o se arma una mezcla por tramos en los carriles de tomas.
+    fn boton_versiones(&mut self, ui: &mut egui::Ui, i: usize) {
+        let t = &self.s.tracks[i];
+        let n = t.takes.len();
+        // Toma que suena: la que se oye en todo lo que grabó (fuera de eso sigue la original), o
+        // ninguna si es una mezcla por tramos (comping).
+        let pisa = |k: usize, a: u64, b: u64| t.takes[k].iter().any(|c| c.start < b && c.end() > a);
+        let entera = (0..n).rev().find(|&k| t.comp.iter().all(|&(a, b, j)| j == k || (j == 0 && !pisa(k, a, b))));
+        let texto = match entera {
+            Some(k) => format!("{} {}/{n}", tr("Toma"), k + 1),
+            None => format!("{} · {n}", tr("Mezcla de tomas")),
+        };
+        let b = egui::Button::new(RichText::new(texto).size(11.0).strong().color(BG())).fill(ACCENT()).corner_radius(rr(5.0)).min_size(vec2(64.0, 18.0));
+        let (mut elegida, mut carriles, mut fijar, mut borrar) = (None, false, false, None);
+        egui::containers::menu::MenuButton::from_button(b).ui(ui, |ui| {
+            widgets::menu_style(ui);
+            ui.label(RichText::new(tr("VERSIONES GRABADAS")).size(10.0).color(TEXT_DIM()));
+            for k in (0..n).rev() {
+                let nombre = if k == 0 { format!("{} 1 · {}", tr("Toma"), tr("original")) } else { format!("{} {}", tr("Toma"), k + 1) };
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(entera == Some(k), nombre).on_hover_text(tr("Que suene esta toma entera")).clicked() {
+                        elegida = Some(k);
+                        ui.close();
+                    }
+                    if ui.small_button(tr("Borrar")).on_hover_text(tr("Quita esta toma de la pista")).clicked() {
+                        borrar = Some(k);
+                        ui.close();
+                    }
+                });
+            }
+            ui.separator();
+            if ui.button(tr("Editar y mover lo que suena…")).on_hover_text(tr("Deja lo que suena ahora como regiones normales: se pueden mover, recortar, cortar y editar. Las otras tomas se quitan de la pista (los archivos quedan en el proyecto).")).clicked() {
+                fijar = true;
+                ui.close();
+            }
+            let texto = if self.s.tracks[i].show_takes { "Ocultar carriles de tomas" } else { "Elegir por tramos (carriles de tomas)…" };
+            if ui.button(tr(texto)).on_hover_text(tr("Toma las mejores partes de cada versión: arrastra sobre un carril para usar ese tramo")).clicked() {
+                carriles = true;
+                ui.close();
+            }
+        })
+        .0
+        .on_hover_text(tr("Versiones de esta pista: graba encima y elige la mejor toma sin crear otra pista"));
+        if let Some(k) = elegida {
+            self.edit();
+            let xf = self.xfade();
+            let t = &mut self.s.tracks[i];
+            t.comp = vec![(0, u64::MAX, 0)];
+            if k > 0 {
+                for (a, b) in t.takes[k].iter().map(|c| (c.start, c.end())).collect::<Vec<_>>() {
+                    t.comp = set_segment(&t.comp, a, b, k);
+                }
+            }
+            t.clips = comp_clips(&t.takes, &t.comp, xf);
+            self.dirty = true;
+            self.status = format!("{} {} · {}", tr("Suena la toma"), k + 1, self.s.tracks[i].name);
+        }
+        if carriles {
+            let t = &mut self.s.tracks[i];
+            t.show_takes = !t.show_takes;
+        }
+        if let Some(k) = borrar {
+            self.edit();
+            let xf = self.xfade();
+            let t = &mut self.s.tracks[i];
+            t.takes.remove(k);
+            // Los tramos de la toma borrada pasan a la primera que queda; las siguientes bajan un lugar.
+            t.comp = t.comp.iter().map(|&(a, b, j)| (a, b, if j == k { 0 } else if j > k { j - 1 } else { j })).collect();
+            t.clips = comp_clips(&t.takes, &t.comp, xf);
+            if t.takes.len() <= 1 {
+                (t.takes, t.comp, t.show_takes) = (vec![], vec![], false);
+            }
+            self.dirty = true;
+            self.status = format!("{} {} {}", tr("Toma"), k + 1, tr("borrada"));
+        }
+        if fijar {
+            self.edit();
+            let t = &mut self.s.tracks[i];
+            (t.takes, t.comp, t.show_takes) = (vec![], vec![], false);
+            self.status = tr("Listo: la toma quedó como regiones normales; ya se puede mover y editar").into();
+        }
+    }
+
+    /// Botón de entrada de una pista de audio: de qué canales de la interfaz entra el sonido al grabar
+    /// o monitorear. Se ve en la cabecera, el mixer y el inspector.
     pub fn input_combo(&mut self, ui: &mut egui::Ui, i: usize) {
         let (n, t) = (self.engine.in_channels, &self.s.tracks[i]);
         let stereo = t.kind == TrackKind::AudioStereo;
+        // Par estéreo (In 1-2) o una entrada sola (In 2: un micrófono, que suena al centro).
         let label = |c: u16| match n {
-            0 => "Sin entrada".to_string(),
-            _ if stereo && (c as usize) + 1 < n => format!("In {}-{}", c + 1, c + 2),
-            _ => format!("In {}", c + 1),
+            0 => tr("Sin entrada").to_string(),
+            _ if stereo && c & ENTRADA_MONO == 0 && ((c & 0xFF) as usize) + 1 < n => format!("In {}-{}", c + 1, c + 2),
+            _ => format!("In {}", (c & 0xFF) + 1),
         };
-        let mut ch = t.input;
-        egui::ComboBox::from_id_salt(("input", i)).width(64.0).selected_text(label(ch)).show_ui(ui, |ui| {
-            for c in (0..n as u16).step_by(if stereo { 2 } else { 1 }) {
-                ui.selectable_value(&mut ch, c, label(c));
+        let actual = t.input;
+        let texto = RichText::new(label(actual)).size(11.0).strong().color(if n == 0 { METER[1] } else { TEXT() });
+        let b = egui::Button::new(texto).fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(5.0)).min_size(vec2(58.0, 18.0));
+        let (mut elegido, mut configurar) = (None, false);
+        egui::containers::menu::MenuButton::from_button(b).ui(ui, |ui| {
+            widgets::menu_style(ui);
+            ui.label(RichText::new(tr("ENTRADA DE AUDIO")).size(10.0).color(TEXT_DIM()));
+            let dispositivo = if self.audio.input.is_empty() { tr("Entrada predeterminada").to_string() } else { self.audio.input.clone() };
+            ui.label(RichText::new(dispositivo).size(11.5).color(TEXT_DIM()));
+            if n == 0 {
+                ui.label(RichText::new(tr("No hay entrada de audio abierta")).color(METER[1]));
             }
-        });
-        if ch != self.s.tracks[i].input {
-            (self.s.tracks[i].input, self.dirty) = (ch, true);
+            if stereo && n > 1 {
+                ui.label(RichText::new(tr("Par estéreo (teclado, línea)")).size(10.0).color(TEXT_DIM()));
+                for c in (0..n as u16 - 1).step_by(2) {
+                    if ui.selectable_label(c == actual, label(c)).clicked() {
+                        elegido = Some(c);
+                        ui.close();
+                    }
+                }
+                ui.label(RichText::new(tr("Una entrada (micrófono, guitarra): suena al centro")).size(10.0).color(TEXT_DIM()));
+            }
+            for c in 0..n as u16 {
+                let v = if stereo { c | ENTRADA_MONO } else { c };
+                if ui.selectable_label(v == actual || (!stereo && c == actual), label(v)).clicked() {
+                    elegido = Some(v);
+                    ui.close();
+                }
+            }
+            ui.separator();
+            if ui.button(tr("Cambiar dispositivo de entrada…")).clicked() {
+                configurar = true;
+                ui.close();
+            }
+        })
+        .0
+        .on_hover_text(tr("Entrada: de dónde entra el sonido de esta pista"));
+        if let Some(c) = elegido.filter(|&c| c != actual) {
+            (self.s.tracks[i].input, self.dirty) = (c, true);
+        }
+        if configurar {
+            self.dialog = Some(Dialog::Settings(self.audio.clone(), self.rec_bits, engine::audio_devices(), engine::midi_ports(), self.config.midi_port.clone()));
         }
     }
 

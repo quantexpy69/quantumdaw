@@ -141,14 +141,19 @@ pub fn param_knob(ui: &mut egui::Ui, kind: Option<FxKind>, def: (&str, f32, f32,
     perilla(ui, kind, def, a, 58.0);
 }
 
+/// Valor de un parámetro para la posición `t` (0..1) de su perilla: escala logarítmica en rangos
+/// amplios y redondeo en los discretos. Lo usan la perilla y los controles MIDI asignados.
+pub fn valor_de_perilla((name, min, max, _): (&str, f32, f32, f32), t: f32) -> f32 {
+    let v = if min > 0.0 && max / min > 10.0 { min * (max / min).powf(t) } else { min + t * (max - min) };
+    let discreto = DISCRETE.contains(&name) || engine::lv2::param(name).is_some_and(|m| m.entero || m.conmutador);
+    if discreto { v.round() } else { v }
+}
+
 /// Perilla de un parámetro con su valor y su nombre, del tamaño indicado.
 pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (&str, f32, f32, f32), a: &AtomicF32, size: f32) {
     let log = min > 0.0 && max / min > 10.0;
     let to_t = |v: f32| {
         if log { (v / min).ln() / (max / min).ln() } else { (v - min) / (max - min) }
-    };
-    let from_t = |t: f32| {
-        if log { min * (max / min).powf(t) } else { min + t * (max - min) }
     };
     let color = kind_color(kind);
     ui.allocate_ui(vec2(size + 26.0, size + 44.0), |ui| {
@@ -157,10 +162,9 @@ pub fn perilla(ui: &mut egui::Ui, kind: Option<FxKind>, (name, min, max, def): (
             let mut t = to_t(a.get());
             let r = widgets::console_knob_size(ui, &mut t, to_t(def), color, size);
             if r.dragged() || r.double_clicked() {
-                let v = from_t(t);
-                let discreto = DISCRETE.contains(&name) || engine::lv2::param(name).is_some_and(|m| m.entero || m.conmutador);
-                a.set(if discreto { v.round() } else { v });
+                a.set(valor_de_perilla((name, min, max, def), t));
             }
+            crate::controlador::menu_perilla(&r, a);
             ui.label(RichText::new(value_text(kind, name, a.get())).monospace().size(11.0).strong().color(color));
             // Nombre en una sola línea: si no entra en la celda, la letra se achica un poco (no se corta).
             let nombre = tr(name.trim_end_matches(" dB").trim_end_matches(" ms")).to_string();

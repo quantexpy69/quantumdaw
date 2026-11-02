@@ -5,6 +5,7 @@ mod acordes;
 mod analyzer;
 mod audioedit;
 mod chrome;
+mod controlador;
 mod creativo;
 mod generador;
 mod edicion;
@@ -64,17 +65,12 @@ use std::{
 // Tokens de color del tema activo (Ver → Tema). Marino es el predeterminado; Grafito, el original
 // de grises neutros al estilo de Logic.
 /// Temas: nombre y colores (fondo, panel, elevado, borde, texto, texto tenue, acento).
-const TEMAS: [(&str, [Color32; 7]); 8] = [
-    // Marino (predeterminado): azul marino profundo con acento cian.
-    ("Marino", [Color32::from_rgb(0x03, 0x0B, 0x21), Color32::from_rgb(0x07, 0x1A, 0x33), Color32::from_rgb(0x0B, 0x24, 0x40), Color32::from_rgb(0x16, 0x36, 0x5A), Color32::from_rgb(0xDC, 0xE8, 0xF2), Color32::from_rgb(0x7F, 0x98, 0xB0), Color32::from_rgb(0x3F, 0xB6, 0xD3)]),
-    // Pizarra: azul grisáceo oscuro con acento naranja.
-    ("Pizarra", [Color32::from_rgb(0x1E, 0x24, 0x28), Color32::from_rgb(0x26, 0x2C, 0x31), Color32::from_rgb(0x2F, 0x37, 0x3D), Color32::from_rgb(0x3B, 0x45, 0x4C), Color32::from_rgb(0xD6, 0xDC, 0xE0), Color32::from_rgb(0x8A, 0x94, 0x9A), Color32::from_rgb(0xEC, 0xA6, 0x49)]),
+const TEMAS: [(&str, [Color32; 7]); 3] = [
+    // Estudio (predeterminado): gris oscuro neutro y sutil, de estudio profesional, con acento azul.
+    ("Estudio", [Color32::from_rgb(0x1B, 0x1C, 0x1F), Color32::from_rgb(0x23, 0x25, 0x29), Color32::from_rgb(0x2C, 0x2F, 0x34), Color32::from_rgb(0x3A, 0x3E, 0x44), Color32::from_rgb(0xE4, 0xE6, 0xEA), Color32::from_rgb(0x90, 0x97, 0xA0), Color32::from_rgb(0x4C, 0x9E, 0xEB)]),
     ("Grafito", [Color32::from_rgb(0x1A, 0x1A, 0x1C), Color32::from_rgb(0x25, 0x25, 0x28), Color32::from_rgb(0x30, 0x30, 0x34), Color32::from_rgb(0x3E, 0x3E, 0x44), Color32::from_rgb(0xED, 0xED, 0xEF), Color32::from_rgb(0xA3, 0xA3, 0xAB), Color32::from_rgb(0x5B, 0x8C, 0xFF)]),
-    ("Medianoche", [Color32::from_rgb(0x12, 0x16, 0x1F), Color32::from_rgb(0x1A, 0x20, 0x30), Color32::from_rgb(0x23, 0x2B, 0x3D), Color32::from_rgb(0x33, 0x40, 0x5A), Color32::from_rgb(0xE6, 0xEC, 0xF5), Color32::from_rgb(0x9A, 0xA6, 0xBC), Color32::from_rgb(0x4F, 0xC3, 0xF7)]),
-    ("Carbón", [Color32::from_rgb(0x0B, 0x0B, 0x0C), Color32::from_rgb(0x15, 0x15, 0x17), Color32::from_rgb(0x1E, 0x1E, 0x21), Color32::from_rgb(0x2C, 0x2C, 0x31), Color32::from_rgb(0xF2, 0xF2, 0xF2), Color32::from_rgb(0x9C, 0x9C, 0xA3), Color32::from_rgb(0xFF, 0x7A, 0x45)]),
-    ("Ciruela", [Color32::from_rgb(0x18, 0x14, 0x1D), Color32::from_rgb(0x22, 0x1C, 0x29), Color32::from_rgb(0x2D, 0x25, 0x36), Color32::from_rgb(0x41, 0x36, 0x4F), Color32::from_rgb(0xEE, 0xE8, 0xF4), Color32::from_rgb(0xA7, 0x9D, 0xB5), Color32::from_rgb(0xC7, 0x7D, 0xFF)]),
-    ("Bosque", [Color32::from_rgb(0x12, 0x18, 0x15), Color32::from_rgb(0x1A, 0x22, 0x1D), Color32::from_rgb(0x23, 0x30, 0x29), Color32::from_rgb(0x34, 0x45, 0x39), Color32::from_rgb(0xE7, 0xF0, 0xEA), Color32::from_rgb(0x9D, 0xB0, 0xA3), Color32::from_rgb(0x4A, 0xDE, 0x80)]),
-    ("Ámbar", [Color32::from_rgb(0x1B, 0x17, 0x12), Color32::from_rgb(0x25, 0x20, 0x1A), Color32::from_rgb(0x31, 0x2A, 0x21), Color32::from_rgb(0x46, 0x3C, 0x2F), Color32::from_rgb(0xF3, 0xEC, 0xE2), Color32::from_rgb(0xB3, 0xA6, 0x91), Color32::from_rgb(0xFF, 0xB0, 0x20)]),
+    // Marino: azul marino profundo con acento cian.
+    ("Marino", [Color32::from_rgb(0x03, 0x0B, 0x21), Color32::from_rgb(0x07, 0x1A, 0x33), Color32::from_rgb(0x0B, 0x24, 0x40), Color32::from_rgb(0x16, 0x36, 0x5A), Color32::from_rgb(0xDC, 0xE8, 0xF2), Color32::from_rgb(0x7F, 0x98, 0xB0), Color32::from_rgb(0x3F, 0xB6, 0xD3)]),
 ];
 static TEMA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -218,6 +214,8 @@ struct Config {
     separadas: Vec<String>,
     /// Tema de color (índice en `TEMAS`).
     tema: usize,
+    /// Ya se pasó a los tres temas actuales (antes había ocho y el índice era otro).
+    temas_3: bool,
     /// Metrónomo: volumen del clic y acento del primer tiempo (dB).
     clic_nivel: f32,
     clic_acento: f32,
@@ -225,6 +223,8 @@ struct Config {
     hidden_plugins: Vec<PathBuf>,
     /// Carpetas propias con plugins (LV2, VST3, CLAP) e instrumentos SFZ, además de las estándar.
     carpetas_usuario: Vec<PathBuf>,
+    /// Controles MIDI de la pista elegida, el master y el transporte: (número de control, destino).
+    controles_midi: Vec<(u8, String)>,
     /// Favoritos de la biblioteca ("fx:Compressor", "inst:guitarra-nylon").
     lib_favoritos: Vec<String>,
     /// Claves de licencia de los plugins QUANTUM Pro.
@@ -397,6 +397,17 @@ fn comp_clips(takes: &[Vec<Clip>], comp: &[(u64, u64, usize)], xf: u64) -> Vec<C
             })
         })
         .collect()
+}
+
+/// Marca en `Track::input` de una pista estéreo que toma una sola entrada (un micrófono) en los dos lados.
+const ENTRADA_MONO: u16 = 0x100;
+
+/// Canales (izquierdo, derecho) de la interfaz que usa una pista de audio. En una estéreo con una
+/// entrada sola, la misma en los dos lados: el micrófono suena al centro y no de un solo lado.
+fn canales_entrada(t: &Track, ich: usize) -> (usize, usize) {
+    let ultimo = ich.saturating_sub(1);
+    let c = ((t.input & 0xFF) as usize).min(ultimo);
+    if t.kind == TrackKind::AudioStereo && t.input & ENTRADA_MONO == 0 { (c, (c + 1).min(ultimo)) } else { (c, c) }
 }
 
 /// Botón del canal por índice: 0 = grabar, 1 = mute, 2 = solo, 3 = monitoreo de entrada.
@@ -779,6 +790,15 @@ impl App {
         instruments::set_carpetas(&config.carpetas_usuario);
         std::thread::spawn(engine::lv2::catalogo);
         let plugins = library::scan_plugins(&config.carpetas_usuario);
+        // Los controles del teclado (perillas, botones) despiertan la interfaz aunque esté quieta.
+        let despertar = ctx.clone();
+        engine::al_llegar_control(move || despertar.request_repaint());
+        // Al pasar de ocho temas a tres, todos empiezan con el oscuro de estudio.
+        let mut config = config;
+        if !config.temas_3 || config.tema >= TEMAS.len() {
+            (config.tema, config.temas_3) = (0, true);
+            config.save();
+        }
         TEMA.store(config.tema, Relaxed);
         // Fuente musical (Bravura, SMuFL) para la partitura.
         let mut fuentes = egui::FontDefinitions::default();
@@ -1101,6 +1121,7 @@ impl App {
             (_, Some(err)) => format!("Proyecto «{name}» cargado · sin entrada de audio: {err}"),
             _ => format!("Proyecto «{name}» cargado · {}", self.dir.display()),
         };
+        self.cargar_controles(&p.controles_midi);
         self.foto_guardada = serde_json::to_value(self.to_project()).ok();
         // Pistas MIDI que quedaron escuchando el teclado (versiones anteriores las dejaban así): al
         // abrir el piano roll de otra se apagan, para que al tocar suene un solo instrumento.
@@ -1166,6 +1187,7 @@ impl App {
             sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             partitura: (self.partitura_app.doc != project::partitura::Partitura::default()).then(|| self.partitura_app.doc.clone()),
             master_fx: self.master_fx.iter().map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
+            controles_midi: self.controles_del_proyecto(),
             ..Default::default()
         }
     }
@@ -1544,8 +1566,7 @@ impl App {
         let slot = |id: u64| order.iter().position(|&i| self.s.tracks[i].id == id);
         let graph = order.iter().map(|&i| {
             let t = &self.s.tracks[i];
-            let l = t.input as usize;
-            let r = if t.kind == TrackKind::AudioStereo { (l + 1).min(ich.saturating_sub(1)) } else { l };
+            let (l, r) = canales_entrada(t, ich);
             let audio_in = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo);
             // Con proxys, la pista suena desde su render (sin procesar instrumento ni efectos en vivo),
             // salvo que haya cambiado desde que se generó o se esté tocando en vivo (armada o monitoreando).
@@ -2190,16 +2211,19 @@ impl App {
     /// Escribe la automatización de volumen y panorama mientras se reproduce: Touch mientras se
     /// mueve el fader o el panorama, Latch desde que se toca hasta parar, Write siempre.
     fn write_automation(&mut self) {
-        let (playing, pos) = (self.playing(), self.pos());
+        let (playing, pos, mostrar) = (self.playing(), self.pos(), self.show_auto);
         let writing: Vec<bool> = self
             .s
             .tracks
             .iter_mut()
             .map(|t| {
                 let touching = std::mem::take(&mut t.touching);
-                t.latched = playing && (t.latched || (t.auto_mode == 3 && touching));
+                // Con la vista de automatización abierta, «Lectura» escribe como «Toque»: mover el fader, la
+                // perilla o un control del teclado mientras suena graba la curva sin elegir otro modo.
+                let modo = if mostrar && t.auto_mode == 0 { 2 } else { t.auto_mode };
+                t.latched = playing && (t.latched || (modo == 3 && touching));
                 playing
-                    && match t.auto_mode {
+                    && match modo {
                         2 => touching,
                         3 => t.latched,
                         4 => true,
@@ -2336,20 +2360,38 @@ impl App {
         let (sr, bits, ich) = (self.engine.sample_rate, self.rec_bits, self.engine.in_channels.max(1));
         let mut notes = vec![];
         let mut held: HashMap<u8, (u64, u8)> = HashMap::new();
+        // Pedal de sustain: las teclas soltadas con el pedal abajo suenan hasta que se levanta.
+        let (mut pedal, mut sostenidas) = (false, vec![]);
         for &(at, e) in &midi {
             let rel = at.saturating_sub(start);
-            match (e[0] & 0xF0, e[2]) {
-                (0x90, v) if v > 0 => _ = held.insert(e[1], (rel, v)),
-                (0x80 | 0x90, _) => {
-                    if let Some((s, v)) = held.remove(&e[1]) {
+            let cerrar: Vec<u8> = match (e[0] & 0xF0, e[2]) {
+                (0x90, v) if v > 0 => {
+                    sostenidas.retain(|&k| k != e[1]);
+                    // La misma tecla otra vez (sostenida por el pedal): la nota anterior termina aquí.
+                    if let Some((s, v)) = held.insert(e[1], (rel, v)) {
                         notes.push(Note::new(s, (rel - s).max(1), e[1], v));
                     }
+                    vec![]
                 }
-                _ => {}
+                (0x80 | 0x90, _) if pedal => {
+                    sostenidas.push(e[1]);
+                    vec![]
+                }
+                (0x80 | 0x90, _) => vec![e[1]],
+                (0xB0, v) if e[1] == 64 => {
+                    pedal = v >= 64;
+                    if pedal { vec![] } else { std::mem::take(&mut sostenidas) }
+                }
+                _ => vec![],
+            };
+            for key in cerrar {
+                if let Some((s, v)) = held.remove(&key) {
+                    notes.push(Note::new(s, (rel - s).max(1), key, v));
+                }
             }
         }
         notes.extend(held.into_iter().map(|(key, (s, vel))| Note::new(s, end.saturating_sub(start + s).max(1), key, vel)));
-        let (mut errors, xf) = (vec![], self.xfade());
+        let (mut errors, mut silenciosas, mut centradas, xf) = (vec![], vec![], vec![], self.xfade());
         let ts = stamp();
         let mut open_roll = None;
         for (ti, t) in self.s.tracks.iter_mut().enumerate().filter(|(_, t)| t.params.arm.load(Relaxed)) {
@@ -2378,14 +2420,29 @@ impl App {
                 continue;
             }
             let mono = t.kind == TrackKind::AudioMono;
-            let (l, g) = ((t.input as usize).min(ich - 1), t.params.in_gain.get());
-            let r = if mono { l } else { (l + 1).min(ich - 1) };
+            let ((mut l, mut r), g) = (canales_entrada(t, ich), t.params.in_gain.get());
+            // Pista estéreo con el micrófono en una sola entrada (un lado mudo y el otro con sonido): se
+            // graba esa entrada en los dos lados y la pista queda en ella, para que no suene de un solo lado.
+            if l != r {
+                let pico = |c: usize| data.chunks_exact(ich).fold(0f32, |m, f| m.max(f[c].abs()));
+                let (pl, pr) = (pico(l), pico(r));
+                let unica = if pl < 0.001 && pr > 0.01 { Some(r) } else if pr < 0.001 && pl > 0.01 { Some(l) } else { None };
+                if let Some(c) = unica {
+                    (l, r) = (c, c);
+                    t.input = c as u16 | ENTRADA_MONO;
+                    centradas.push(format!("{} → In {}", t.name, c + 1));
+                }
+            }
             let frames: Vec<[f32; 2]> = data.chunks_exact(ich).map(|c| [c[l] * g, c[r] * g]).collect();
             if frames.is_empty() {
                 continue;
             }
             let file = format!("{AUDIO_DIR}/{}-{ts}.wav", safe(&t.name));
             let samples: Vec<f32> = if mono { frames.iter().map(|f| f[0]).collect() } else { frames.iter().flatten().copied().collect() };
+            // Toma casi en silencio (bajo -60 dB): no entró sonido por la entrada elegida.
+            if samples.iter().fold(0f32, |m, s| m.max(s.abs())) < 0.001 {
+                silenciosas.push(t.name.clone());
+            }
             match project::write_wav(&self.dir.join(&file), sr, 2 - mono as u16, bits, &samples) {
                 Ok(()) => {
                     let nc = Clip::audio(AudioBuf::new(file, frames), start);
@@ -2407,7 +2464,20 @@ impl App {
         if let Some((i, j)) = open_roll.filter(|_| self.roll.target.is_none_or(|(ti, _)| ti == open_roll.map_or(0, |o| o.0))) {
             self.roll.open(i, j);
         }
-        self.status = if errors.is_empty() { "Grabación guardada".into() } else { format!("Error al guardar la toma: {}", errors.join(", ")) };
+        self.status = if !errors.is_empty() {
+            format!("Error al guardar la toma: {}", errors.join(", "))
+        } else if !silenciosas.is_empty() {
+            format!(
+                "{} {}: {}",
+                tr("No entró sonido en"),
+                silenciosas.join(", "),
+                tr("revisa el cable, la perilla de ganancia de la interfaz (y 48V si el micrófono es de condensador) y la entrada de la pista (In 1-2). Con R o I el medidor de la pista muestra lo que entra.")
+            )
+        } else if !centradas.is_empty() {
+            format!("{} {}", tr("Grabación guardada. El micrófono entraba por una sola entrada; ahora suena al centro:"), centradas.join(", "))
+        } else {
+            "Grabación guardada".into()
+        };
     }
 
     /// Zoom horizontal: desde ver horas de proyecto hasta 60 píxeles por muestra.
@@ -2693,6 +2763,7 @@ impl eframe::App for App {
         self.ventana_acordes(&ctx);
         self.ventana_instrumento(&ctx);
         self.apply_deletes();
+        self.atender_controles();
         self.write_automation();
         if self.dirty {
             self.sync();

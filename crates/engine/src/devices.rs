@@ -106,6 +106,47 @@ pub fn llegadas_desde(t: std::time::Instant) -> Vec<(f64, MidiEvent)> {
     LLEGADAS.lock().map(|l| l.iter().filter(|x| x.0 >= t).map(|x| ((x.0 - t).as_secs_f64(), x.1)).collect()).unwrap_or_default()
 }
 
+/// Controles (CC) del teclado: la app los lee para el MIDI Learn y para mover lo que tienen asignado.
+static CONTROLES: Mutex<std::collections::VecDeque<MidiEvent>> = Mutex::new(std::collections::VecDeque::new());
+/// Números de control asignados en la app (un bit por CC): esos no llegan a los instrumentos.
+static TOMADOS: [std::sync::atomic::AtomicU64; 2] = [const { std::sync::atomic::AtomicU64::new(0) }; 2];
+/// Avisa a la interfaz que llegó un control (para que se redibuje aunque esté quieta).
+static AVISO: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn al_llegar_control(f: impl Fn() + Send + Sync + 'static) {
+    let _ = AVISO.set(Box::new(f));
+}
+
+/// Marca qué controles maneja la app; los demás siguen yendo a los instrumentos.
+pub fn tomar_controles(ccs: impl IntoIterator<Item = u8>) {
+    let mut bits = [0u64; 2];
+    ccs.into_iter().for_each(|c| bits[(c as usize >> 6) & 1] |= 1 << (c & 63));
+    TOMADOS.iter().zip(bits).for_each(|(t, b)| t.store(b, std::sync::atomic::Ordering::Relaxed));
+}
+
+fn tomado(cc: u8) -> bool {
+    TOMADOS[(cc as usize >> 6) & 1].load(std::sync::atomic::Ordering::Relaxed) & (1 << (cc & 63)) != 0
+}
+
+/// Controles llegados desde la última llamada (los últimos 256 como mucho).
+pub fn controles() -> Vec<MidiEvent> {
+    CONTROLES.lock().map(|mut c| c.drain(..).collect()).unwrap_or_default()
+}
+
+/// Un control del teclado: lo anota para la app y dice si queda en ella (no va a los instrumentos).
+fn control(e: MidiEvent) -> bool {
+    if let Ok(mut c) = CONTROLES.lock() {
+        if c.len() >= 256 {
+            c.pop_front();
+        }
+        c.push_back(e);
+    }
+    if let Some(f) = AVISO.get() {
+        f();
+    }
+    tomado(e[1])
+}
+
 pub fn connect_midi(only: &str, tx: Arc<Mutex<rtrb::Producer<MidiEvent>>>) -> MidiConnections {
     let Ok(probe) = midir::MidiInput::new("Quantum DAW") else {
         return vec![];
@@ -120,8 +161,13 @@ pub fn connect_midi(only: &str, tx: Arc<Mutex<rtrb::Producer<MidiEvent>>>) -> Mi
             }
             let tx = tx.clone();
             let forward = move |_: u64, msg: &[u8], _: &mut ()| {
-                if msg.len() == 3 && matches!(msg[0] & 0xF0, 0x80 | 0x90 | 0xB0) {
-                    registrar_llegada([msg[0], msg[1], msg[2]]);
+                // Notas, controles y rueda de tono (pitch bend).
+                if msg.len() == 3 && matches!(msg[0] & 0xF0, 0x80 | 0x90 | 0xB0 | 0xE0) {
+                    let e = [msg[0], msg[1], msg[2]];
+                    if e[0] & 0xF0 == 0xB0 && control(e) {
+                        return;
+                    }
+                    registrar_llegada(e);
                     if let Ok(mut tx) = tx.lock() {
                         let _ = tx.push([msg[0], msg[1], msg[2]]);
                     }

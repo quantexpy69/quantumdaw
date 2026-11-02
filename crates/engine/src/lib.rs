@@ -6,13 +6,14 @@ pub mod loudness;
 pub mod lv2;
 pub mod pro;
 mod dsp;
+pub mod expresion;
 mod fx;
 mod io;
 mod sampler;
 mod synth;
 mod tempo;
 
-pub use devices::{DeviceInfo, MidiConnections, audio_devices, connect_midi, llegadas_desde, midi_ports, registrar_llegada};
+pub use devices::{DeviceInfo, MidiConnections, al_llegar_control, audio_devices, connect_midi, controles, llegadas_desde, midi_ports, registrar_llegada, tomar_controles};
 pub use dsp::{detect_bpm, find_onsets, find_peaks, find_silences, peak, pitch_shift, stretch};
 pub use fx::{BANDAS, Fx, FxKind, biquad, curves_banda, curves_response, db, eq_response, frecuencia_banda};
 pub use io::{decode, resample};

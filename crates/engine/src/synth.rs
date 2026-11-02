@@ -35,6 +35,8 @@ struct Voice {
     /// Ganancia y ataque propios de la nota (ataque 0 = el del sintetizador).
     gain: f32,
     attack_ms: f32,
+    /// Ya se soltó la tecla, pero el pedal de sustain la mantiene.
+    pedal: bool,
 }
 
 #[derive(Default)]
@@ -46,6 +48,7 @@ struct State {
     /// Ganancia y ataque pedidos para la próxima nota (controladores 16 y 73).
     cc_gain: Option<u8>,
     cc_attack: Option<u8>,
+    expresion: crate::expresion::Expresion,
 }
 
 pub struct Synth {
@@ -77,17 +80,27 @@ fn poly_blep(t: f32, dt: f32) -> f32 {
 impl State {
     fn handle(&mut self, e: MidiEvent) {
         self.clock += 1;
+        use crate::expresion::Cambio;
+        match self.expresion.evento(e) {
+            Cambio::Nada => {}
+            Cambio::Hecho => return,
+            Cambio::PedalSuelto => {
+                self.voices.iter_mut().filter(|v| v.pedal).for_each(|v| (v.pedal, v.stage) = (false, 3));
+                return;
+            }
+        }
+        let pedal = self.expresion.pedal;
         match (e[0] & 0xF0, e[2]) {
             (0x90, vel) if vel > 0 => {
                 let i = (0..VOICES).find(|&i| self.voices[i].stage == 0 || self.voices[i].key == e[1]).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| self.voices[i].age).unwrap_or(0));
                 let v = &mut self.voices[i];
-                (v.key, v.vel, v.stage, v.age) = (e[1], vel as f32 / 127.0, 1, self.clock);
+                (v.key, v.vel, v.stage, v.age, v.pedal) = (e[1], vel as f32 / 127.0, 1, self.clock, false);
                 v.gain = self.cc_gain.take().map_or(1.0, crate::ganancia_nota);
                 v.attack_ms = self.cc_attack.take().map_or(0.0, crate::ataque_ms);
             }
             (0xB0, _) if e[1] == crate::CC_GANANCIA => self.cc_gain = Some(e[2]),
             (0xB0, _) if e[1] == crate::CC_ATAQUE => self.cc_attack = Some(e[2]),
-            (0x80 | 0x90, _) => self.voices.iter_mut().filter(|v| v.key == e[1] && matches!(v.stage, 1 | 2)).for_each(|v| v.stage = 3),
+            (0x80 | 0x90, _) => self.voices.iter_mut().filter(|v| v.key == e[1] && matches!(v.stage, 1 | 2) && !v.pedal).for_each(|v| if pedal { v.pedal = true } else { v.stage = 3 }),
             // Controladores 120/123: silenciar todo.
             (0xB0, _) if e[1] >= 120 => self.release_all(),
             _ => {}
@@ -95,7 +108,7 @@ impl State {
     }
 
     fn release_all(&mut self) {
-        self.voices.iter_mut().filter(|v| v.stage > 0).for_each(|v| v.stage = 3);
+        self.voices.iter_mut().filter(|v| v.stage > 0).for_each(|v| (v.pedal, v.stage) = (false, 3));
     }
 }
 
@@ -144,6 +157,7 @@ impl Synth {
             while let Some(&(_, e)) = ev.next_if(|e| e.0 <= i) {
                 st.handle(e);
             }
+            let tono = st.expresion.factor(sr);
             for v in st.voices.iter_mut().filter(|v| v.stage > 0) {
                 match v.stage {
                     1 => {
@@ -161,7 +175,7 @@ impl Synth {
                         }
                     }
                 }
-                let f = 440.0 * 2f32.powf((v.key as f32 - 69.0) / 12.0);
+                let f = 440.0 * 2f32.powf((v.key as f32 - 69.0) / 12.0) * tono;
                 if i % 16 == 0 {
                     let cutoff = (p[2] * 2f32.powf(p[4] * v.env * 5.0)).min(sr * 0.45);
                     v.g = (PI * cutoff / sr).tan();
@@ -213,5 +227,22 @@ mod pruebas_nota {
         assert_eq!(energia(0, 0, 4800), 0.0);
         // Con ataque lento los primeros 20 ms suenan mucho menos.
         assert!(energia(100, 100, 960) < energia(100, 0, 960) * 0.2);
+    }
+
+    /// Energía de cada bloque de 0,1 s después de tocar y soltar una nota, con o sin pedal.
+    fn bloques(ev: &[(usize, MidiEvent)], n: usize) -> Vec<f32> {
+        let synth = Synth::default();
+        let mut out = vec![[0f32; 2]; 4800 * n];
+        synth.render(&mut out, ev, 48_000.0, true, 0, true);
+        out.chunks(4800).map(|b| b.iter().map(|s| s[0] * s[0]).sum()).collect()
+    }
+
+    #[test]
+    fn pedal_de_sustain() {
+        let suelta = bloques(&[(0, [0x90, 60, 100]), (4800, [0x80, 60, 0])], 16);
+        let pedal = bloques(&[(0, [0xB0, 64, 127]), (0, [0x90, 60, 100]), (4800, [0x80, 60, 0]), (4800 * 6, [0xB0, 64, 0])], 16);
+        // Sin pedal la nota se apaga al soltarla; con pedal sigue sonando hasta levantarlo.
+        assert!(pedal[5] > suelta[5] * 10.0, "{} {}", pedal[5], suelta[5]);
+        assert!(pedal[15] < pedal[5] * 0.01, "{} {}", pedal[15], pedal[5]);
     }
 }
