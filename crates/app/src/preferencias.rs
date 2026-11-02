@@ -492,6 +492,7 @@ impl App {
                 b.puertos = engine::midi_ports();
             }
         });
+        self.tarjeta_controlador(ui);
     }
 
     pub fn pagina_comportamiento(&mut self, ui: &mut egui::Ui) {
@@ -600,11 +601,11 @@ impl App {
 
     pub fn pagina_interfaz(&mut self, ui: &mut egui::Ui) {
         tarjeta(ui, "TEMA DE COLOR", |ui| {
-            // Cuatro por fila, todas del mismo tamaño.
-            let columnas = 4.0;
+            // Los tres en una fila, todos del mismo tamaño.
+            let columnas = TEMAS.len() as f32;
             let espacio = 12.0;
             let tam = vec2(((ui.available_width() - espacio * (columnas - 1.0)) / columnas).floor(), 92.0);
-            for fila_temas in TEMAS.iter().enumerate().collect::<Vec<_>>().chunks(4) {
+            for fila_temas in TEMAS.iter().enumerate().collect::<Vec<_>>().chunks(TEMAS.len()) {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = espacio;
                     for &(k, (nombre, c)) in fila_temas {

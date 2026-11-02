@@ -1798,3 +1798,54 @@ Todavía no agregaste carpetas propias.	You haven't added your own folders yet.	
 Todos los plugins…	All plugins…	Todos os plugins…
 Utilidad	Utility	Utilitário
 suena en	plays on	toca em
+Volumen de la pista elegida	Volume of the chosen track	Volume da faixa escolhida
+Panorama de la pista elegida	Pan of the chosen track	Pan da faixa escolhida
+Volumen del master	Master volume	Volume do master
+Reproducir / parar	Play / stop	Reproduzir / parar
+control	control	controle
+Aprender	Learn	Aprender
+pista borrada	deleted track	faixa apagada
+Control MIDI:	MIDI control:	Controle MIDI:
+Cancelar aprendizaje MIDI	Cancel MIDI learn	Cancelar aprendizado MIDI
+Aprender MIDI…	MIDI learn…	Aprender MIDI…
+Después mueve una perilla, botón o pedal del teclado	Then move a knob, button or pedal on the keyboard	Depois mova um botão giratório, botão ou pedal do teclado
+Quitar control MIDI	Remove MIDI control	Remover controle MIDI
+Esa perilla no se puede asignar a un control MIDI	That knob can't be assigned to a MIDI control	Esse botão não pode ser atribuído a um controle MIDI
+CONTROLADOR MIDI	MIDI CONTROLLER	CONTROLADOR MIDI
+Las perillas, botones y pedales del teclado (por ejemplo C1 y C2) pueden mover lo que quieras. Elige qué controlar con «Aprender» y mueve la perilla; o haz clic derecho en cualquier fader o perilla del programa → «Aprender MIDI…».	Your keyboard's knobs, buttons and pedals (for example C1 and C2) can move whatever you want. Choose what to control with "Learn" and move the knob; or right-click any fader or knob in the program → "MIDI learn…".	Os botões giratórios, botões e pedais do teclado (por exemplo C1 e C2) podem mover o que você quiser. Escolha o que controlar com «Aprender» e mova o botão; ou clique com o botão direito em qualquer fader ou botão do programa → «Aprender MIDI…».
+Mueve una perilla…	Move a knob…	Mova um botão…
+Sin asignar	Not assigned	Sem atribuição
+Asignados en este proyecto:	Assigned in this project:	Atribuídos neste projeto:
+La rueda de tono, la modulación y el pedal de sustain llegan solos a los instrumentos. Con la automatización en Toque o Latch, mover una perilla asignada al volumen o al panorama mientras suena graba la curva.	The pitch wheel, modulation and sustain pedal reach the instruments on their own. With automation in Touch or Latch, moving a knob assigned to volume or pan during playback records the curve.	A roda de pitch, a modulação e o pedal de sustain chegam sozinhos aos instrumentos. Com a automação em Toque ou Latch, mover um botão atribuído ao volume ou ao pan durante a reprodução grava a curva.
+Panorama (izquierda / derecha)	Pan (left / right)	Pan (esquerda / direita)
+Estudio	Studio	Estúdio
+Sin entrada	No input	Sem entrada
+ENTRADA DE AUDIO	AUDIO INPUT	ENTRADA DE ÁUDIO
+Entrada predeterminada	Default input	Entrada padrão
+No hay entrada de audio abierta	No audio input is open	Nenhuma entrada de áudio aberta
+Cambiar dispositivo de entrada…	Change input device…	Mudar dispositivo de entrada…
+Entrada: de dónde entra el sonido de esta pista	Input: where this track's sound comes from	Entrada: de onde entra o som desta faixa
+Graba mientras mueves el fader, la perilla o un control del teclado	Records while you move the fader, the knob or a keyboard control	Grava enquanto você move o fader, o botão ou um controle do teclado
+Graba desde que tocas un control hasta parar	Records from when you touch a control until stop	Grava desde que você toca um controle até parar
+Graba siempre mientras se reproduce	Always records during playback	Grava sempre durante a reprodução
+Toma	Take	Take
+Mezcla de tomas	Comped takes	Mistura de takes
+VERSIONES GRABADAS	RECORDED VERSIONS	VERSÕES GRAVADAS
+original	original	original
+Que suene esta toma entera	Play this whole take	Tocar este take inteiro
+Ocultar carriles de tomas	Hide take lanes	Ocultar faixas de takes
+Elegir por tramos (carriles de tomas)…	Pick by sections (take lanes)…	Escolher por trechos (faixas de takes)…
+Toma las mejores partes de cada versión: arrastra sobre un carril para usar ese tramo	Take the best parts of each version: drag over a lane to use that section	Use as melhores partes de cada versão: arraste sobre uma faixa para usar esse trecho
+Versiones de esta pista: graba encima y elige la mejor toma sin crear otra pista	Versions of this track: record over it and pick the best take without creating another track	Versões desta faixa: grave por cima e escolha o melhor take sem criar outra faixa
+Suena la toma	Now playing take	Tocando o take
+Monitoreo de entrada: escucharte en vivo por los auriculares o monitores	Input monitoring: hear yourself live in your headphones or monitors	Monitoramento de entrada: ouvir-se ao vivo nos fones ou monitores
+No entró sonido en	No sound came into	Não entrou som em
+revisa el cable, la perilla de ganancia de la interfaz (y 48V si el micrófono es de condensador) y la entrada de la pista (In 1-2). Con R o I el medidor de la pista muestra lo que entra.	check the cable, the interface gain knob (and 48V if it's a condenser mic) and the track input (In 1-2). With R or I the track meter shows what comes in.	verifique o cabo, o botão de ganho da interface (e 48V se o microfone for condensador) e a entrada da faixa (In 1-2). Com R ou I o medidor da faixa mostra o que entra.
+Par estéreo (teclado, línea)	Stereo pair (keyboard, line)	Par estéreo (teclado, linha)
+Una entrada (micrófono, guitarra): suena al centro	One input (mic, guitar): sounds centered	Uma entrada (microfone, guitarra): soa no centro
+Grabación guardada. El micrófono entraba por una sola entrada; ahora suena al centro:	Recording saved. The mic was coming in on a single input; it now sounds centered:	Gravação salva. O microfone entrava por uma só entrada; agora soa no centro:
+Editar y mover lo que suena…	Edit and move what's playing…	Editar e mover o que está tocando…
+Deja lo que suena ahora como regiones normales: se pueden mover, recortar, cortar y editar. Las otras tomas se quitan de la pista (los archivos quedan en el proyecto).	Turns what's playing now into normal regions: you can move, trim, split and edit them. The other takes are removed from the track (the files stay in the project).	Deixa o que toca agora como regiões normais: dá para mover, aparar, cortar e editar. Os outros takes saem da faixa (os arquivos ficam no projeto).
+Listo: la toma quedó como regiones normales; ya se puede mover y editar	Done: the take is now normal regions; you can move and edit it	Pronto: o take virou regiões normais; já dá para mover e editar
+Quita esta toma de la pista	Removes this take from the track	Remove este take da faixa
+borrada	deleted	apagado

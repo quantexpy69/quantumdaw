@@ -57,6 +57,8 @@ struct Voice {
     /// Caída por muestra (1 = sin caída) y ganancias de panorama.
     dec: f32,
     lr: [f32; 2],
+    /// Ya se soltó la tecla, pero el pedal de sustain la mantiene.
+    pedal: bool,
 }
 
 #[derive(Default)]
@@ -69,6 +71,7 @@ struct State {
     /// Ganancia y ataque pedidos para la próxima nota (controladores 16 y 73).
     cc_gain: Option<u8>,
     cc_attack: Option<u8>,
+    expresion: crate::expresion::Expresion,
 }
 
 pub struct Sampler {
@@ -237,6 +240,7 @@ impl Sampler {
             while let Some(&(_, e)) = ev.next_if(|e| e.0 <= i) {
                 self.handle(st, e, sr);
             }
+            let tono = st.expresion.factor(sr) as f64;
             for v in st.voices.iter_mut().filter(|v| v.active) {
                 let z = &self.zones[v.zone];
                 let k = v.pos as usize;
@@ -269,7 +273,7 @@ impl Sampler {
                         }
                     }
                 }
-                v.pos += v.step;
+                v.pos += v.step * tono;
                 if let Some((ls, le)) = z.looped.filter(|(_, le)| v.pos >= *le as f64) {
                     v.pos -= (le - ls) as f64;
                 }
@@ -280,6 +284,16 @@ impl Sampler {
 
     fn handle(&self, st: &mut State, e: MidiEvent, sr: f32) {
         st.clock += 1;
+        use crate::expresion::Cambio;
+        match st.expresion.evento(e) {
+            Cambio::Nada => {}
+            Cambio::Hecho => return,
+            Cambio::PedalSuelto => {
+                st.voices.iter_mut().filter(|v| v.pedal).for_each(|v| (v.pedal, v.releasing) = (false, true));
+                return;
+            }
+        }
+        let pedal = st.expresion.pedal;
         match (e[0] & 0xF0, e[2]) {
             (0x90, vel) if vel > 0 => {
                 st.rng ^= st.rng << 13;
@@ -322,9 +336,14 @@ impl Sampler {
                     // Caída: -40 dB al cabo de `decay` segundos.
                     dec: if z.decay > 0.0 { (-4.6 / (z.decay * sr)).exp() } else { 1.0 },
                     lr: [(1.0 - z.pan).min(1.0), (1.0 + z.pan).min(1.0)],
+                    pedal: false,
                 };
             }
-            (0x80 | 0x90, _) => st.voices.iter_mut().filter(|v| v.active && v.key == e[1] && !self.zones[v.zone].one_shot).for_each(|v| v.releasing = true),
+            (0x80 | 0x90, _) => st
+                .voices
+                .iter_mut()
+                .filter(|v| v.active && v.key == e[1] && !v.releasing && !v.pedal && !self.zones[v.zone].one_shot)
+                .for_each(|v| if pedal { v.pedal = true } else { v.releasing = true }),
             (0xB0, _) if e[1] == crate::CC_GANANCIA => st.cc_gain = Some(e[2]),
             (0xB0, _) if e[1] == crate::CC_ATAQUE => st.cc_attack = Some(e[2]),
             (0xB0, _) if e[1] >= 120 => st.voices.iter_mut().for_each(|v| v.releasing = true),

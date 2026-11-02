@@ -70,13 +70,17 @@ impl App {
                 let params = self.s.tracks[i].params.clone();
                 // Volumen con el medidor de la pista dentro del carril, y panorama a lo ancho.
                 let nivel = self.levels.get(i).copied();
+                let id = self.s.tracks[i].id;
                 fila(ui, "Volumen", |ui| {
-                    widgets::fader_h(ui, &params.gain, ui.available_width() - 76.0, nivel);
+                    let f = widgets::fader_h(ui, &params.gain, ui.available_width() - 76.0, nivel);
+                    crate::controlador::menu(&f, crate::controlador::Pedido::Destino(crate::controlador::Destino::Volumen(id)));
                     valor(ui, widgets::db_text(params.gain.get()));
                 });
                 fila(ui, "Panorama", |ui| {
                     let mut pan = params.pan.get();
-                    if widgets::pan_h(ui, &mut pan, ui.available_width() - 76.0).on_hover_text(tr("Arrastra para mover · doble clic: centro")).changed() {
+                    let p = widgets::pan_h(ui, &mut pan, ui.available_width() - 76.0).on_hover_text(tr("Arrastra para mover · doble clic: centro"));
+                    crate::controlador::menu(&p, crate::controlador::Pedido::Destino(crate::controlador::Destino::Panorama(id)));
+                    if p.changed() {
                         params.pan.set(pan);
                     }
                     valor(ui, if pan.abs() < 0.01 { "C".to_string() } else if pan < 0.0 { format!("L {:.0}", -pan * 100.0) } else { format!("R {:.0}", pan * 100.0) });

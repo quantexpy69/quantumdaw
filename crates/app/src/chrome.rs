@@ -693,7 +693,8 @@ impl App {
                 ui.label(RichText::new(tr(accion)).size(11.5).color(TEXT_DIM()));
             }
             ui.separator();
-            ui.label(RichText::new(&self.status).size(12.0).color(TEXT_DIM()));
+            // Primero el estado del audio (a la derecha) y en el resto el último mensaje, recortado: así
+            // nunca se pisan.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let e = &self.engine;
                 let buf = match self.audio.buffer {
@@ -704,7 +705,11 @@ impl App {
                     0 => "sin entrada".to_string(),
                     n => format!("entrada: {} ({n} canales)", device_label(&self.devices, &self.audio.input)),
                 };
-                ui.label(RichText::new(format!("{} Hz{buf} · {input}", e.sample_rate)).size(12.0).color(TEXT_DIM()));
+                ui.add(egui::Label::new(RichText::new(format!("{} Hz{buf} · {input}", e.sample_rate)).size(12.0).color(TEXT_DIM())).truncate());
+                ui.separator();
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(&self.status).size(12.0).color(TEXT_DIM())).truncate()).on_hover_text(&self.status);
+                });
             });
         });
     }

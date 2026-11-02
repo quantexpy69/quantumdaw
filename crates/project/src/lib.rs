@@ -57,6 +57,9 @@ pub struct Project {
     pub master_fx: Vec<FxState>,
     /// Documento de QUANTUM Partitura (si se creó uno).
     pub partitura: Option<partitura::Partitura>,
+    /// Controles MIDI asignados a las pistas (MIDI Learn): (número de control, destino).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub controles_midi: Vec<(u8, String)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -124,6 +127,7 @@ impl Default for Project {
             sections: vec![],
             master_fx: vec![],
             partitura: None,
+            controles_midi: vec![],
         }
     }
 }
