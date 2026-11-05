@@ -1,4 +1,5 @@
-//! Consola de mezcla al estilo Logic. Los canales se adaptan a la altura del panel.
+//! Consola de mezcla: canales angostos y planos (efectos arriba, ruteo, panorama, fader con sus
+//! lecturas y el nombre abajo). Los canales se adaptan a la altura del panel.
 use crate::controlador::{Destino, Pedido};
 use crate::{
     library::LibItem,
@@ -7,7 +8,7 @@ use crate::{
 };
 use egui::{Rect, RichText, Sense, Stroke, StrokeKind, vec2};
 
-const STRIP_W: f32 = 112.0;
+const STRIP_W: f32 = 100.0;
 const SLOTS: usize = 4;
 
 /// Línea separadora fina entre secciones del canal.
@@ -102,13 +103,14 @@ impl App {
                 self.track_menu(ui, i);
             });
         }
-        let frame = egui::Frame::new().fill(if selected { BORDER() } else { ELEVATED() }).corner_radius(rr(10.0)).inner_margin(6.0);
-        let resp = frame.stroke(Stroke::new(1.0, if selected { ACCENT() } else { BORDER() })).show(ui, |ui| {
+        let frame = egui::Frame::new().fill(if selected { BORDER() } else { PANEL() }).corner_radius(rr(3.0)).inner_margin(egui::Margin::symmetric(4, 4));
+        let resp = frame.stroke(Stroke::new(1.0, if selected { ACCENT().gamma_multiply(0.6) } else { BG() })).show(ui, |ui| {
             ui.set_width(STRIP_W);
             ui.vertical_centered(|ui| {
                 let sense = if i.is_some() { Sense::click_and_drag() } else { Sense::hover() };
-                let (grip, g) = ui.allocate_exact_size(vec2(STRIP_W, 10.0), sense);
-                ui.painter().rect_filled(grip.shrink2(vec2(34.0, 2.0)), rr(3.0), color);
+                // Asa: una línea fina del color de la pista a todo el ancho.
+                let (grip, g) = ui.allocate_exact_size(vec2(STRIP_W, 8.0), sense);
+                ui.painter().rect_filled(Rect::from_min_size(grip.min, vec2(grip.width(), 3.0)), rr(1.0), color);
                 if let Some(i) = i {
                     let g = g.on_hover_text(tr("Arrastra para reordenar · clic: seleccionar · clic derecho: opciones"));
                     if g.clicked() {
@@ -127,7 +129,7 @@ impl App {
                         widgets::menu_style(ui);
                         self.track_menu(ui, i);
                     });
-                    icons::picker(ui, &mut self.s.tracks[i], 30.0);
+                    icons::picker(ui, &mut self.s.tracks[i], 20.0);
                 } else {
                     ui.add(welcome::logo(24.0));
                 }
@@ -174,7 +176,7 @@ impl App {
                             v if v < 0 => format!("L{}", -v),
                             v => format!("R{v}"),
                         };
-                        let r = widgets::pan_knob(ui, &mut pan).on_hover_text(tr("Panorama · arrastra arriba/abajo · doble clic: centro"));
+                        let r = widgets::pan_h(ui, &mut pan, STRIP_W - 12.0).on_hover_text(tr("Panorama · arrastra · doble clic: centro"));
                         if let Some(i) = i {
                             crate::controlador::menu(&r, Pedido::Destino(Destino::Panorama(self.s.tracks[i].id)));
                         }
@@ -182,21 +184,22 @@ impl App {
                         p.pan.set(pan);
                         ui.label(RichText::new(text).size(11.0).strong().color(if pan.abs() < 0.005 { TEXT_DIM() } else { ACCENT() }));
                     }
-                    None => ui.add_space(68.0),
+                    None => ui.add_space(40.0),
                 }
                 sep(ui);
                 let gain = params.as_ref().map_or(&self.engine.master.gain, |p| &p.gain);
+                let r = widgets::fader(ui, gain, level, fader_h);
+                crate::controlador::menu(&r, Pedido::Destino(i.map_or(Destino::VolumenMaster, |i| Destino::Volumen(self.s.tracks[i].id))));
+                touched |= r.dragged();
+                // Volumen y pico retenido debajo del fader.
                 ui.horizontal(|ui| {
-                    ui.add_space(6.0);
+                    ui.spacing_mut().item_spacing.x = 4.0;
                     readout(ui, widgets::db_text(gain.get()), TEXT()).on_hover_text(tr("Volumen del fader"));
-                    let c = if widgets::db(peak) > 0.0 { METER[2] } else { METER[0] };
+                    let c = if widgets::db(peak) > 0.0 { METER[2] } else { TEXT_DIM() };
                     if readout(ui, widgets::db_text(peak), c).on_hover_text(tr("Pico retenido · clic para reiniciar")).clicked() {
                         self.peaks[li] = 0.0;
                     }
                 });
-                let r = widgets::fader(ui, gain, level, fader_h);
-                crate::controlador::menu(&r, Pedido::Destino(i.map_or(Destino::VolumenMaster, |i| Destino::Volumen(self.s.tracks[i].id))));
-                touched |= r.dragged();
                 sep(ui);
                 if let Some(i) = i {
                     self.s.tracks[i].touching |= touched;
@@ -206,16 +209,9 @@ impl App {
                         ui.add_space((STRIP_W - 4.0 * widgets::TECLA - 12.0) / 2.0);
                         self.mute_solo(ui, i);
                     });
-                    let t = &self.s.tracks[i];
-                    let group = t.group.and_then(|g| self.s.groups.get(g));
-                    // Número de canal grande en una placa del color de la pista, centrado; el grupo, debajo.
-                    ui.vertical_centered(|ui| {
-                        let numero = RichText::new(format!("{}", i + 1)).size(17.0).strong().color(BG());
-                        ui.add(egui::Button::new(numero).fill(t.color).min_size(vec2(40.0, 26.0)).corner_radius(rr(7.0)).sense(egui::Sense::hover()));
-                        if let Some(g) = group {
-                            ui.label(RichText::new(&g.name).size(11.0).color(g.color));
-                        }
-                    });
+                    if let Some(g) = self.s.tracks[i].group.and_then(|g| self.s.groups.get(g)) {
+                        ui.label(RichText::new(&g.name).size(11.0).color(g.color));
+                    }
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
                         ui.add_space((STRIP_W - 4.0 * widgets::TECLA - 12.0) / 2.0);
@@ -224,14 +220,17 @@ impl App {
                     });
                     sep(ui);
                 }
-                let name = egui::Frame::new().fill(color.gamma_multiply(0.85)).corner_radius(rr(8.0)).inner_margin(egui::Margin::symmetric(4, 2));
-                name.show(ui, |ui| match i {
-                    Some(i) => {
-                        _ = ui.add(egui::TextEdit::singleline(&mut self.s.tracks[i].name).frame(egui::Frame::new()).text_color(BG()).horizontal_align(egui::Align::Center).desired_width(STRIP_W - 10.0))
-                    }
-                    None => {
-                        ui.set_width(STRIP_W - 10.0);
-                        ui.label(RichText::new(tr("Stereo Out")).strong().color(BG()));
+                // Abajo: número y nombre, con una raya del color de la pista (como en las consolas).
+                let (raya, _) = ui.allocate_exact_size(vec2(STRIP_W, 3.0), Sense::hover());
+                ui.painter().rect_filled(raya, rr(1.0), color);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    match i {
+                        Some(i) => {
+                            ui.label(RichText::new(format!("{}", i + 1)).size(12.0).color(TEXT_DIM()));
+                            ui.add(egui::TextEdit::singleline(&mut self.s.tracks[i].name).frame(egui::Frame::new()).text_color(TEXT()).font(egui::FontId::proportional(12.5)).desired_width(STRIP_W - 22.0));
+                        }
+                        None => _ = ui.label(RichText::new(tr("Master")).size(12.5).color(TEXT())),
                     }
                 });
             });
@@ -321,12 +320,29 @@ impl App {
 
     /// Ranuras de efectos: clic abre el plugin, clic derecho bypass/quitar, "+" añade.
     fn fx_slots(&mut self, ui: &mut egui::Ui, i: usize) {
-        ui.label(RichText::new(tr("AUDIO FX")).size(9.0).color(TEXT_DIM()));
         let (mut remove, mut add, mut add_lv2, mut abrir) = (None, None, None, false);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(tr("Inserciones")).size(11.0).color(TEXT_DIM()));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.menu_button(RichText::new("+").size(13.0).color(TEXT_DIM()), |ui| {
+                    widgets::menu_style(ui);
+                    for k in FxKind::disponibles() {
+                        if ui.button(k.name()).clicked() {
+                            add = Some(k);
+                        }
+                    }
+                    if let Some(info) = App::menu_efectos_lv2(ui) {
+                        add_lv2 = Some(info);
+                    }
+                })
+                .response
+                .on_hover_text(tr("Agregar un efecto"));
+            });
+        });
         for (j, fx) in self.s.tracks[i].fx.iter().enumerate().take(SLOTS) {
             let on = !fx.bypass.load(Relaxed);
-            let text = RichText::new(fx.nombre()).size(11.0).color(if on { TEXT() } else { TEXT_DIM() });
-            let b = ui.add(egui::Button::new(text).fill(if on { ACCENT().gamma_multiply(0.4) } else { BG() }).min_size(vec2(STRIP_W - 8.0, 20.0)));
+            let text = RichText::new(format!("• {}", fx.nombre())).size(10.5).color(if on { TEXT() } else { TEXT_DIM() });
+            let b = ui.add(egui::Button::new(text).fill(chrome::FONDO_HONDO).stroke(Stroke::new(1.0, if on { ACCENT().gamma_multiply(0.5) } else { BORDER() })).corner_radius(rr(2.0)).min_size(vec2(STRIP_W - 8.0, 18.0)).truncate());
             if b.clicked() {
                 abrir = true;
             }
@@ -344,20 +360,6 @@ impl App {
         if extra > 0 {
             ui.label(RichText::new(format!("+{extra} más")).size(10.0).color(TEXT_DIM()));
         }
-        ui.menu_button(RichText::new(tr("+ efecto")).size(11.0).color(TEXT_DIM()), |ui| {
-            for k in FxKind::disponibles() {
-                if ui.button(k.name()).clicked() {
-                    add = Some(k);
-                }
-            }
-            if let Some(info) = App::menu_efectos_lv2(ui) {
-                add_lv2 = Some(info);
-            }
-            ui.separator();
-            if ui.button(tr("Todos los plugins…")).on_hover_text(tr("Plugins LV2 instalados, en la biblioteca")).clicked() {
-                (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB);
-            }
-        });
         if let Some(info) = add_lv2 {
             self.add_fx_lv2(i, &info);
         }

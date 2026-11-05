@@ -56,6 +56,8 @@ pub struct Welcome {
     author: String,
     /// Proyectos y canciones encontrados (se leen al abrir la pestaña «Abrir»).
     listing: Option<Vec<Listed>>,
+    /// Nombre del proyecto nuevo que se escribe en «Abrir».
+    nuevo_proyecto: String,
     /// Búsqueda en las preferencias, audio y MIDI en edición, atajo que se está capturando y carpetas
     /// de plugins revisadas (se leen al abrir su página).
     pub buscar: String,
@@ -138,6 +140,7 @@ impl Default for Welcome {
             borrador: None,
             captura: None,
             carpetas: None,
+            nuevo_proyecto: String::new(),
         }
     }
 }
@@ -206,6 +209,23 @@ impl App {
         fs::create_dir_all(&dir)?;
         p.save(&dir)?;
         self.reload(dir, p)
+    }
+
+    /// Mueve la carpeta de una canción dentro de otro proyecto (si es la abierta, la sigue).
+    fn mover_cancion(&mut self, origen: &Path, proyecto: &Path) -> anyhow::Result<()> {
+        anyhow::ensure!(!self.recording(), "{}", tr("Para la grabación antes de mover la canción"));
+        let destino = proyecto.join(origen.file_name().unwrap_or_default());
+        anyhow::ensure!(!destino.exists(), "{} «{}»", tr("Ya hay una canción con ese nombre en"), proyecto.file_name().unwrap_or_default().to_string_lossy());
+        fs::create_dir_all(proyecto)?;
+        fs::rename(origen, &destino)?;
+        if self.dir == origen {
+            self.dir = destino.clone();
+        }
+        for d in self.config.recent.iter_mut().filter(|d| d.as_path() == origen) {
+            *d = destino.clone();
+        }
+        self.config.save();
+        Ok(())
     }
 
     /// Abre el menú principal en la pestaña indicada.
@@ -543,6 +563,27 @@ impl App {
     fn pagina_abrir(&mut self, ui: &mut egui::Ui, w: &mut Welcome, action: &mut Option<Action>) {
         use crate::preferencias::{boton, parrafo, tarjeta};
         let listing = w.listing.get_or_insert_with(|| scan(&projects_dir())).clone();
+        // Proyectos a los que se puede mover una canción: (nombre, carpeta); "" = sin proyecto.
+        let destinos: Vec<(String, PathBuf)> = std::iter::once((String::new(), projects_dir())).chain(listing.iter().filter(|l| !l.0.is_empty()).map(|l| (l.0.clone(), projects_dir().join(&l.0)))).collect();
+        let mut refrescar = false;
+        tarjeta(ui, "ORGANIZAR EN PROYECTOS", |ui| {
+            parrafo(ui, "Un proyecto agrupa canciones (un disco, un EP, un cliente). Crea uno y mueve tus canciones con «Mover a…».");
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut w.nuevo_proyecto).hint_text(tr("Nombre del proyecto nuevo")).desired_width(ui.available_width() - 160.0).min_size(vec2(0.0, 28.0)).margin(egui::Margin::symmetric(10, 4)).vertical_align(egui::Align::Center));
+                let nombre = w.nuevo_proyecto.trim().to_string();
+                if ui.add_enabled_ui(!nombre.is_empty(), |ui| boton(ui, "Crear proyecto")).inner.clicked() {
+                    let dir = projects_dir().join(safe(&nombre).replace('_', " ").trim());
+                    let r = if dir.exists() {
+                        Err(anyhow::anyhow!("{} «{nombre}»", tr("Ya existe un proyecto llamado")))
+                    } else {
+                        Collection { name: nombre.clone(), author: self.config.author.clone(), created_at: now_text(), description: String::new() }.save(&dir)
+                    };
+                    self.report(format!("{} «{nombre}»", tr("Proyecto creado:")), r);
+                    w.nuevo_proyecto.clear();
+                    refrescar = true;
+                }
+            });
+        });
         if listing.is_empty() {
             tarjeta(ui, "PROYECTOS", |ui| parrafo(ui, "Todavía no hay canciones en la carpeta de proyectos."));
         }
@@ -566,6 +607,32 @@ impl App {
                     let pc = pt.with_clip_rect(r.shrink(2.0));
                     pc.text(r.left_center() + vec2(52.0, -9.0), egui::Align2::LEFT_CENTER, titulo, egui::FontId::proportional(14.0), TEXT());
                     pc.text(r.left_center() + vec2(52.0, 10.0), egui::Align2::LEFT_CENTER, song_info(&p), egui::FontId::proportional(11.5), TEXT_DIM());
+                    // Mover la canción a otro proyecto (o dejarla sin proyecto).
+                    let mover = egui::Rect::from_min_size(r.right_center() - vec2(104.0, 13.0), vec2(94.0, 26.0));
+                    let b = egui::Button::new(RichText::new(tr("Mover a…")).size(12.0)).corner_radius(rr(7.0));
+                    let mut a_donde = None;
+                    ui.put(mover, |ui: &mut egui::Ui| {
+                        egui::containers::menu::MenuButton::from_button(b)
+                            .ui(ui, |ui| {
+                                widgets::menu_style(ui);
+                                for (nombre, destino) in &destinos {
+                                    let etiqueta = if nombre.is_empty() { tr("(sin proyecto)").to_string() } else { nombre.clone() };
+                                    let aqui = dir.parent() == Some(destino.as_path());
+                                    if ui.add_enabled(!aqui, egui::Button::new(etiqueta)).clicked() {
+                                        a_donde = Some(destino.clone());
+                                    }
+                                }
+                            })
+                            .0
+                    });
+                    if let Some(destino) = a_donde {
+                        let origen = dir.clone();
+                        *action = Some(Box::new(move |app: &mut Self| {
+                            let r = app.mover_cancion(&origen, &destino);
+                            app.report("Canción movida", r);
+                        }));
+                        refrescar = true;
+                    }
                     if resp.on_hover_text(dir.display().to_string()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         *action = Some(Box::new(move |app: &mut Self| {
                             let r = app.open_dir(dir);
@@ -574,6 +641,9 @@ impl App {
                     }
                 }
             });
+        }
+        if refrescar {
+            w.listing = None;
         }
         tarjeta(ui, "OTRA UBICACIÓN", |ui| {
             ui.horizontal(|ui| {

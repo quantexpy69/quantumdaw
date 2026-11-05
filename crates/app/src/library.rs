@@ -29,7 +29,7 @@ pub const FX_TAB: usize = 1;
 pub const INSTRUMENTS_TAB: usize = 2;
 const FX_CATEGORIES: [(&str, &[FxKind]); 6] = [
     ("QUANTUM Pro", &[FxKind::VocalPro, FxKind::MasterPro, FxKind::TapePro, FxKind::SpacePro]),
-    ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::DeEsser]),
+    ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::DeEsser, FxKind::AntiPop]),
     ("EQ y filtros", &[FxKind::Curves, FxKind::Eq]),
     ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb, FxKind::Chorus]),
     ("Color y saturación", &[FxKind::Drive]),
@@ -50,6 +50,7 @@ fn describe(k: FxKind) -> &'static str {
         FxKind::Gate => "Quita el ruido de fondo",
         FxKind::Chorus => "Ancho y movimiento",
         FxKind::DeEsser => "Controla las eses de la voz",
+        FxKind::AntiPop => "Quita los golpes de P y T sin saturar",
         FxKind::TapePro => "Cinta y válvula con VU analógicos",
         FxKind::SpacePro => "Reverb 3D, shimmer y eco",
         FxKind::VocalPro => "Toda la cadena de voz en una pantalla",
@@ -1071,6 +1072,7 @@ pub fn icono_fx(p: &Painter, c: Pos2, k: FxKind, color: Color32) {
             }
         }
         FxKind::DeEsser => _ = p.text(c, Align2::CENTER_CENTER, "S", FontId::proportional(16.0), color),
+        FxKind::AntiPop => _ = p.text(c, Align2::CENTER_CENTER, "P", FontId::proportional(16.0), color),
         FxKind::Externo => _ = p.circle_stroke(c, 7.0, s),
         FxKind::TapePro => {
             for x in [-5.0, 5.0] {

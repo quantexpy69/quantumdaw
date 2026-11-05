@@ -27,6 +27,8 @@ pub enum FxKind {
     Chorus,
     /// Reduce las eses (sibilancias) bajando solo los agudos cuando superan el umbral.
     DeEsser,
+    /// QUANTUM ANTIPOP: baja los golpes de las P/B y el chasquido de las T/K, y no deja saturar.
+    AntiPop,
     /// Plugins Pro (de pago, ver `pro.rs`).
     TapePro,
     SpacePro,
@@ -46,7 +48,7 @@ const FFT_HOP: usize = 256;
 pub const BANDAS: usize = 96;
 
 impl FxKind {
-    pub const ALL: [Self; 15] = [Self::Eq, Self::Curves, Self::Compressor, Self::Limiter, Self::Gate, Self::DeEsser, Self::Delay, Self::Reverb, Self::Chorus, Self::Drive, Self::Tune, Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
+    pub const ALL: [Self; 16] = [Self::Eq, Self::Curves, Self::Compressor, Self::Limiter, Self::Gate, Self::DeEsser, Self::AntiPop, Self::Delay, Self::Reverb, Self::Chorus, Self::Drive, Self::Tune, Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
     pub const PRO: [Self; 4] = [Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
 
     /// Efectos de esta compilación: los Pro solo si su módulo está incluido.
@@ -78,6 +80,7 @@ impl FxKind {
             Self::Gate => "Puerta de ruido",
             Self::Chorus => "Chorus",
             Self::DeEsser => "De-esser",
+            Self::AntiPop => "QUANTUM ANTIPOP",
             Self::TapePro => "QUANTUM Tape Pro",
             Self::SpacePro => "QUANTUM Space Pro",
             Self::VocalPro => "QUANTUM Vocal Pro",
@@ -156,6 +159,15 @@ impl FxKind {
             Self::Limiter => &[("Techo dB", -12.0, 0.0, -1.0), ("Ganancia dB", 0.0, 24.0, 0.0), ("Release ms", 5.0, 500.0, 60.0), ("Anticipación ms", 0.5, 10.0, 3.0)],
             Self::Gate => &[("Umbral dB", -80.0, 0.0, -45.0), ("Rango dB", -80.0, 0.0, -60.0), ("Ataque ms", 0.1, 50.0, 1.0), ("Release ms", 10.0, 1000.0, 120.0), ("Retención ms", 0.0, 500.0, 30.0)],
             Self::Chorus => &[("Velocidad Hz", 0.05, 5.0, 0.8), ("Profundidad ms", 0.5, 15.0, 4.0), ("Mezcla", 0.0, 1.0, 0.5), ("Anchura", 0.0, 1.0, 1.0), ("Retardo ms", 5.0, 30.0, 12.0)],
+            Self::AntiPop => &[
+                ("Plosivas P/B", 0.0, 1.0, 0.6),
+                ("Frec. plosivas", 60.0, 250.0, 120.0),
+                ("Consonantes T/K", 0.0, 1.0, 0.4),
+                ("Frec. consonantes", 2000.0, 10000.0, 4000.0),
+                ("Sensibilidad", 0.0, 1.0, 0.5),
+                ("Techo dB", -6.0, 0.0, -1.0),
+                ("Escuchar lo quitado", 0.0, 1.0, 0.0),
+            ],
             Self::DeEsser => &[("Frecuencia", 2000.0, 12000.0, 6500.0), ("Umbral dB", -60.0, 0.0, -30.0), ("Reducción máx. dB", 0.0, 24.0, 10.0), ("Escuchar eses", 0.0, 1.0, 0.0)],
             Self::Tune => {
                 &[("Tonalidad", 0.0, 11.0, 0.0), ("Escala", 0.0, 2.0, 0.0), ("Velocidad ms", 0.0, 200.0, 20.0), ("Mezcla", 0.0, 1.0, 1.0), ("Modo", 0.0, 1.0, 0.0), ("Nota manual", 0.0, 11.0, 0.0)]
@@ -270,6 +282,7 @@ struct State {
     pro: Option<Box<dyn crate::pro::ProDsp>>,
     demo_n: u64,
     lv2: Option<Box<crate::lv2::Instancia>>,
+    antipop: Option<Box<crate::antipop::AntiPop>>,
 }
 
 pub struct Fx {
@@ -315,6 +328,7 @@ impl Fx {
                 (st.line, st.ana, st.env) = (vec![[0.0; 2]; n], vec![1.0; n], 1.0);
             }
             FxKind::Chorus => st.line = vec![[0.0; 2]; sample_rate as usize / 20 + 2],
+            FxKind::AntiPop => st.antipop = Some(Box::new(crate::antipop::AntiPop::new(sample_rate as f32))),
             k if k.pro().is_some() => st.pro = crate::pro::crear(k, sample_rate),
             _ => {}
         }
@@ -570,6 +584,15 @@ impl Fx {
                     *s = out;
                     st.idx = (st.idx + 1) % n;
                     st.phase = (st.phase + paso).fract();
+                }
+            }
+            FxKind::AntiPop => {
+                if let Some(ap) = st.antipop.as_deref_mut() {
+                    let a = crate::antipop::Ajustes { plosivas: p[0], frec_p: p[1], consonantes: p[2], frec_t: p[3], sensibilidad: p[4], techo_db: p[5], escuchar: p[6] >= 0.5 };
+                    let (rp, rt) = ap.procesar(buf, &a, sr);
+                    // Lecturas para la interfaz: reducción de plosivas y de consonantes (dB).
+                    self.readout[0].set(rp);
+                    self.readout[1].set(rt);
                 }
             }
             FxKind::DeEsser => {

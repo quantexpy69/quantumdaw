@@ -66,8 +66,8 @@ use std::{
 // de grises neutros al estilo de Logic.
 /// Temas: nombre y colores (fondo, panel, elevado, borde, texto, texto tenue, acento).
 const TEMAS: [(&str, [Color32; 7]); 3] = [
-    // Estudio (predeterminado): gris oscuro neutro y sutil, de estudio profesional, con acento azul.
-    ("Estudio", [Color32::from_rgb(0x1B, 0x1C, 0x1F), Color32::from_rgb(0x23, 0x25, 0x29), Color32::from_rgb(0x2C, 0x2F, 0x34), Color32::from_rgb(0x3A, 0x3E, 0x44), Color32::from_rgb(0xE4, 0xE6, 0xEA), Color32::from_rgb(0x90, 0x97, 0xA0), Color32::from_rgb(0x4C, 0x9E, 0xEB)]),
+    // Estudio (predeterminado): azul pizarra muy oscuro, paneles apenas más claros y acento azul cielo.
+    ("Estudio", [Color32::from_rgb(0x13, 0x16, 0x1E), Color32::from_rgb(0x15, 0x1A, 0x22), Color32::from_rgb(0x21, 0x28, 0x34), Color32::from_rgb(0x29, 0x33, 0x3D), Color32::from_rgb(0xD5, 0xDB, 0xE3), Color32::from_rgb(0x7F, 0x8A, 0x99), Color32::from_rgb(0x41, 0x97, 0xD0)]),
     ("Grafito", [Color32::from_rgb(0x1A, 0x1A, 0x1C), Color32::from_rgb(0x25, 0x25, 0x28), Color32::from_rgb(0x30, 0x30, 0x34), Color32::from_rgb(0x3E, 0x3E, 0x44), Color32::from_rgb(0xED, 0xED, 0xEF), Color32::from_rgb(0xA3, 0xA3, 0xAB), Color32::from_rgb(0x5B, 0x8C, 0xFF)]),
     // Marino: azul marino profundo con acento cian.
     ("Marino", [Color32::from_rgb(0x03, 0x0B, 0x21), Color32::from_rgb(0x07, 0x1A, 0x33), Color32::from_rgb(0x0B, 0x24, 0x40), Color32::from_rgb(0x16, 0x36, 0x5A), Color32::from_rgb(0xDC, 0xE8, 0xF2), Color32::from_rgb(0x7F, 0x98, 0xB0), Color32::from_rgb(0x3F, 0xB6, 0xD3)]),
@@ -216,6 +216,10 @@ struct Config {
     tema: usize,
     /// Ya se pasó a los tres temas actuales (antes había ocho y el índice era otro).
     temas_3: bool,
+    /// Compensación de latencia de grabación: sin la medida automática (solo el ajuste) y ajuste fino
+    /// (ms, se suma a la medida; negativo corre menos).
+    latencia_sin_medir: bool,
+    latencia_ajuste_ms: f32,
     /// Metrónomo: volumen del clic y acento del primer tiempo (dB).
     clic_nivel: f32,
     clic_acento: f32,
@@ -339,6 +343,7 @@ fn clip_state(c: &Clip, sr: f64) -> ClipState {
         gain_db: widgets::db(c.gain),
         notes: c.notes().map(|n| n.iter().map(|n| (n.start as f64 / sr, n.len as f64 / sr, n.key, n.vel)).collect()).unwrap_or_default(),
         notes_extra: c.notes().filter(|n| n.iter().any(|n| (n.gain, n.attack) != (100, 0))).map(|n| n.iter().map(|n| (n.gain, n.attack)).collect()).unwrap_or_default(),
+        ganancia: c.ganancia.as_deref().map(|l| l.iter().map(|&(f, db)| (f as f64 / sr, db)).collect()).unwrap_or_default(),
     }
 }
 
@@ -369,6 +374,7 @@ fn load_clip(dir: &Path, rate: u32, c: &ClipState, midi: bool, cache: &mut HashM
     }
     let mut clip = Clip::new(src, f(c.start), len);
     (clip.offset, clip.fade_in, clip.fade_out, clip.gain) = (offset, f(c.fade_in), f(c.fade_out), 10f32.powf(c.gain_db / 20.0));
+    clip.ganancia = (!c.ganancia.is_empty()).then(|| Arc::new(c.ganancia.iter().map(|&(s, db)| (f(s), db)).collect()));
     Some(clip)
 }
 
@@ -381,23 +387,91 @@ fn set_segment(comp: &[(u64, u64, usize)], a: u64, b: u64, k: usize) -> Vec<(u64
     out
 }
 
-/// Regiones resultantes del comp: cada tramo toma el material de su toma, con fundido en los cortes.
-fn comp_clips(takes: &[Vec<Clip>], comp: &[(u64, u64, usize)], xf: u64) -> Vec<Clip> {
-    comp.iter()
-        .flat_map(|&(a, b, k)| {
-            takes.get(k).into_iter().flatten().filter_map(move |c| {
-                let mut t = c.trim(a, b)?;
-                if t.start == a && a > c.start {
-                    t.fade_in = t.fade_in.max(xf).min(t.len / 2);
-                }
-                if t.end() == b && b < c.end() {
-                    t.fade_out = t.fade_out.max(xf).min(t.len / 2);
-                }
-                Some(t)
-            })
-        })
-        .collect()
+/// ¿La región `c` de la pista sale de la grabación `src` de una toma? Mismo audio y mismo origen
+/// (un recorte de ella, en su lugar).
+fn sale_de(c: &Clip, src: &Clip) -> bool {
+    match (c.buf(), src.buf()) {
+        (Some(a), Some(b)) => (Arc::ptr_eq(a, b) || a.file == b.file) && c.origin() == src.origin(),
+        _ => false,
+    }
 }
+
+/// Pone en la pista el tramo `[x, y)` de la región `src` de una toma: lo que había ahí se recorta
+/// (con fundidos cortos en los cortes) y el resto de la pista queda como estaba, editado o no.
+fn poner_tramo(clips: &mut Vec<Clip>, src: &Clip, x: u64, y: u64, xf: u64) {
+    let Some(mut nueva) = src.trim(x, y) else { return };
+    let corte = |c: &mut Clip, entrada: bool| {
+        let f = if entrada { &mut c.fade_in } else { &mut c.fade_out };
+        *f = (*f).max(xf).min(c.len / 2);
+    };
+    let mut out = Vec::with_capacity(clips.len() + 2);
+    for c in clips.drain(..) {
+        if c.end() <= x || c.start >= y {
+            out.push(c);
+            continue;
+        }
+        if let Some(mut izq) = c.trim(0, x) {
+            corte(&mut izq, false);
+            out.push(izq);
+        }
+        if let Some(mut der) = c.trim(y, u64::MAX) {
+            corte(&mut der, true);
+            out.push(der);
+        }
+    }
+    if x > src.start {
+        corte(&mut nueva, true);
+    }
+    if y < src.end() {
+        corte(&mut nueva, false);
+    }
+    nueva.selected = false;
+    out.push(nueva);
+    out.sort_by_key(|c| c.start);
+    *clips = out;
+}
+
+/// Usa la toma `k` en el tramo `[a, b)`: solo donde la toma grabó algo; lo demás no se toca.
+fn colocar_toma(t: &mut Track, a: u64, b: u64, k: usize, xf: u64) {
+    let Some(take) = t.takes.get(k).cloned() else { return };
+    for src in take.iter().filter(|c| c.start < b && c.end() > a) {
+        poner_tramo(&mut t.clips, src, a.max(src.start), b.min(src.end()), xf);
+    }
+    t.comp = set_segment(&t.comp, a, b, k);
+}
+
+/// Pone en la pista lo que las tomas grabaron donde la pista quedó vacía dentro de `[a, b)` (huecos
+/// de al menos `min` frames), empezando por la toma más nueva.
+fn completar_tomas(t: &mut Track, xf: u64, min: u64, (a, b): (u64, u64)) {
+    for k in (0..t.takes.len()).rev() {
+        for src in t.takes[k].clone().into_iter().filter(|c| c.start < b && c.end() > a) {
+            let mut huecos = vec![(src.start.max(a), src.end().min(b))];
+            for c in &t.clips {
+                huecos = huecos.into_iter().flat_map(|(a, b)| [(a, b.min(c.start)), (a.max(c.end()), b)].into_iter().filter(|h| h.1 > h.0)).collect();
+            }
+            for (a, b) in huecos.into_iter().filter(|h| h.1 - h.0 >= min) {
+                poner_tramo(&mut t.clips, &src, a, b, xf);
+            }
+        }
+    }
+}
+
+/// Tomas que suenan en la pista (alguna región usa su audio, aunque se haya movido o recortado).
+fn tomas_en_uso(t: &Track) -> Vec<usize> {
+    let mismo = |c: &Clip, src: &Clip| matches!((c.buf(), src.buf()), (Some(a), Some(b)) if Arc::ptr_eq(a, b) || a.file == b.file);
+    (0..t.takes.len()).filter(|&k| t.takes[k].iter().any(|src| t.clips.iter().any(|c| mismo(c, src)))).collect()
+}
+
+/// Dónde está una línea de ganancia: pista, toma (None = la región de la pista) y región.
+type DestinoGanancia = (usize, Option<usize>, usize);
+
+/// Línea de ganancia: posición 0..1 en el carril a dB (-24 abajo, 0 a dos tercios, +12 arriba).
+fn ganancia_db(v: f32) -> f32 {
+    -24.0 + 36.0 * v.clamp(0.0, 1.0)
+}
+
+/// Tiempo máximo para abrir la interfaz de audio antes de avisar (en vez de colgar la ventana).
+const LIMITE_AUDIO: Duration = Duration::from_secs(8);
 
 /// Marca en `Track::input` de una pista estéreo que toma una sola entrada (un micrófono) en los dos lados.
 const ENTRADA_MONO: u16 = 0x100;
@@ -435,6 +509,8 @@ struct Track {
     /// Primer canal de entrada de la interfaz.
     input: u16,
     vol_auto: Vec<(u64, f32)>,
+    /// Línea de ganancia de la pista (frame, valor 0..1 de la línea; ver `ganancia_db`).
+    gain_auto: Vec<(u64, f32)>,
     pan_auto: Vec<(u64, f32)>,
     /// Curva visible/editable: 0 = volumen, 1 = panorama.
     auto_param: u8,
@@ -470,7 +546,7 @@ struct Track {
     congelada: bool,
 }
 
-pub const TRACK_H: f32 = 100.0;
+pub const TRACK_H: f32 = 80.0;
 
 impl Track {
     fn new(name: String, kind: TrackKind, color: Color32) -> Self {
@@ -490,6 +566,7 @@ impl Track {
             selected: false,
             input: 0,
             vol_auto: vec![],
+            gain_auto: vec![],
             pan_auto: vec![],
             auto_param: 0,
             height: TRACK_H,
@@ -514,7 +591,11 @@ impl Track {
         }
     }
     fn auto_mut(&mut self) -> &mut Vec<(u64, f32)> {
-        if self.auto_param == 0 { &mut self.vol_auto } else { &mut self.pan_auto }
+        match self.auto_param {
+            0 => &mut self.vol_auto,
+            2 => &mut self.gain_auto,
+            _ => &mut self.pan_auto,
+        }
     }
     fn midi(&self) -> bool {
         self.kind == TrackKind::Midi
@@ -566,6 +647,8 @@ enum Tool {
     Select,
     Pencil,
     Blade,
+    /// Línea de ganancia de cada región.
+    Ganancia,
 }
 
 /// Operaciones del menú contextual sobre las regiones seleccionadas.
@@ -603,7 +686,8 @@ struct App {
     ctx: egui::Context,
     config: Config,
     engine: Arc<Engine>,
-    streams: Vec<cpal::Stream>,
+    /// El audio abierto (None si no se pudo abrir).
+    streams: Option<engine::HiloAudio>,
     midi_in: MidiConnections,
     /// El grafo anterior se libera aquí y no en el hilo de audio.
     old_graph: Option<Arc<Vec<Node>>>,
@@ -695,11 +779,17 @@ struct App {
     alto_dispositivos: f32,
     /// Últimas opciones de exportación.
     exportacion: Option<exportar::Exportacion>,
+    /// Exportación en curso (en segundo plano, con su ventana de progreso).
+    exportando: Option<exportar::EnCurso>,
     drag: Option<timeline::Drag>,
     /// Región bajo el último clic derecho (menú contextual).
     ctx_region: Option<(usize, usize)>,
     /// Pista y posición del último clic derecho en el timeline.
     ctx_lane: Option<(usize, u64)>,
+    /// Grabación de un carril de tomas bajo el clic derecho: pista, toma y región.
+    ctx_toma: Option<(usize, usize, usize)>,
+    /// Punto de la línea de ganancia que se arrastra: (pista, toma o None, región) y punto.
+    gain_drag: Option<(DestinoGanancia, usize)>,
     /// Último punto dibujado con el lápiz (pista, frame).
     pencil: Option<(usize, u64)>,
     /// Reordenar pistas arrastrando: (origen, destino).
@@ -813,7 +903,7 @@ impl App {
         // El mixer y la biblioteca que quedaron en otra ventana (por ejemplo en otro monitor) vuelven a abrirse así.
         let separadas_inicio = (config.separadas.iter().any(|s| s == "mixer-win"), config.separadas.iter().any(|s| s == "lib-win"));
         let cfg = audio_config(&p);
-        let (engine, streams) = Engine::start(&cfg).inspect_err(|e| informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg))))?;
+        let (engine, streams) = Engine::abrir_en_hilo(&cfg, None, LIMITE_AUDIO).map(|(e, h)| (e, Some(h))).inspect_err(|e| informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg))))?;
         informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
         informes::contexto("Audio", describir_audio(&cfg));
         engine.clic_nivel.set(clic.0);
@@ -887,9 +977,12 @@ impl App {
             last_track: None,
             alto_dispositivos: 0.0,
             exportacion: None,
+            exportando: None,
             drag: None,
             ctx_region: None,
             ctx_lane: None,
+            ctx_toma: None,
+            gain_drag: None,
             pencil: None,
             track_drag: None,
             strip_drag: None,
@@ -919,7 +1012,7 @@ impl App {
             patron: Default::default(),
             pie: None,
             menu_region: None,
-            show_inspector: false,
+            show_inspector: true,
             lib_buscar: String::new(),
             lib_filtro: 0,
             enfocar_ventana: None,
@@ -1080,8 +1173,8 @@ impl App {
                 }
             }
             (t.group, t.input) = (ts.group.filter(|g| *g < p.groups.len()), ts.input);
-            t.height = if ts.height > 0.0 { ts.height } else { TRACK_H };
-            (t.vol_auto, t.pan_auto) = (frames(&ts.vol_auto), frames(&ts.pan_auto));
+            t.height = if ts.height > 0.0 { ts.height.max(timeline::MIN_H) } else { TRACK_H };
+            (t.vol_auto, t.pan_auto, t.gain_auto) = (frames(&ts.vol_auto), frames(&ts.pan_auto), frames(&ts.gain_auto));
             tracks.push(t);
         }
         // Los envíos se guardan por posición de pista y en memoria se refieren por id.
@@ -1162,7 +1255,7 @@ impl App {
             if let Some(v) = &t.video {
                 (ts.video, ts.video_start) = (v.file.clone(), t.video_start as f64 / sr);
             }
-            (ts.vol_auto, ts.pan_auto) = (secs(&t.vol_auto), secs(&t.pan_auto));
+            (ts.vol_auto, ts.pan_auto, ts.gain_auto) = (secs(&t.vol_auto), secs(&t.pan_auto), secs(&t.gain_auto));
             ts.height = t.height;
             ts
         });
@@ -1199,7 +1292,7 @@ impl App {
         // Con el mismo dispositivo y formato, el audio abierto se reutiliza: cerrar y reabrir PipeWire
         // dos veces seguidas (abrir un proyecto con doble clic, o recuperar el autoguardado justo
         // después de abrirlo) dejaba la ventana colgada.
-        if !self.streams.is_empty() && cfg == self.audio {
+        if self.streams.is_some() && cfg == self.audio {
             let e = &self.engine;
             e.secuencia.store(None);
             e.preview.store(None);
@@ -1209,20 +1302,17 @@ impl App {
             self.apply_project(p);
             return Ok(());
         }
-        let habia_audio = !self.streams.is_empty();
-        (self.streams, self.old_graph, self.midi_in) = (vec![], None, vec![]);
-        if habia_audio {
-            // PipeWire tarda en liberar la interfaz cuando entrada y salida son la misma placa (USB):
-            // reabrirla enseguida dejaba snd_pcm_prepare esperando para siempre y la ventana colgada.
-            std::thread::sleep(Duration::from_millis(400));
-        }
-        let (engine, streams) = match Engine::start(&cfg) {
+        // Cerrar y reabrir la interfaz (USB por PipeWire) se hace en el hilo del audio, con un límite:
+        // si ALSA se queda esperando, la ventana sigue respondiendo.
+        let anterior = self.streams.take();
+        (self.old_graph, self.midi_in) = (None, vec![]);
+        let (engine, streams) = match Engine::abrir_en_hilo(&cfg, anterior, LIMITE_AUDIO) {
             Ok(v) => v,
             Err(e) => {
                 // Si el dispositivo o formato nuevo no abre, se vuelve al que funcionaba.
                 informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg)));
-                let (engine, streams) = Engine::start(&self.audio)?;
-                (self.engine, self.streams) = (engine, streams);
+                let (engine, streams) = Engine::abrir_en_hilo(&self.audio, None, LIMITE_AUDIO)?;
+                (self.engine, self.streams) = (engine, Some(streams));
                 self.dirty = true;
                 return Err(e);
             }
@@ -1232,7 +1322,7 @@ impl App {
         engine.clic_nivel.set(self.config.clic_nivel);
         engine.clic_acento.set(self.config.clic_acento);
         self.midi_in = engine::connect_midi(&self.config.midi_port, engine.midi_tx.clone());
-        (self.engine, self.streams, self.dir) = (engine, streams, dir);
+        (self.engine, self.streams, self.dir) = (engine, Some(streams), dir);
         self.apply_project(p);
         Ok(())
     }
@@ -1405,8 +1495,18 @@ impl App {
 
     /// Guarda con el nombre elegido (si cambió, se renombra la carpeta del proyecto) y cierra.
     fn guardar_y_cerrar(&mut self, nombre: &str) -> anyhow::Result<()> {
+        self.renombrar_carpeta(nombre)?;
+        self.meta.saved_at = now_text();
+        self.to_project().save(&self.dir)?;
+        self.cambios = false;
+        Ok(())
+    }
+
+    /// Renombra la carpeta del proyecto (el nombre de la canción en disco) y la lista de recientes.
+    fn renombrar_carpeta(&mut self, nombre: &str) -> anyhow::Result<()> {
         let nombre = safe(nombre.trim());
         anyhow::ensure!(!nombre.is_empty(), "{}", tr("Escribe un nombre para el proyecto"));
+        anyhow::ensure!(!self.recording(), "{}", tr("Para la grabación antes de renombrar"));
         if self.dir.file_name().is_none_or(|n| n.to_string_lossy() != nombre) {
             let destino = self.dir.with_file_name(&nombre);
             anyhow::ensure!(!destino.exists(), "{} «{nombre}»", tr("Ya existe un proyecto llamado"));
@@ -1416,9 +1516,6 @@ impl App {
             self.config.recent.insert(0, destino);
             self.config.save();
         }
-        self.meta.saved_at = now_text();
-        self.to_project().save(&self.dir)?;
-        self.cambios = false;
         Ok(())
     }
 
@@ -1604,6 +1701,7 @@ impl App {
                 plugin: if congelada { None } else { t.plugin.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),
                 vol_auto: t.vol_auto.clone(),
+                gain_auto: t.gain_auto.iter().map(|&(f, v)| (f, ganancia_db(v))).collect(),
                 pan_auto: t.pan_auto.clone(),
                 sends: t.sends.iter().filter_map(|&(id, g)| Some((slot(id)?, g))).collect(),
                 to_master: t.to_master,
@@ -1687,8 +1785,7 @@ impl App {
     fn comp_take(&mut self, i: usize, a: u64, b: u64, k: usize) {
         let xf = self.xfade();
         let t = &mut self.s.tracks[i];
-        t.comp = set_segment(&t.comp, a, b, k);
-        t.clips = comp_clips(&t.takes, &t.comp, xf);
+        colocar_toma(t, a, b, k, xf);
         self.dirty = true;
     }
 
@@ -1714,6 +1811,7 @@ impl App {
                         t.clips = t.clips.iter().flat_map(|c| [c.trim(0, a), c.trim(b, u64::MAX)]).flatten().collect();
                         // Razor: también se borran los puntos de automatización del rango.
                         t.vol_auto.retain(|p| p.0 < a || p.0 >= b);
+                        t.gain_auto.retain(|p| p.0 < a || p.0 >= b);
                         t.pan_auto.retain(|p| p.0 < a || p.0 >= b);
                     }
                 }
@@ -2349,8 +2447,24 @@ impl App {
         self.drain_recording();
         self.edit();
         let (start, end) = (self.engine.rec_start.load(Relaxed), self.pos());
-        let (data, midi) = (std::mem::take(&mut self.rec_data), std::mem::take(&mut self.rec_midi));
-        self.colocar_grabacion(start, end, data, midi);
+        let (mut data, mut midi) = (std::mem::take(&mut self.rec_data), std::mem::take(&mut self.rec_midi));
+        // Lo grabado llega tarde: lo que tarda el clic en salir por los parlantes y la voz en volver por
+        // la entrada. Se corre hacia atrás esa latencia para que quede justo sobre el pulso.
+        let (lat, lat_midi) = self.latencia_grabacion();
+        let ich = self.engine.in_channels.max(1);
+        let sobra = lat.saturating_sub(start) as usize;
+        data.drain(..(sobra * ich).min(data.len()));
+        midi.iter_mut().for_each(|m| m.0 = m.0.saturating_sub(lat_midi));
+        self.colocar_grabacion(start.saturating_sub(lat), end.saturating_sub(lat), data, midi);
+        informes::contexto("Latencia de grabación", format!("{:.1} ms", lat as f64 * 1000.0 / self.sr()));
+    }
+
+    /// Latencia a compensar al grabar (frames): audio (ida y vuelta) y MIDI (salida), con el ajuste fino.
+    fn latencia_grabacion(&self) -> (u64, u64) {
+        let ajuste = self.config.latencia_ajuste_ms as f64 / 1000.0 * self.sr();
+        let medida = |f: u64| if self.config.latencia_sin_medir { 0.0 } else { f as f64 };
+        let total = |f: u64| (medida(f) + ajuste).max(0.0) as u64;
+        (total(self.engine.rec_latencia.load(Relaxed)), total(self.engine.rec_latencia_midi.load(Relaxed)))
     }
 
     /// Coloca una grabación en las pistas armadas: `data` es el audio intercalado de la entrada desde
@@ -2455,8 +2569,9 @@ impl App {
                         (t.takes, t.comp) = (vec![t.clips.clone()], vec![(0, u64::MAX, 0)]);
                     }
                     t.takes.push(vec![nc.clone()]);
-                    t.comp = set_segment(&t.comp, nc.start, nc.end(), t.takes.len() - 1);
-                    (t.clips, t.show_takes) = (comp_clips(&t.takes, &t.comp, xf), true);
+                    // La toma nueva suena donde grabó; lo que había alrededor (editado o no) queda igual.
+                    colocar_toma(t, nc.start, nc.end(), t.takes.len() - 1, xf);
+                    t.show_takes = true;
                 }
                 Err(e) => errors.push(e.to_string()),
             }
@@ -2526,8 +2641,9 @@ impl App {
     /// Panel inferior con pestañas: mixer, piano roll y analizador.
     fn bottom_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            for (k, label) in [(0, "Mixer"), (6, "Dispositivos"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura"), (5, "Patrón")] {
-                if widgets::pildora(ui, self.bottom_tab == k, tr(label)).clicked() {
+            // Pestañas de texto subrayadas, como en las consolas: la cadena de efectos se llama «Efectos».
+            for (k, label) in [(0, "Mixer"), (6, "Efectos"), (1, "Piano roll"), (2, "Analizador"), (3, "Editor de audio"), (4, "Partitura"), (5, "Patrón"), (7, "MIDI Remote")] {
+                if widgets::pestana(ui, self.bottom_tab == k, tr(label)).clicked() {
                     self.bottom_tab = k;
                     // El mixer se dibuja en un solo lugar: abajo, se sale de la vista MIX.
                     self.vista_mix &= k != 0;
@@ -2580,6 +2696,13 @@ impl App {
                 }
                 None => _ = ui.label(egui::RichText::new(tr("Selecciona una pista para ver su instrumento y efectos.")).color(TEXT_DIM())),
             },
+            7 => {
+                // Teclado o controlador MIDI: sus perillas y botones asignados (MIDI Learn).
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.set_max_width(preferencias::ANCHO);
+                    self.tarjeta_controlador(ui);
+                });
+            }
             _ => self.audio_editor(ui),
         }
     }
@@ -2707,6 +2830,8 @@ impl eframe::App for App {
         egui::Panel::top("control").exact_size(bar_h).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(6, 3))).show(ui, |ui| self.control_bar(ui));
         egui::Panel::top("herramientas").exact_size(40.0).frame(egui::Frame::new().fill(ELEVATED()).inner_margin(egui::Margin::symmetric(12, 4))).show(ui, |ui| self.barra_herramientas(ui));
         egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
+        // Transporte abajo, como en las consolas de estudio: tiempo grande, botones y tempo.
+        egui::Panel::bottom("transporte").exact_size(56.0).frame(egui::Frame::new().fill(chrome::FONDO_HONDO).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| self.barra_transporte(ui));
         if self.show_mixer {
             let default = if self.config.bottom_h > 0.0 { self.config.bottom_h } else { 440.0 };
             let panel = egui::Panel::bottom("bottom").default_size(default).min_size(140.0).resizable(true).show(ui, |ui| self.bottom_panel(ui));
@@ -2718,17 +2843,19 @@ impl eframe::App for App {
             }
         }
         if self.show_inspector {
-            egui::Panel::left("inspector").default_size(300.0).min_size(240.0).resizable(true).frame(egui::Frame::new().fill(PANEL()).inner_margin(12.0)).show(ui, |ui| self.inspector(ui));
+            egui::Panel::left("inspector").default_size(250.0).min_size(220.0).resizable(true).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin { left: 10, right: 10, top: 6, bottom: 6 })).show(ui, |ui| self.inspector(ui));
         }
         if self.show_lib && !self.lib_float {
             egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));
         }
         let consola = self.vista_mix && !self.mixer_float;
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG()).inner_margin(if self.ver_escenario || consola { 12.0 } else { 0.0 })).show(ui, |ui| {
+        // Lanzador de clips (escenario) al lado del arreglo, a la derecha.
+        if self.ver_escenario && !consola {
+            egui::Panel::right("lanzador").default_size(460.0).min_size(320.0).resizable(true).frame(egui::Frame::new().fill(PANEL()).inner_margin(10.0)).show(ui, |ui| self.vista_escenario(ui));
+        }
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG()).inner_margin(if consola { 12.0 } else { 0.0 })).show(ui, |ui| {
             if consola {
                 self.mixer(ui)
-            } else if self.ver_escenario {
-                self.vista_escenario(ui)
             } else {
                 self.timeline(ui)
             }
@@ -2844,16 +2971,45 @@ mod tests {
         assert_eq!(tune.readout[1].get(), 57.0);
     }
 
-    /// Comping: elegir un tramo de otra toma divide el comp y aplica fundidos en los cortes.
+    /// Elegir un tramo de otra toma corta solo ese tramo, con fundidos en los cortes; el resto de la
+    /// pista (aunque se haya editado) y lo que otras tomas grabaron en otros lugares queda igual.
     #[test]
-    fn comping_segments() {
-        let comp = super::set_segment(&[(0, u64::MAX, 0)], 100, 200, 1);
-        assert_eq!(comp, vec![(0, 100, 0), (100, 200, 1), (200, u64::MAX, 0)]);
+    fn tomas_por_tramos() {
         let buf = engine::AudioBuf::new("a".into(), vec![[0.1; 2]; 1000]);
-        let takes = vec![vec![engine::Clip::audio(buf.clone(), 0)], vec![engine::Clip::audio(buf, 0)]];
-        let clips = super::comp_clips(&takes, &comp, 10);
-        assert_eq!(clips.len(), 3);
-        assert_eq!((clips[1].start, clips[1].len, clips[1].fade_in, clips[1].fade_out), (100, 100, 10, 10));
-        assert_eq!(clips[0].fade_in, 0);
+        let otro = engine::AudioBuf::new("b".into(), vec![[0.1; 2]; 1000]);
+        let mut t = super::Track::new("a".into(), super::TrackKind::AudioStereo, eframe::egui::Color32::WHITE);
+        let tercera = engine::AudioBuf::new("c".into(), vec![[0.1; 2]; 1000]);
+        t.takes = vec![vec![engine::Clip::audio(buf.clone(), 0)], vec![engine::Clip::audio(otro.clone(), 0)], vec![engine::Clip::audio(tercera.clone(), 2500)]];
+        t.clips = vec![engine::Clip::audio(buf, 0), engine::Clip::audio(tercera, 2500)];
+        super::colocar_toma(&mut t, 100, 200, 1, 10);
+        let tramos: Vec<_> = t.clips.iter().map(|c| (c.start, c.end(), c.fade_in, c.fade_out)).collect();
+        assert_eq!(tramos, vec![(0, 100, 0, 10), (100, 200, 10, 10), (200, 1000, 10, 0), (2500, 3500, 0, 0)]);
+        assert_eq!(super::tomas_en_uso(&t), vec![0, 1, 2]);
+        // Usar la toma 2 entera reemplaza solo donde grabó (0..1000).
+        super::colocar_toma(&mut t, 0, u64::MAX, 1, 10);
+        assert_eq!(t.clips.iter().map(|c| (c.start, c.end())).collect::<Vec<_>>(), vec![(0, 1000), (2500, 3500)]);
+        assert_eq!(super::tomas_en_uso(&t), vec![1, 2]);
+        // Un proyecto de antes con la tercera toma muda: al abrirlo suena donde la pista está vacía.
+        t.clips.pop();
+        super::completar_tomas(&mut t, 10, 50, (0, u64::MAX));
+        assert_eq!(t.clips.iter().map(|c| (c.start, c.end())).collect::<Vec<_>>(), vec![(0, 1000), (2500, 3500)]);
+    }
+
+    /// Grabar encima y borrar esa toma devuelve lo de antes en ese tramo.
+    #[test]
+    fn borrar_toma_devuelve_lo_anterior() {
+        let antes = engine::AudioBuf::new("a".into(), vec![[0.1; 2]; 1000]);
+        let encima = engine::AudioBuf::new("b".into(), vec![[0.1; 2]; 200]);
+        let mut t = super::Track::new("a".into(), super::TrackKind::AudioStereo, eframe::egui::Color32::WHITE);
+        t.clips = vec![engine::Clip::audio(antes.clone(), 0)];
+        t.takes = vec![t.clips.clone(), vec![engine::Clip::audio(encima, 200)]];
+        super::colocar_toma(&mut t, 200, 400, 1, 10);
+        assert_eq!(t.clips.len(), 3);
+        let nueva = t.takes[1][0].clone();
+        t.clips.retain(|c| !super::sale_de(c, &nueva));
+        t.takes.remove(1);
+        super::completar_tomas(&mut t, 10, 50, (200, 400));
+        assert_eq!(t.clips.iter().map(|c| (c.start, c.end())).collect::<Vec<_>>(), vec![(0, 200), (200, 400), (400, 1000)]);
+        assert!(t.clips.iter().all(|c| super::sale_de(c, &engine::Clip::audio(antes.clone(), 0))));
     }
 }

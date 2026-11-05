@@ -25,6 +25,7 @@ pub enum Cmd {
     Select,
     Pencil,
     Blade,
+    Ganancia,
     Snap,
     Mixer,
     Library,
@@ -44,7 +45,7 @@ pub enum Cmd {
 }
 
 impl Cmd {
-    pub const ALL: [Cmd; 36] = [
+    pub const ALL: [Cmd; 37] = [
         Cmd::Play,
         Cmd::Record,
         Cmd::Home,
@@ -65,6 +66,7 @@ impl Cmd {
         Cmd::Select,
         Cmd::Pencil,
         Cmd::Blade,
+        Cmd::Ganancia,
         Cmd::Snap,
         Cmd::Mixer,
         Cmd::Library,
@@ -109,6 +111,7 @@ impl Cmd {
             Cmd::Select => "Herramienta selección",
             Cmd::Pencil => "Herramienta lápiz",
             Cmd::Blade => "Herramienta cuchilla",
+            Cmd::Ganancia => "Herramienta ganancia",
             Cmd::Snap => "Ajustar a la rejilla",
             Cmd::Mixer => "Mostrar mixer",
             Cmd::Library => "Mostrar biblioteca",
@@ -150,6 +153,7 @@ impl Cmd {
             Cmd::Select => "V",
             Cmd::Pencil => "P",
             Cmd::Blade => "B",
+            Cmd::Ganancia => "G",
             Cmd::Snap => "N",
             Cmd::Mixer => "X",
             Cmd::Library => "Y",
@@ -281,6 +285,7 @@ impl App {
             Cmd::Select => self.set_tool(Tool::Select),
             Cmd::Pencil => self.set_tool(Tool::Pencil),
             Cmd::Blade => self.set_tool(Tool::Blade),
+            Cmd::Ganancia => self.set_tool(Tool::Ganancia),
             Cmd::Snap => self.snap = !self.snap,
             Cmd::Mixer => (self.show_mixer, self.bottom_tab, self.vista_mix) = (!(self.show_mixer && self.bottom_tab == 0), 0, false),
             Cmd::Library => self.show_lib = !self.show_lib,

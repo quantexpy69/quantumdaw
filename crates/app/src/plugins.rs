@@ -7,7 +7,7 @@ use egui::{Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 
 const SIGNATURE: &str = "QUANTUM";
-const DISCRETE: [&str; 8] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División"];
+const DISCRETE: [&str; 9] = ["Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División", "Escuchar lo quitado"];
 /// Ancho de cada dispositivo en la pestaña Dispositivos; Curves (visor y controles en fila) es ancho.
 const ANCHO_DISPOSITIVO: f32 = 380.0;
 const ANCHO_CURVES: f32 = 820.0;
@@ -42,6 +42,7 @@ pub fn kind_color(kind: Option<FxKind>) -> Color32 {
         Some(FxKind::Gate) => Color32::from_rgb(0x9C, 0xD6, 0x4A),
         Some(FxKind::Chorus) => Color32::from_rgb(0x4F, 0xC3, 0xF7),
         Some(FxKind::DeEsser) => Color32::from_rgb(0xF2, 0xC9, 0x4C),
+        Some(FxKind::AntiPop) => Color32::from_rgb(0x5C, 0xE1, 0xE6),
         Some(FxKind::TapePro) => Color32::from_rgb(0xFF, 0xA8, 0x4A),
         Some(FxKind::SpacePro) => Color32::from_rgb(0x9D, 0x7C, 0xFF),
         Some(FxKind::VocalPro) => Color32::from_rgb(0xFF, 0x5C, 0xA8),
@@ -64,6 +65,7 @@ pub fn summary(k: FxKind) -> &'static str {
         FxKind::Limiter => "Limitador con anticipación: sube el volumen sin pasar del techo. Ideal al final de la cadena del master.",
         FxKind::Gate => "Puerta de ruido: silencia el ruido de fondo entre frases o golpes, con retención y rango.",
         FxKind::Chorus => "Duplica la señal con pequeñas variaciones de tiempo para un sonido más ancho y envolvente.",
+        FxKind::AntiPop => "Baja los golpes de aire de las P y B y el chasquido de las T y K, sutil y solo en el instante en que aparecen. La voz normal pasa intacta y un techo suave evita que el audio sature.",
         FxKind::DeEsser => "Baja las eses y sibilancias de las voces: detecta los agudos fuertes y reduce el volumen solo en ese instante.",
         FxKind::TapePro => "Cinta y válvula de estudio: saturación, golpe de cabeza, wow, flutter y siseo, con VU analógicos y tres velocidades de cinta.",
         FxKind::SpacePro => "Reverb de 8 líneas (sala, placa, catedral y shimmer) con eco sincronizado, ducking y congelar, en una sala 3D animada.",
@@ -101,10 +103,10 @@ pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         "Modo" if kind == Some(FxKind::Drive) => pick(&["Suave", "Duro", "Válvula"]),
         "Modo" => pick(&["Automático", "Manual"]),
         "Onda" => pick(&["Sierra", "Cuadrada", "Triángulo", "Seno"]),
-        "Ping-pong" | "Sincronía" => pick(&["No", "Sí"]),
+        "Ping-pong" | "Sincronía" | "Escuchar lo quitado" => pick(&["No", "Sí"]),
         "División" => pick(&["1/1", "1/2", "1/4", "1/8", "1/16", "1/8 ·"]),
         "Volumen" => format!("{v:+.1} dB"),
-        "Frecuencia" | "Corte" | "Tono" | "Frec. graves" | "Frec. medios" | "Frec. agudos" | "Corte graves" | "Corte agudos" | "Frec. eses" | "Cruce graves" | "Cruce agudos" => hz(v),
+        "Frecuencia" | "Corte" | "Tono" | "Frec. graves" | "Frec. medios" | "Frec. agudos" | "Corte graves" | "Corte agudos" | "Frec. eses" | "Cruce graves" | "Cruce agudos" | "Frec. plosivas" | "Frec. consonantes" => hz(v),
         "Q medios" => format!("Q {v:.2}"),
         "Desafinar" => format!("{v:.0} ct"),
         "Ratio" => format!("{v:.1}:1"),
@@ -223,6 +225,20 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
                 if x < r.right() {
                     painter.vline(x, r.bottom() - h * r.height()..=r.bottom(), Stroke::new(3.0, color));
                 }
+            }
+        }
+        // ANTIPOP: dos medidores horizontales con lo que está bajando ahora (P/B graves, T/K agudos).
+        Some(FxKind::AntiPop) => {
+            label(pos2(r.right() - 4.0, r.top() + 2.0), Align2::RIGHT_TOP, format!("{} {:.1} dB", tr("Techo"), p[5]), 10.5, TEXT_DIM());
+            let alto = ((r.height() - 18.0) / 2.0).clamp(8.0, 22.0);
+            for (k, (nombre, maximo)) in [("P · B", 18.0), ("T · K", 10.0)].into_iter().enumerate() {
+                let y = r.top() + 16.0 + k as f32 * (alto + 4.0);
+                let barra = Rect::from_min_max(pos2(r.left() + 46.0, y), pos2(r.right() - 64.0, y + alto));
+                painter.rect_filled(barra, rr(3.0), Color32::from_white_alpha(10));
+                let f = (readout[k] / maximo).clamp(0.0, 1.0);
+                painter.rect_filled(Rect::from_min_max(barra.min, pos2(barra.left() + f * barra.width(), barra.bottom())), rr(3.0), color);
+                label(pos2(r.left() + 6.0, barra.center().y), Align2::LEFT_CENTER, nombre.into(), 11.5, TEXT());
+                label(pos2(r.right() - 6.0, barra.center().y), Align2::RIGHT_CENTER, if readout[k] < 0.05 { "0.0 dB".into() } else { format!("-{:.1} dB", readout[k]) }, 11.0, color);
             }
         }
         // Dinámica con lectura de reducción de ganancia.
