@@ -1849,3 +1849,76 @@ Deja lo que suena ahora como regiones normales: se pueden mover, recortar, corta
 Listo: la toma quedó como regiones normales; ya se puede mover y editar	Done: the take is now normal regions; you can move and edit it	Pronto: o take virou regiões normais; já dá para mover e editar
 Quita esta toma de la pista	Removes this take from the track	Remove este take da faixa
 borrada	deleted	apagado
+Suena esta grabación de la toma	Now playing this recording of take	Tocando esta gravação do take
+Usar esta grabación entera	Use this whole recording	Usar esta gravação inteira
+Usar esta toma en todo lo que grabó	Use this take wherever it recorded	Usar este take em tudo o que gravou
+Escuchar desde aquí	Listen from here	Ouvir daqui
+Borrar esta grabación de la toma	Delete this recording from the take	Apagar esta gravação do take
+Quita solo esta grabación; las otras tomas quedan igual	Removes only this recording; the other takes stay as they are	Remove só esta gravação; os outros takes ficam iguais
+Clic: que suene esta toma en todo lo que grabó (las otras siguen donde no se pisan) · en su carril: clic en una grabación para usarla, barrer para usar un tramo, arrastrar la barra de arriba para moverla	Click: play this take wherever it recorded (the others keep playing where they don't overlap) · in its lane: click a recording to use it, sweep to use a section, drag its top bar to move it	Clique: tocar este take em tudo o que gravou (os outros seguem onde não se sobrepõem) · na sua faixa: clique numa gravação para usá-la, arraste para usar um trecho, arraste a barra de cima para movê-la
+Plegar las tomas (lo elegido sigue sonando igual)	Collapse the takes (your choices keep playing)	Recolher os takes (o escolhido continua tocando)
+Desplegar las tomas de esta pista	Expand this track's takes	Expandir os takes desta faixa
+Que mande esta toma: suena entera, y las otras solo donde esta no grabó	Make this take lead: it plays whole, the others only where it didn't record	Este take manda: toca inteiro, e os outros só onde ele não gravou
+Fijar lo que suena como regiones…	Commit what plays as regions…	Fixar o que toca como regiões…
+Deja lo que suena ahora como regiones normales para recortarlas y editarlas en la pista. Las otras tomas se quitan de la pista (los archivos quedan en el proyecto). Para mover una toma sin quitar nada, arrastra la barra de arriba de su grabación en el carril.	Turns what plays now into normal regions to trim and edit on the track. The other takes are removed from the track (the files stay in the project). To move a take without removing anything, drag the top bar of its recording in the lane.	Deixa o que toca agora como regiões normais para cortar e editar na faixa. Os outros takes saem da faixa (os arquivos ficam no projeto). Para mover um take sem tirar nada, arraste a barra de cima da gravação na sua faixa.
+Plegar las tomas	Collapse the takes	Recolher os takes
+Desplegar las tomas (elegir por tramos)	Expand the takes (choose by sections)	Expandir os takes (escolher por trechos)
+En los carriles de tomas: clic en una grabación para usarla, barre para usar un tramo y arrastra su barra de arriba para moverla. Plegar no cambia lo elegido.	In the take lanes: click a recording to use it, sweep to use a section and drag its top bar to move it. Collapsing doesn't change your choices.	Nas faixas de takes: clique numa gravação para usá-la, arraste para usar um trecho e arraste a barra de cima para movê-la. Recolher não muda o escolhido.
+tomas	takes	takes
+Para la grabación antes de renombrar	Stop recording before renaming	Pare a gravação antes de renomear
+NOMBRE DE LA CANCIÓN	SONG NAME	NOME DA MÚSICA
+ARTISTA	ARTIST	ARTISTA
+Opcional	Optional	Opcional
+Guardar con este nombre	Save with this name	Salvar com este nome
+Renombra también la carpeta del proyecto y lo guarda	Also renames the project folder and saves it	Renomeia também a pasta do projeto e salva
+Clic: ponerle nombre a la canción	Click: name the song	Clique: dar nome à música
+Quedarme solo con lo que suena…	Keep only what plays…	Ficar só com o que toca…
+Quita las tomas de la lista y deja la pista como está. Los archivos quedan en el proyecto.	Removes the takes from the list and leaves the track as it is. The files stay in the project.	Tira os takes da lista e deixa a faixa como está. Os arquivos ficam no projeto.
+Listo: quedó solo lo que suena; las otras tomas se quitaron de la pista	Done: only what plays remains; the other takes were removed from the track	Pronto: ficou só o que toca; os outros takes saíram da faixa
+QUANTUM ANTIPOP	QUANTUM ANTIPOP	QUANTUM ANTIPOP
+Plosivas P/B	Plosives P/B	Plosivas P/B
+Frec. plosivas	Plosive freq.	Freq. plosivas
+Consonantes T/K	Consonants T/K	Consoantes T/K
+Frec. consonantes	Consonant freq.	Freq. consoantes
+Escuchar lo quitado	Listen to what's removed	Ouvir o que foi tirado
+Techo	Ceiling	Teto
+Quita los golpes de P y T sin saturar	Removes P and T pops without clipping	Tira os estalos de P e T sem saturar
+Baja los golpes de aire de las P y B y el chasquido de las T y K, sutil y solo en el instante en que aparecen. La voz normal pasa intacta y un techo suave evita que el audio sature.	Lowers the air bursts of P and B and the click of T and K, subtly and only at the moment they appear. Normal voice passes untouched and a soft ceiling keeps the audio from clipping.	Abaixa os golpes de ar do P e B e o estalo do T e K, sutil e só no instante em que aparecem. A voz normal passa intacta e um teto suave evita que o áudio sature.
+Exportando	Exporting	Exportando
+Exportando…	Exporting…	Exportando…
+Exportación cancelada	Export cancelled	Exportação cancelada
+Cancelando…	Cancelling…	Cancelando…
+archivos	files	arquivos
+Ganancia	Gain	Ganho
+toda la pista	whole track	faixa inteira
+Línea de ganancia de toda la pista, antes de los efectos (de -24 a +12 dB)	Gain line for the whole track, before the effects (-24 to +12 dB)	Linha de ganho da faixa inteira, antes dos efeitos (de -24 a +12 dB)
+Línea de ganancia de regiones (G)	Region gain line (G)	Linha de ganho das regiões (G)
+Ganancia: clic en una región agrega un punto, arrastra para moverlo, clic derecho lo borra (G)	Gain: click a region to add a point, drag to move it, right-click to delete it (G)	Ganho: clique numa região adiciona um ponto, arraste para movê-lo, clique direito apaga (G)
+Herramienta ganancia	Gain tool	Ferramenta de ganho
+LATENCIA DE GRABACIÓN	RECORDING LATENCY	LATÊNCIA DE GRAVAÇÃO
+Medida ahora	Measured now	Medida agora
+Compensar automáticamente	Compensate automatically	Compensar automaticamente
+Ajuste fino	Fine adjustment	Ajuste fino
+Lo grabado se corre hacia atrás lo que tarda el clic en salir y tu voz o instrumento en volver, para que quede justo sobre el pulso. Si todavía queda un poco tarde, sube el ajuste fino; si queda adelantado, bájalo.	Recordings are shifted back by the time the click takes to go out and your voice or instrument takes to come back, so they land right on the beat. If it is still a bit late, raise the fine adjustment; if it is early, lower it.	O que é gravado é recuado o tempo que o clique leva para sair e sua voz ou instrumento para voltar, para cair bem no pulso. Se ainda ficar um pouco atrasado, aumente o ajuste fino; se ficar adiantado, diminua.
+ORGANIZAR EN PROYECTOS	ORGANIZE INTO PROJECTS	ORGANIZAR EM PROJETOS
+Un proyecto agrupa canciones (un disco, un EP, un cliente). Crea uno y mueve tus canciones con «Mover a…».	A project groups songs (an album, an EP, a client). Create one and move your songs with "Move to…".	Um projeto agrupa músicas (um disco, um EP, um cliente). Crie um e mova suas músicas com «Mover para…».
+Nombre del proyecto nuevo	New project name	Nome do projeto novo
+Crear proyecto	Create project	Criar projeto
+Proyecto creado:	Project created:	Projeto criado:
+Mover a…	Move to…	Mover para…
+Para la grabación antes de mover la canción	Stop recording before moving the song	Pare a gravação antes de mover a música
+Ya hay una canción con ese nombre en	There is already a song with that name in	Já existe uma música com esse nome em
+Toma cortada:	Take cut:	Take cortado:
+Nada seleccionado	Nothing selected	Nada selecionado
+región(es) seleccionada(s)	region(s) selected	região(ões) selecionada(s)
+Inserciones	Inserts	Inserções
+Vacío	Empty	Vazio
+Suelta aquí	Drop here	Solte aqui
+Opciones de la pista	Track options	Opções da faixa
+Leer la automatización	Read automation	Ler a automação
+Escribir la automatización mientras suena	Write automation while playing	Escrever a automação enquanto toca
+Clic: abrir el efecto · botón: encender o apagar · clic derecho: más opciones	Click: open the effect · button: turn on or off · right-click: more options	Clique: abrir o efeito · botão: ligar ou desligar · clique direito: mais opções
+Clic: agregar un efecto · o arrastra uno desde la biblioteca	Click: add an effect · or drag one from the library	Clique: adicionar um efeito · ou arraste um da biblioteca
+MIDI Remote	MIDI Remote	MIDI Remote
+Agregar un efecto	Add an effect	Adicionar um efeito
+Panorama · arrastra · doble clic: centro	Pan · drag · double-click: center	Pan · arraste · clique duplo: centro

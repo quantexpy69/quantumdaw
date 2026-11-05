@@ -154,7 +154,7 @@ impl App {
                         if ui.checkbox(&mut activo, tr("Activo")).changed() {
                             fx.bypass.store(!activo, Relaxed);
                         }
-                        if matches!(fx.kind, FxKind::Limiter | FxKind::Compressor | FxKind::Gate | FxKind::DeEsser) {
+                        if matches!(fx.kind, FxKind::Limiter | FxKind::Compressor | FxKind::Gate | FxKind::DeEsser | FxKind::AntiPop) {
                             ui.label(RichText::new(format!("GR -{:.1} dB", fx.readout[0].get())).color(METER[1]));
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

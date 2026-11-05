@@ -410,7 +410,7 @@ impl App {
         }
         tarjeta(ui, "ESTADO", |ui| {
             ui.horizontal(|ui| {
-                let en_marcha = !self.streams.is_empty();
+                let en_marcha = !self.streams.is_none();
                 estado(ui, en_marcha, if en_marcha { "En marcha" } else { "Detenido" });
                 let buf = match if self.audio.buffer == 0 { engine::BUFFER_AUTOMATICO } else { self.audio.buffer } {
                     0 => tr("búfer del sistema").to_string(),
@@ -439,6 +439,23 @@ impl App {
             if cambio {
                 self.engine.clic_nivel.set(self.config.clic_nivel);
                 self.engine.clic_acento.set(self.config.clic_acento);
+                self.config.save();
+            }
+        });
+        tarjeta(ui, "LATENCIA DE GRABACIÓN", |ui| {
+            let ms = |f: u64| f as f64 * 1000.0 / self.engine.sample_rate.max(1) as f64;
+            let e = &self.engine;
+            let medida = ms(e.latencia_salida.load(Relaxed) + e.latencia_entrada.load(Relaxed) + e.latencia_cola.load(Relaxed));
+            fila(ui, "Medida ahora", |ui| dato(ui, "", &format!("{medida:.1} ms")));
+            let mut medir = !self.config.latencia_sin_medir;
+            let mut cambio = fila(ui, "Compensar automáticamente", |ui| interruptor(ui, &mut medir));
+            self.config.latencia_sin_medir = !medir;
+            cambio |= fila(ui, "Ajuste fino", |ui| {
+                let t = format!("{:+.1} ms", self.config.latencia_ajuste_ms);
+                barra(ui, &mut self.config.latencia_ajuste_ms, -50.0..=50.0, t)
+            });
+            nota(ui, "Lo grabado se corre hacia atrás lo que tarda el clic en salir y tu voz o instrumento en volver, para que quede justo sobre el pulso. Si todavía queda un poco tarde, sube el ajuste fino; si queda adelantado, bájalo.");
+            if cambio {
                 self.config.save();
             }
         });

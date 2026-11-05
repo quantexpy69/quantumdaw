@@ -6,6 +6,7 @@ use crate::{
     *,
 };
 use egui::{RichText, Sense, Stroke, StrokeKind, vec2};
+use std::sync::atomic::AtomicUsize;
 
 /// Qué se exporta.
 pub const MEZCLA: usize = 0;
@@ -152,7 +153,8 @@ impl App {
         v
     }
 
-    /// Exporta según las opciones: un archivo (la mezcla) o una carpeta de stems.
+    /// Exporta según las opciones: un archivo (la mezcla) o una carpeta de stems. Elige el destino y
+    /// arranca el render en segundo plano (la ventana de progreso lo sigue con `ventana_progreso`).
     pub fn exportar(&mut self, e: Exportacion) -> anyhow::Result<String> {
         let (a, b) = self.rango_exportacion(&e);
         anyhow::ensure!(b > a, "el rango de exportación está vacío");
@@ -161,51 +163,153 @@ impl App {
         anyhow::ensure!(!stems.is_empty(), "no hay pistas ni grupos marcados para exportar");
         self.stop();
         let ext = e.formato.ext();
-        if e.origen == MEZCLA {
+        let trabajos: Vec<(PathBuf, Option<Vec<Arc<Params>>>)> = if e.origen == MEZCLA {
             let nombre = safe(&self.dir.file_name().unwrap_or_default().to_string_lossy());
+            let _ = fs::create_dir_all(self.dir.join(RENDER_DIR));
             let dialogo = rfd::FileDialog::new().set_directory(self.dir.join(RENDER_DIR)).set_file_name(format!("{nombre}.{ext}"));
             let ruta = dialogo.save_file().ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
-            self.escribir(&ruta, &e, (a, fin), None)?;
-            return Ok(format!("{} {}", tr("Exportado:"), ruta.display()));
-        }
-        let _ = fs::create_dir_all(self.dir.join(RENDER_DIR));
-        let dir = rfd::FileDialog::new().set_title(tr("Carpeta para los stems")).set_directory(self.dir.join(RENDER_DIR)).pick_folder();
-        let dir = dir.ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
-        let (mut hechos, mut mudos, mut usados) = (0, 0, std::collections::HashSet::new());
-        for (k, s) in stems.iter().enumerate() {
-            let base = if e.numerar { format!("{:02}_{}", k + 1, safe(&s.nombre)) } else { safe(&s.nombre) };
-            // Dos pistas con el mismo nombre no se pisan: la segunda lleva un número.
-            let (mut nombre, mut n) = (base.clone(), 2);
-            while !usados.insert(nombre.clone()) {
-                (nombre, n) = (format!("{base}-{n}"), n + 1);
-            }
-            if self.escribir(&dir.join(format!("{nombre}.{ext}")), &e, (a, fin), s.pistas.as_deref())? {
-                hechos += 1;
-            } else {
-                mudos += 1;
-            }
-        }
-        let omitidos = if mudos > 0 { format!(" ({mudos} {})", tr("en silencio, omitidos")) } else { String::new() };
-        Ok(format!("{hechos} {}{omitidos} {} {}", tr("stems exportados"), tr("en"), dir.display()))
+            vec![(ruta, None)]
+        } else {
+            let _ = fs::create_dir_all(self.dir.join(RENDER_DIR));
+            let dir = rfd::FileDialog::new().set_title(tr("Carpeta para los stems")).set_directory(self.dir.join(RENDER_DIR)).pick_folder();
+            let dir = dir.ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
+            let mut usados = std::collections::HashSet::new();
+            stems
+                .into_iter()
+                .enumerate()
+                .map(|(k, s)| {
+                    let base = if e.numerar { format!("{:02}_{}", k + 1, safe(&s.nombre)) } else { safe(&s.nombre) };
+                    // Dos pistas con el mismo nombre no se pisan: la segunda lleva un número.
+                    let (mut nombre, mut n) = (base.clone(), 2);
+                    while !usados.insert(nombre.clone()) {
+                        (nombre, n) = (format!("{base}-{n}"), n + 1);
+                    }
+                    (dir.join(format!("{nombre}.{ext}")), s.pistas)
+                })
+                .collect()
+        };
+        let total = trabajos.len();
+        let (hecho, (tx, rx)) = (Arc::new(AtomicUsize::new(0)), std::sync::mpsc::channel());
+        let (engine, contador) = (self.engine.clone(), hecho.clone());
+        let destino = if total == 1 { trabajos[0].0.clone() } else { trabajos[0].0.parent().map(Path::to_path_buf).unwrap_or_default() };
+        engine.cancelar.store(false, Relaxed);
+        std::thread::Builder::new().name("exportar".into()).spawn(move || {
+            let (mut hechos, mut mudos) = (0, 0);
+            let r = (|| -> anyhow::Result<String> {
+                for (ruta, pistas) in &trabajos {
+                    if escribir(&engine, ruta, &e, (a, fin), pistas.as_deref())? {
+                        hechos += 1;
+                    } else {
+                        mudos += 1;
+                    }
+                    contador.fetch_add(1, Relaxed);
+                    anyhow::ensure!(!engine.cancelar.load(Relaxed), "{}", tr("Exportación cancelada"));
+                }
+                if total == 1 && mudos == 0 {
+                    return Ok(format!("{} {}", tr("Exportado:"), trabajos[0].0.display()));
+                }
+                let omitidos = if mudos > 0 { format!(" ({mudos} {})", tr("en silencio, omitidos")) } else { String::new() };
+                Ok(format!("{hechos} {}{omitidos} {} {}", tr("stems exportados"), tr("en"), destino.display()))
+            })();
+            let _ = tx.send(r.map_err(|e| e.to_string()));
+        })?;
+        self.exportando = Some(EnCurso { rx, total, hecho, nombre: trabajos_nombre(total, &self.dir) });
+        Ok(tr("Exportando…").to_string())
     }
 
-    /// Renderiza y escribe un archivo; devuelve false si se omitió por estar en silencio.
-    fn escribir(&self, ruta: &Path, e: &Exportacion, (a, b): (u64, u64), pistas: Option<&[Arc<Params>]>) -> anyhow::Result<bool> {
-        let mut muestras = match pistas {
-            Some(p) => self.engine.bounce_stem(a, b, p, e.master),
-            None => self.engine.bounce(a, b, None),
-        };
-        if pistas.is_some() && e.omitir_silencio && muestras.iter().all(|s| s.abs() < 1e-5) {
-            return Ok(false);
+    /// Ventana con la barra de progreso mientras se exporta; al terminar muestra el resultado.
+    pub fn ventana_progreso(&mut self, ctx: &egui::Context) {
+        let Some(x) = &self.exportando else { return };
+        if let Ok(r) = x.rx.try_recv() {
+            self.status = r.unwrap_or_else(|e| format!("Error: {e}"));
+            self.exportando = None;
+            return;
         }
-        let mut sr = self.engine.sample_rate;
-        if e.formato == Format::Mp3 && sr > 48_000 {
-            let frames = muestras.chunks(2).map(|c| [c[0], c[1]]).collect();
-            (muestras, sr) = (engine::resample(frames, sr, 48_000).into_iter().flatten().collect(), 48_000);
+        let parcial = self.engine.progreso.load(Relaxed).min(1000) as f32 / 1000.0;
+        let hechos = x.hecho.load(Relaxed);
+        let avance = ((hechos as f32 + if hechos < x.total { parcial } else { 0.0 }) / x.total.max(1) as f32).clamp(0.0, 1.0);
+        let cancelando = self.engine.cancelar.load(Relaxed);
+        let mut cancelar = false;
+        egui::Modal::new(egui::Id::new("exportando")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.spacing_mut().item_spacing.y = 10.0;
+            cancelar |= encabezado(ui, tr("Exportando"));
+            ui.label(RichText::new(&x.nombre).size(12.5).color(TEXT_DIM()));
+            ui.add(egui::ProgressBar::new(avance).desired_height(14.0).fill(ACCENT()).corner_radius(rr(7.0)));
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{:.0} %", avance * 100.0)).size(20.0).strong());
+                if x.total > 1 {
+                    ui.label(RichText::new(format!("{} {} {}", (hechos + 1).min(x.total), tr("de"), x.total)).color(TEXT_DIM()));
+                }
+                preferencias::a_la_derecha(ui, |ui| {
+                    let texto = if cancelando { "Cancelando…" } else { "Cancelar" };
+                    cancelar |= ui.add_enabled_ui(!cancelando, |ui| boton(ui, texto)).inner.clicked();
+                });
+            });
+        });
+        if cancelar {
+            self.engine.cancelar.store(true, Relaxed);
         }
-        project::export(ruta, e.formato, sr, &muestras)?;
-        Ok(true)
+        ctx.request_repaint_after(std::time::Duration::from_millis(50));
     }
+}
+
+/// Exportación en segundo plano: resultado, cantidad de archivos, los terminados y qué se exporta.
+pub struct EnCurso {
+    rx: std::sync::mpsc::Receiver<Result<String, String>>,
+    total: usize,
+    hecho: Arc<AtomicUsize>,
+    nombre: String,
+}
+
+fn trabajos_nombre(total: usize, dir: &Path) -> String {
+    let proyecto = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+    if total == 1 { format!("{} · {}", tr("Mezcla"), proyecto) } else { format!("{total} {} · {proyecto}", tr("archivos")) }
+}
+
+/// Renderiza y escribe un archivo; devuelve false si se omitió por estar en silencio.
+fn escribir(engine: &Engine, ruta: &Path, e: &Exportacion, (a, b): (u64, u64), pistas: Option<&[Arc<Params>]>) -> anyhow::Result<bool> {
+    let mut muestras = match pistas {
+        Some(p) => engine.bounce_stem(a, b, p, e.master),
+        None => engine.bounce(a, b, None),
+    };
+    anyhow::ensure!(!engine.cancelar.load(Relaxed), "{}", tr("Exportación cancelada"));
+    if pistas.is_some() && e.omitir_silencio && muestras.iter().all(|s| s.abs() < 1e-5) {
+        return Ok(false);
+    }
+    let mut sr = engine.sample_rate;
+    if e.formato == Format::Mp3 && sr > 48_000 {
+        let frames = muestras.chunks(2).map(|c| [c[0], c[1]]).collect();
+        (muestras, sr) = (engine::resample(frames, sr, 48_000).into_iter().flatten().collect(), 48_000);
+    }
+    project::export(ruta, e.formato, sr, &muestras)?;
+    Ok(true)
+}
+
+/// Título de una ventana con el botón de cerrar donde lo pone el sistema: a la izquierda en macOS, a la
+/// derecha en Windows y Linux. Devuelve true si se tocó cerrar.
+pub fn encabezado(ui: &mut egui::Ui, titulo: &str) -> bool {
+    let mut cerrar = false;
+    let x = |ui: &mut egui::Ui| {
+        let (r, resp) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
+        let c = if resp.hovered() { METER[2] } else { ELEVATED() };
+        ui.painter().circle_filled(r.center(), 12.0, c);
+        let (k, color) = (4.5, if resp.hovered() { Color32::WHITE } else { TEXT_DIM() });
+        for d in [vec2(k, k), vec2(k, -k)] {
+            ui.painter().line_segment([r.center() - d, r.center() + d], Stroke::new(1.8, color));
+        }
+        resp.on_hover_text(tr("Cerrar")).clicked()
+    };
+    ui.horizontal(|ui| {
+        if cfg!(target_os = "macos") {
+            cerrar = x(ui);
+            ui.label(RichText::new(titulo).size(21.0).strong());
+        } else {
+            ui.label(RichText::new(titulo).size(21.0).strong());
+            preferencias::a_la_derecha(ui, |ui| cerrar = x(ui));
+        }
+    });
+    cerrar
 }
 
 /// Las pistas de video no tienen audio que exportar.
@@ -218,7 +322,9 @@ pub fn dialogo(ui: &mut egui::Ui, e: &mut Exportacion, tracks: &[Track], groups:
     let mut salida = None;
     ui.set_width(720.0);
     ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
-    ui.label(RichText::new(tr("Exportar")).size(21.0).strong());
+    if encabezado(ui, tr("Exportar")) {
+        salida = Some(false);
+    }
     ui.label(RichText::new(tr("La mezcla completa o stems de pistas y grupos, en el rango que elijas")).size(12.5).color(TEXT_DIM()));
     ui.add_space(6.0);
     egui::ScrollArea::vertical().max_height(ui.ctx().content_rect().height() * 0.72).auto_shrink([false, true]).show(ui, |ui| {

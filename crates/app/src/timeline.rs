@@ -19,8 +19,11 @@ const SPAN_H: f32 = 24.0;
 const MARK: Color32 = Color32::from_rgb(0xFF, 0xC8, 0x57);
 /// Columna de grupos (barra vertical con el nombre, como en Ardour).
 const GROUP_W: f32 = 20.0;
-const TAKE_H: f32 = 38.0;
-const MIN_H: f32 = 44.0;
+const TAKE_H: f32 = 44.0;
+/// Barra de arriba de cada grabación en un carril de tomas (se agarra para moverla).
+const TOMA_BARRA: f32 = 12.0;
+/// Altura mínima de una pista: entra la fila del nombre con sus botones y la de la entrada.
+pub const MIN_H: f32 = 52.0;
 const MAX_H: f32 = 320.0;
 
 pub enum Drag {
@@ -35,6 +38,10 @@ pub enum Drag {
     Edge(usize, usize, bool, bool, Clip),
     /// Swipe comping: pista, toma, inicio y fin del barrido.
     Swipe(usize, usize, u64, u64),
+    /// Grabación de una toma movida desde su barra: pista, toma, región y frames desde su inicio al punto agarrado e inicio original.
+    Toma(usize, usize, usize, u64, u64),
+    /// Borde de una grabación de toma: pista, toma, región, borde izquierdo y la grabación original.
+    TomaBorde(usize, usize, usize, bool, Clip),
     /// Mover el contenido del razor: desplazamiento acumulado en frames.
     RazorMove(f64),
     /// Tramo elegido en el carril de tempo (inicio, fin).
@@ -63,7 +70,7 @@ fn peak_mesh(c: &Clip, b: &AudioBuf, r: Rect, xr: (f32, f32), fpp: f64, color: C
         let f0 = c.offset as f64 + (x as f32 - r.left()) as f64 * fpp;
         let (b0, b1) = (f0 as usize / PEAK_BLOCK, (f0 + fpp) as usize / PEAK_BLOCK + 1);
         let peak = b.peaks.get(b0..b1.min(b.peaks.len())).map_or(0.0, |s| s.iter().fold(0f32, |a, &b| a.max(b))) * c.gain;
-        let h = (peak * half).clamp(0.5, half);
+        let h = (peak * half).min(half).max(0.5);
         mesh.add_colored_rect(Rect::from_x_y_ranges(x as f32..=x as f32 + 1.0, mid - h..=mid + h), color);
     }
     mesh
@@ -73,7 +80,8 @@ impl App {
     pub fn timeline(&mut self, ui: &mut egui::Ui) {
         let full = ui.max_rect();
         let (sr, n) = (self.sr(), self.s.tracks.len());
-        let header_w = self.header_w();
+        // Con poco lugar (inspector, lanzador y biblioteca abiertos) las cabeceras se angostan.
+        let header_w = self.header_w().min((full.width() * 0.42).max(HEADER_MIN * 0.8));
         let x0 = full.left() + header_w;
         let (arr_h, chord_h) = (if self.show_arrange { SPAN_H } else { 0.0 }, if self.show_chords { SPAN_H } else { 0.0 });
         let lanes_top = full.top() + MARK_H + RULER_H + arr_h + chord_h + TEMPO_H;
@@ -129,6 +137,16 @@ impl App {
         let max_y = (total + 80.0 - body.height()).max(0.0);
         (self.scroll.y, self.sx) = (self.scroll.y.clamp(0.0, max_y), self.sx.max(0.0));
 
+        // La vista sigue al cursor al reproducir o grabar: cuando llega al borde derecho pasa de página.
+        // Si se movió la vista a mano lejos del cursor, no salta (salvo al grabar, que siempre se ve).
+        if self.playing() && !matches!(self.drag, Some(Drag::Cursor)) {
+            let ancho = (full.right() - x0) as f64;
+            let px = self.pos() as f64 / sr * self.pps as f64 - self.sx;
+            let fuera = px < 0.0 || px > ancho - 24.0;
+            if fuera && (self.recording() || (px > 0.0 && px < ancho * 1.5)) {
+                self.sx = (px + self.sx - ancho * 0.08).max(0.0);
+            }
+        }
         let (pps, sx, sy) = (self.pps as f64, self.sx, self.scroll.y);
         // Coordenadas en f64: con zoom de muestra los píxeles superan la precisión de f32.
         let x_of = |f: u64| x0 + (f as f64 / sr * pps - sx) as f32;
@@ -335,7 +353,78 @@ impl App {
             self.drop_item(&item, lane_at(p.y), snap(frame_at(p.x)));
         }
 
-        if self.tool == Tool::Pencil {
+        if self.tool == Tool::Ganancia {
+            // Línea de ganancia de una región o de una grabación de toma: clic agrega un punto (o agarra el
+            // que está cerca), arrastrar lo mueve y clic derecho lo borra. Para toda la pista:
+            // automatización → Ganancia.
+            let p = ptr.unwrap_or_default();
+            // Destino: pista, toma (None = la región de la pista) y región.
+            let clip_de = |s: &Session, (i, k, j): (usize, Option<usize>, usize)| match k {
+                Some(k) => s.tracks.get(i).and_then(|t| t.takes.get(k)).and_then(|t| t.get(j)).cloned(),
+                None => s.tracks.get(i).and_then(|t| t.clips.get(j)).cloned(),
+            };
+            // (offset, inicio, largo, alto útil, base) de la línea en pantalla.
+            let geo = |s: &Session, d: (usize, Option<usize>, usize)| {
+                let c = clip_de(s, d)?;
+                Some(match d.1 {
+                    Some(k) => {
+                        let fila = lane_y(d.0) + main(d.0) + k as f32 * TAKE_H;
+                        (c.offset, c.start, c.len, TAKE_H - 9.0 - TOMA_BARRA, fila + TAKE_H - 4.0)
+                    }
+                    None => {
+                        let r = clip_rect(d.0, &c);
+                        (c.offset, c.start, c.len, r.height() - TITLE_H - 8.0, r.bottom() - 4.0)
+                    }
+                })
+            };
+            let cerca = |s: &Session, d| {
+                let (off, ini, _, alto, base) = geo(s, d)?;
+                clip_de(s, d)?.ganancia.as_deref().and_then(|l| l.iter().position(|&(f, db)| (x_of(ini + f.saturating_sub(off)) - p.x).abs() < 8.0 && (base - (db + 24.0) / 36.0 * alto - p.y).abs() < 8.0))
+            };
+            let punto = |s: &Session, d| {
+                let (off, ini, len, alto, base) = geo(s, d)?;
+                let f = (off as f64 + (frame_at(p.x) - ini as f64).clamp(0.0, len as f64)) as u64;
+                Some((f, ganancia_db((base - p.y) / alto.max(1.0))))
+            };
+            let destino = match take_at(p) {
+                Some((i, k)) => {
+                    let f = frame_at(p.x) as u64;
+                    self.s.tracks[i].takes[k].iter().position(|c| c.start <= f && f < c.end()).map(|j| (i, Some(k), j))
+                }
+                None => zone_at(&self.s, p).map(|z| (z.0, None, z.1)),
+            }
+            .filter(|&d| clip_de(&self.s, d).is_some_and(|c| c.buf().is_some()));
+            if body_r.hovered()
+                && (pressed || body_r.secondary_clicked())
+                && let Some(d) = destino
+                && let Some(q) = punto(&self.s, d)
+            {
+                self.edit();
+                let mut l = clip_de(&self.s, d).and_then(|c| c.ganancia.as_deref().cloned()).unwrap_or_default();
+                match (body_r.secondary_clicked(), cerca(&self.s, d)) {
+                    (true, Some(k)) => _ = l.remove(k),
+                    (true, None) => {}
+                    (false, Some(k)) => self.gain_drag = Some((d, k)),
+                    (false, None) => {
+                        let k = l.partition_point(|x| x.0 < q.0);
+                        l.insert(k, q);
+                        self.gain_drag = Some((d, k));
+                    }
+                }
+                self.poner_ganancia(d, l);
+            }
+            match self.gain_drag {
+                Some((d, k)) if down => {
+                    if let (Some(q), Some(mut l)) = (punto(&self.s, d), clip_de(&self.s, d).and_then(|c| c.ganancia.as_deref().cloned()).filter(|l| k < l.len())) {
+                        // Entre el punto anterior y el siguiente (no se cruzan).
+                        let (min, max) = (if k > 0 { l[k - 1].0 + 1 } else { 0 }, l.get(k + 1).map_or(u64::MAX, |x| x.0.saturating_sub(1)));
+                        l[k] = (q.0.clamp(min, max.max(min)), q.1);
+                        self.poner_ganancia(d, l);
+                    }
+                }
+                _ => self.gain_drag = None,
+            }
+        } else if self.tool == Tool::Pencil {
             // Con zoom de muestra, el lápiz dibuja la forma de onda; si no, la automatización.
             if body_r.hovered() && pressed {
                 self.edit();
@@ -392,14 +481,51 @@ impl App {
             // Al soltar un clic egui ya no conserva el origen de la pulsación: se usa la posición actual.
             let p = if body_r.drag_started() { press } else { body_r.interact_pointer_pos() }.unwrap_or_default();
             let at = snap(frame_at(p.x));
+            if body_r.secondary_clicked() {
+                self.ctx_toma = None;
+            }
             if let Some((i, k)) = take_at(p) {
-                // Carriles de tomas: barrer elige ese tramo; un clic compara A/B usando toda la toma.
-                if body_r.drag_started() {
-                    self.drag = Some(Drag::Swipe(i, k, at, at));
-                } else if body_r.clicked() {
+                // Carriles de tomas: barrer elige ese tramo; un clic usa esa grabación entera; la barra de
+                // arriba mueve la grabación; clic derecho: opciones. Nada de esto borra las otras tomas.
+                let f = frame_at(p.x) as u64;
+                let bajo = self.s.tracks[i].takes[k].iter().rposition(|c| c.start <= f && f < c.end());
+                let en_barra = p.y - (lane_y(i) + main(i) + k as f32 * TAKE_H) < 3.0 + TOMA_BARRA;
+                // Grabación con un borde a menos de 6 px: se recorta o se prolonga arrastrándolo.
+                let borde = self.s.tracks[i].takes[k].iter().enumerate().find_map(|(j, c)| {
+                    if (x_of(c.start) - p.x).abs() < 6.0 {
+                        Some((j, true))
+                    } else {
+                        ((x_of(c.end()) - p.x).abs() < 6.0).then_some((j, false))
+                    }
+                });
+                if body_r.secondary_clicked() {
+                    self.ctx_region = None;
+                    self.ctx_toma = bajo.map(|j| (i, k, j));
+                } else if let (Tool::Blade, true, Some(j)) = (self.tool, body_r.clicked(), bajo) {
+                    // Cuchilla: corta la grabación en dos dentro de la misma toma.
                     self.edit();
-                    self.comp_take(i, 0, u64::MAX, k);
-                    self.status = format!("Toma {} activa en «{}»", k + 1, self.s.tracks[i].name);
+                    let c = self.s.tracks[i].takes[k].remove(j);
+                    let partes: Vec<_> = [c.trim(0, at), c.trim(at, u64::MAX)].into_iter().flatten().collect();
+                    for (n, parte) in partes.into_iter().enumerate() {
+                        self.s.tracks[i].takes[k].insert(j + n, parte);
+                    }
+                    self.dirty = true;
+                    self.status = format!("{} {}", tr("Toma cortada:"), k + 1);
+                } else if let (true, Some((j, izq))) = (body_r.drag_started(), borde) {
+                    self.edit();
+                    let orig = self.s.tracks[i].takes[k][j].clone();
+                    self.drag = Some(Drag::TomaBorde(i, k, j, izq, orig));
+                } else if let (true, true, Some(j)) = (body_r.drag_started(), en_barra, bajo) {
+                    self.edit();
+                    let inicio = self.s.tracks[i].takes[k][j].start;
+                    self.drag = Some(Drag::Toma(i, k, j, f.saturating_sub(inicio), inicio));
+                } else if body_r.drag_started() {
+                    self.drag = Some(Drag::Swipe(i, k, at, at));
+                } else if let (true, Some(j)) = (body_r.clicked(), bajo) {
+                    self.edit();
+                    let c = &self.s.tracks[i].takes[k][j];
+                    self.comp_take(i, c.start, c.end(), k);
+                    self.status = format!("{} {} · {}", tr("Suena esta grabación de la toma"), k + 1, self.s.tracks[i].name);
                 }
             } else if body_r.drag_started() && self.tool == Tool::Select && in_razor(self.time_sel, self.razor_lanes, p) {
                 self.drag = Some(Drag::RazorMove(0.0));
@@ -473,11 +599,15 @@ impl App {
                 }
             }
         }
-        // Sobre una región se abre el menú circular; en un lugar vacío, el menú clásico.
+        // Sobre una región se abre el menú circular; en un lugar vacío, el menú clásico; sobre una
+        // grabación de un carril de tomas, sus opciones.
         if self.pie.is_none() && self.ctx_region.is_none() {
             body_r.context_menu(|ui| {
                 widgets::menu_style(ui);
-                self.region_menu(ui);
+                match self.ctx_toma {
+                    Some((i, k, j)) => self.menu_toma(ui, i, k, j),
+                    None => self.region_menu(ui),
+                }
             });
         }
         // Q mantenida sobre una región: menú rápido (se elige al soltar la tecla).
@@ -493,6 +623,13 @@ impl App {
             }
             self.ctx_region = Some((i, j));
             self.abrir_pie_region(p, i, j, true);
+        }
+        if body_r.dragged()
+            && let Some(Drag::Toma(i, k, j, agarre, _)) = self.drag
+            && let Some(c) = self.s.tracks[i].takes.get_mut(k).and_then(|tk| tk.get_mut(j))
+        {
+            // Mientras se arrastra solo se mueve en su carril; al soltar se mueve lo que suena de ella.
+            c.start = snap(frame_at(ptr.unwrap_or_default().x) - agarre as f64);
         }
         if body_r.dragged() || ruler_r.dragged() || tempo_r.dragged() {
             let p = ptr.unwrap_or_default();
@@ -518,7 +655,8 @@ impl App {
                     let max_len = orig.buf().map_or(u64::MAX, |b| b.frames.len() as u64 - orig.offset);
                     let c = &mut self.s.tracks[*i].clips[*j];
                     if *left {
-                        let edge = (snap(at) as i64).clamp(orig.start as i64 - orig.offset as i64, orig.end() as i64 - 64) as u64;
+                        let (lo, hi) = (orig.start as i64 - orig.offset as i64, orig.end() as i64 - 64);
+                        let edge = (snap(at) as i64).min(hi).max(lo).max(0) as u64;
                         let d = edge as i64 - orig.start as i64;
                         (c.start, c.offset, c.len) = (edge, (orig.offset as i64 + d) as u64, (orig.len as i64 - d) as u64);
                     } else {
@@ -534,6 +672,21 @@ impl App {
                     self.razor_lanes = Some(((*l0).min(l1), (*l0).max(l1)));
                 }
                 Some(Drag::Swipe(_, _, _, b)) => *b = snap(at),
+                Some(Drag::Toma(..)) => {}
+                Some(Drag::TomaBorde(i, k, j, izq, orig)) => {
+                    let max = orig.buf().map_or(u64::MAX, |b| b.frames.len() as u64);
+                    if let Some(c) = self.s.tracks[*i].takes.get_mut(*k).and_then(|t| t.get_mut(*j)) {
+                        if *izq {
+                            // Hasta el inicio del audio grabado y dejando al menos 64 frames.
+                            let lo = (orig.origin()).max(0) as u64;
+                            let edge = snap(at).clamp(lo, orig.end().saturating_sub(64).max(lo));
+                            let d = edge as i64 - orig.start as i64;
+                            (c.start, c.offset, c.len) = (edge, (orig.offset as i64 + d).max(0) as u64, (orig.len as i64 - d).max(64) as u64);
+                        } else {
+                            c.len = snap(at).saturating_sub(orig.start).clamp(64, max.saturating_sub(orig.offset).max(64));
+                        }
+                    }
+                }
                 Some(Drag::RazorMove(acc)) => *acc += body_r.drag_delta().x as f64 / pps * sr,
                 Some(Drag::Tempo(_, b)) => *b = snap(at),
                 Some(Drag::Cursor) => self.go(if mods.shift { snap(at) } else { at as u64 }),
@@ -553,6 +706,14 @@ impl App {
                     let scope = ["la región", "toda la pista", "todo el grupo"][self.stretch_scope as usize % 3];
                     let r = self.stretch_scoped(i, j, factor);
                     self.report(format!("Estirado al {:.0} % ({scope})", factor * 100.0), r);
+                }
+                Drag::Toma(i, k, j, _, antes) => self.grabacion_movida(i, k, j, antes),
+                Drag::TomaBorde(i, k, j, _, orig) => self.borde_de_toma_soltado(i, k, j, &orig),
+                // Las tomas siguen a las regiones movidas que salen de ellas.
+                Drag::Clips(orig, _, _) => {
+                    for (i, j, antes) in orig {
+                        self.toma_sigue_a_region(i, j, antes);
+                    }
                 }
                 Drag::Swipe(i, k, a, b) if a != b => {
                     self.edit();
@@ -578,6 +739,8 @@ impl App {
             let icon = match (self.tool, zone_at(&self.s, p).map(|z| z.2)) {
                 (Tool::Pencil, _) => CursorIcon::Cell,
                 (Tool::Blade, _) => CursorIcon::Crosshair,
+                (Tool::Ganancia, _) => CursorIcon::Crosshair,
+                _ if take_at(p).is_some_and(|(i, k)| self.s.tracks[i].takes[k].iter().any(|c| (x_of(c.start) - p.x).abs() < 6.0 || (x_of(c.end()) - p.x).abs() < 6.0)) => CursorIcon::ResizeHorizontal,
                 _ if take_at(p).is_some() => CursorIcon::Text,
                 _ if in_razor(self.time_sel, self.razor_lanes, p) => CursorIcon::Grab,
                 (_, Some(Zone::Stretch)) => CursorIcon::ResizeNwSe,
@@ -811,7 +974,27 @@ impl App {
                     }
                     if c.selected || hover == Some((i, j)) {
                         let x = if out { x_of(c.end() - c.fade_out) } else { x_of(c.start + c.fade_in) };
-                        lp.circle_filled(pos2(x.clamp(r.left() + 5.0, r.right() - 5.0), title.center().y), 4.5, TEXT());
+                        // En una región muy angosta (menos de 10 px) el tirador queda al centro: clamp con min > max cierra la app.
+                        lp.circle_filled(pos2(x.min(r.right() - 5.0).max(r.left() + 5.0).min(r.center().x.max(r.left())), title.center().y), 4.5, TEXT());
+                    }
+                }
+                // Línea de ganancia de la región (con la herramienta Ganancia, o si tiene puntos).
+                if c.buf().is_some() && (self.tool == Tool::Ganancia || c.ganancia.is_some()) {
+                    let (alto, base) = (r.height() - TITLE_H - 8.0, r.bottom() - 4.0);
+                    let y = |db: f32| base - (db + 24.0) / 36.0 * alto;
+                    let x = |f: u64| x_of(c.start + f.saturating_sub(c.offset));
+                    let puntos = c.ganancia.as_deref().map(Vec::as_slice).unwrap_or_default();
+                    let mut linea = vec![pos2(r.left(), y(engine::automation_at(puntos, c.offset).unwrap_or(0.0)))];
+                    linea.extend(puntos.iter().filter(|q| q.0 >= c.offset && q.0 <= c.offset + c.len).map(|&(f, db)| pos2(x(f), y(db))));
+                    linea.push(pos2(r.right(), y(engine::automation_at(puntos, c.offset + c.len).unwrap_or(0.0))));
+                    let color = METER[0];
+                    let gp = lp.with_clip_rect(r.intersect(lp.clip_rect()));
+                    gp.add(egui::Shape::line(linea, Stroke::new(if puntos.is_empty() { 1.0 } else { 2.0 }, color.gamma_multiply(if puntos.is_empty() { 0.55 } else { 1.0 }))));
+                    for &(f, db) in puntos {
+                        gp.circle_filled(pos2(x(f), y(db)), 3.5, color);
+                        if self.tool == Tool::Ganancia {
+                            gp.text(pos2(x(f) + 5.0, y(db) - 4.0), Align2::LEFT_BOTTOM, format!("{db:+.1} dB"), FontId::proportional(10.0), color);
+                        }
                     }
                 }
             }
@@ -819,14 +1002,15 @@ impl App {
             if self.recording() && t.params.arm.load(Relaxed) {
                 self.draw_live_take(&lp, i, Rect::from_x_y_ranges(x0..=full.right(), top + 4.0..=top + lh - 4.0), &x_of, &frame_at);
             }
-            // Curva de automatización (volumen = ámbar, panorama = azul).
+            // Curva de automatización (volumen = ámbar, panorama = azul, ganancia = verde).
             if self.show_auto {
                 let (pts, c, cur) = match t.auto_param {
                     0 => (&t.vol_auto, METER[1], fader_pos(t.params.gain.get())),
+                    2 => (&t.gain_auto, METER[0], 2.0 / 3.0),
                     _ => (&t.pan_auto, ACCENT(), (t.params.pan.get() + 1.0) / 2.0),
                 };
                 let norm = |v: f32| {
-                    if t.auto_param == 0 { v } else { (v + 1.0) / 2.0 }
+                    if t.auto_param == 1 { (v + 1.0) / 2.0 } else { v }
                 };
                 let y = |v: f32| top + lh - 10.0 - v * (lh - 20.0);
                 let line: Vec<Pos2> = match (pts.first(), pts.last()) {
@@ -839,8 +1023,18 @@ impl App {
                 for &(f, v) in pts.iter().filter(|p| (x0..full.right()).contains(&x_of(p.0))) {
                     lp.circle_filled(pos2(x_of(f), y(norm(v))), 3.0, c);
                 }
-                let label = if t.auto_param == 0 { "Volumen" } else { "Panorama" };
-                lp.text(pos2(x0 + 8.0, top + lh - 8.0), Align2::LEFT_BOTTOM, tr(label), FontId::proportional(11.0), c);
+                let label = match t.auto_param {
+                    0 => tr("Volumen").to_string(),
+                    2 => format!("{} ({})", tr("Ganancia"), tr("toda la pista")),
+                    _ => tr("Panorama").to_string(),
+                };
+                lp.text(pos2(x0 + 8.0, top + lh - 8.0), Align2::LEFT_BOTTOM, label, FontId::proportional(11.0), c);
+                // Valor en dB de cada punto de la ganancia.
+                if t.auto_param == 2 {
+                    for &(f, v) in pts.iter().filter(|p| (x0..full.right()).contains(&x_of(p.0))) {
+                        lp.text(pos2(x_of(f) + 5.0, y(v) - 4.0), Align2::LEFT_BOTTOM, format!("{:+.1} dB", ganancia_db(v)), FontId::proportional(10.0), c);
+                    }
+                }
             }
         }
         for (r, tex, clip) in &thumbs {
@@ -892,7 +1086,7 @@ impl App {
                 self.group_selected();
             }
             ui.menu_button(tr("Altura de las pistas"), |ui| {
-                for (label, h) in [("Compacta", 60.0), ("Normal", TRACK_H), ("Grande", 160.0)] {
+                for (label, h) in [("Compacta", MIN_H), ("Normal", TRACK_H), ("Grande", 160.0)] {
                     if ui.button(tr(label)).clicked() {
                         self.s.tracks.iter_mut().for_each(|t| t.height = h);
                     }
@@ -908,16 +1102,22 @@ impl App {
             if r.bottom() > heads.top() && r.top() < heads.bottom() {
                 self.track_header(ui, i, r, heads);
             }
-            // Botones A/B de las tomas, uno por carril.
+            // Las tomas quedan agrupadas bajo su pista: una llave del color de la pista las une.
+            if takes > 0 {
+                let llave = Rect::from_x_y_ranges(full.left() + 16.0..=full.left() + 19.0, lane_y(i) + main(i) + 4.0..=lane_y(i) + lane_h(i) - 4.0);
+                ui.painter().with_clip_rect(heads).rect_filled(llave, rr(2.0), self.s.tracks[i].color.gamma_multiply(0.8));
+            }
+            // Botones de las tomas, uno por carril.
             for k in 0..takes {
-                let take_r = Rect::from_min_size(pos2(full.left() + 24.0, lane_y(i) + main(i) + k as f32 * TAKE_H + 6.0), vec2(header_w - 34.0, TAKE_H - 12.0));
+                let take_r = Rect::from_min_size(pos2(full.left() + 34.0, lane_y(i) + main(i) + k as f32 * TAKE_H + 8.0), vec2(header_w - 44.0, TAKE_H - 16.0));
                 if take_r.bottom() > heads.top() && take_r.top() < heads.bottom() {
-                    let active = self.s.tracks[i].comp.iter().any(|s| s.2 == k);
-                    let b =
-                        egui::Button::new(RichText::new(format!("Toma {}", k + 1)).size(11.0).color(if active { BG() } else { TEXT_DIM() })).fill(if active { self.s.tracks[i].color } else { ELEVATED() });
-                    if ui.put(take_r, b).on_hover_text(tr("Clic: escuchar esta toma completa (A/B) · barre en su carril para elegir tramos")).clicked() {
+                    let active = tomas_en_uso(&self.s.tracks[i]).contains(&k);
+                    let b = egui::Button::new(RichText::new(format!("{} {}", tr("Toma"), k + 1)).size(11.0).color(if active { BG() } else { TEXT_DIM() }))
+                        .fill(if active { self.s.tracks[i].color } else { ELEVATED() });
+                    let r = ui.put(take_r, b).on_hover_text(tr("Clic: que suene esta toma en todo lo que grabó (las otras siguen donde no se pisan) · en su carril: clic en una grabación para usarla, barrer para usar un tramo, arrastrar la barra de arriba para moverla"));
+                    if r.clicked() {
                         self.edit();
-                        self.comp_take(i, 0, u64::MAX, k);
+                        self.usar_toma(i, k);
                     }
                 }
             }
@@ -1156,14 +1356,39 @@ impl App {
         for k in 0..count {
             let row = Rect::from_x_y_ranges(xr.0..=xr.1, y0 + k as f32 * TAKE_H..=y0 + (k + 1) as f32 * TAKE_H);
             p.rect_filled(row, 0.0, if k % 2 == 0 { BG() } else { PANEL() });
-            for &(a, b, _) in t.comp.iter().filter(|s| s.2 == k) {
-                p.rect_filled(Rect::from_x_y_ranges(x_of(a).max(xr.0)..=x_of(b.min(u64::MAX / 2)).min(xr.1), row.y_range()), 0.0, t.color.gamma_multiply(0.18));
-            }
             for c in &t.takes[k] {
                 let r = Rect::from_x_y_ranges(x_of(c.start)..=x_of(c.end()), row.top() + 3.0..=row.bottom() - 3.0);
-                p.rect_stroke(r, rr(4.0), Stroke::new(1.0, t.color.gamma_multiply(0.6)), StrokeKind::Inside);
+                if r.right() < xr.0 || r.left() > xr.1 {
+                    continue;
+                }
+                p.rect_filled(r, rr(4.0), t.color.gamma_multiply(0.06));
+                // Lo que suena de esta toma, resaltado con el color de la pista.
+                for u in t.clips.iter().filter(|u| sale_de(u, c)) {
+                    p.rect_filled(Rect::from_x_y_ranges(x_of(u.start).max(r.left())..=x_of(u.end()).min(r.right()), r.y_range()), rr(4.0), t.color.gamma_multiply(0.28));
+                }
+                p.rect_stroke(r, rr(4.0), Stroke::new(1.0, t.color.gamma_multiply(0.7)), StrokeKind::Inside);
+                // Barra de arriba: se agarra para mover la grabación en el tiempo.
+                let barra = Rect::from_min_max(r.min, pos2(r.right(), r.top() + TOMA_BARRA));
+                p.rect_filled(barra, CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, t.color.gamma_multiply(0.55));
+                p.with_clip_rect(barra.intersect(row)).text(barra.left_center() + vec2(5.0, 0.0), Align2::LEFT_CENTER, format!("{} {}", tr("Toma"), k + 1), FontId::proportional(9.5), TEXT());
                 if let Some(b) = c.buf() {
-                    p.add(peak_mesh(c, b, r, xr, fpp.max(1.0), t.color.gamma_multiply(0.7)));
+                    let onda = Rect::from_min_max(pos2(r.left(), barra.bottom()), r.max);
+                    p.add(peak_mesh(c, b, onda, xr, fpp.max(1.0), t.color.gamma_multiply(0.8)));
+                }
+                // Línea de ganancia de la grabación (misma escala que en las regiones).
+                if c.buf().is_some() && (self.tool == Tool::Ganancia || c.ganancia.is_some()) {
+                    let (alto, base) = (TAKE_H - 9.0 - TOMA_BARRA, row.top() + TAKE_H - 4.0);
+                    let y = |db: f32| base - (db + 24.0) / 36.0 * alto;
+                    let x = |f: u64| x_of(c.start + f.saturating_sub(c.offset));
+                    let puntos = c.ganancia.as_deref().map(Vec::as_slice).unwrap_or_default();
+                    let mut linea = vec![pos2(r.left(), y(engine::automation_at(puntos, c.offset).unwrap_or(0.0)))];
+                    linea.extend(puntos.iter().filter(|q| q.0 >= c.offset && q.0 <= c.offset + c.len).map(|&(f, db)| pos2(x(f), y(db))));
+                    linea.push(pos2(r.right(), y(engine::automation_at(puntos, c.offset + c.len).unwrap_or(0.0))));
+                    let gp = p.with_clip_rect(r.intersect(p.clip_rect()));
+                    gp.add(egui::Shape::line(linea, Stroke::new(if puntos.is_empty() { 1.0 } else { 1.8 }, METER[0].gamma_multiply(if puntos.is_empty() { 0.55 } else { 1.0 }))));
+                    for &(f, db) in puntos {
+                        gp.circle_filled(pos2(x(f), y(db)), 3.0, METER[0]);
+                    }
                 }
             }
             p.hline(row.x_range(), row.bottom(), Stroke::new(1.0, BORDER()));
@@ -1377,28 +1602,15 @@ impl App {
         }
         let t = &self.s.tracks[i];
         let p = ui.painter().with_clip_rect(clip);
-        p.rect_filled(r, rr(4.0), if t.selected { t.color.lerp_to_gamma(ELEVATED(), 0.82) } else { ELEVATED() });
-        if t.selected || resp.dnd_hover_payload::<LibItem>().is_some() {
-            p.rect_stroke(r, rr(4.0), Stroke::new(1.0, ACCENT()), StrokeKind::Inside);
+        // Fila plana como en las consolas: la seleccionada se aclara, con una franja de color a la izquierda.
+        p.rect_filled(r, rr(2.0), if t.selected { BORDER() } else { PANEL() });
+        if resp.dnd_hover_payload::<LibItem>().is_some() {
+            p.rect_stroke(r, rr(2.0), Stroke::new(1.0, ACCENT()), StrokeKind::Inside);
         }
-        // Franja fina de color a la izquierda y número de pista pequeño.
-        let k4 = rr(4.0) as u8;
-        p.rect_filled(Rect::from_min_size(r.min, vec2(5.0, r.height())), CornerRadius { nw: k4, sw: k4, ne: 0, se: 0 }, t.color);
-        // Número de pista grande, en su propia columna junto a la franja de color, a la altura del icono.
-        let numero = if (i + 1) >= 100 { 13.0 } else { 17.0 };
-        p.text(pos2(r.left() + 5.0 + NUMERO_W / 2.0, r.top() + 28.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::new(numero, egui::FontFamily::Proportional), TEXT());
-
-        // Medidor de salida de la pista (vertical, en el borde derecho).
-        let meter = Rect::from_x_y_ranges(r.right() - 9.0..=r.right() - 4.0, r.top() + 6.0..=r.bottom() - 6.0);
-        let level = self.levels.get(i).copied().unwrap_or(0.0);
-        let db = widgets::db(level);
-        p.rect_filled(meter, rr(2.0), BG());
-        let fill = ((db + 60.0) / 66.0).clamp(0.0, 1.0);
-        p.rect_filled(Rect::from_min_max(pos2(meter.left(), meter.bottom() - fill * meter.height()), meter.max), rr(2.0), METER[(db > -12.0) as usize + (db > -3.0) as usize]);
-        // Cabecera compacta: icono en un cuadro del color de la pista, nombre y subtítulo, M S ● arriba a
-        // la derecha, fader horizontal y perilla de panorama. El resto está en el inspector (tecla I).
-        let tile = Rect::from_min_size(r.min + vec2(NUMERO_W + 8.0, 8.0), vec2(40.0, 40.0));
-        p.rect_filled(tile, rr(10.0), self.s.tracks[i].color.lerp_to_gamma(BG(), 0.72));
+        p.rect_filled(Rect::from_min_size(r.min, vec2(4.0, r.height())), CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, t.color);
+        p.hline(r.x_range(), r.bottom() + 1.5, Stroke::new(1.0, BG()));
+        // Número de la pista, tenue, a la izquierda del icono.
+        p.text(pos2(r.left() + 7.0 + NUMERO_W / 2.0, r.top() + 15.0), Align2::CENTER_CENTER, (i + 1).to_string(), FontId::proportional(if i + 1 >= 100 { 11.0 } else { 13.0 }), TEXT_DIM());
         let proxy = self.usa_proxy(i);
         let subtitulo = {
             let t = &self.s.tracks[i];
@@ -1416,55 +1628,96 @@ impl App {
                 base
             }
         };
-        ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(r.min + vec2(NUMERO_W + 8.0, 8.0), r.max - vec2(14.0, 6.0))), |ui| {
+        let zona = Rect::from_min_max(r.min + vec2(NUMERO_W + 8.0, 4.0), r.max - vec2(6.0, 4.0));
+        ui.scope_builder(UiBuilder::new().max_rect(zona), |ui| {
             ui.set_clip_rect(clip.intersect(r));
-            ui.spacing_mut().item_spacing = vec2(4.0, 2.0);
+            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+            // Fila 1: icono, nombre, plugins y el menú «…».
             ui.horizontal(|ui| {
                 {
                     let t = &mut self.s.tracks[i];
-                    ui.allocate_ui_with_layout(vec2(40.0, 40.0), egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| icons::picker(ui, t, 36.0));
+                    ui.allocate_ui_with_layout(vec2(20.0, 20.0), egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| icons::picker(ui, t, 18.0));
                 }
-                ui.add_space(6.0);
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        let t = &mut self.s.tracks[i];
-                        let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(14.0)).text_color(TEXT()).desired_width((r.width() - 232.0 - NUMERO_W).max(70.0));
-                        ui.add(nombre).on_hover_text(tr("Nombre de la pista (clic para editar)"));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.spacing_mut().item_spacing.x = 6.0;
-                            // R, I, S y M: teclas cuadradas con su color (de derecha a izquierda: M S I R). I junto a
-                            // R: escucharse en vivo (retorno) mientras se graba.
-                            ui.spacing_mut().item_spacing.x = 4.0;
-                            let lado = vec2(widgets::TECLA_CHICA, widgets::TECLA_CHICA);
-                            for (k, texto, ayuda) in [(0, "R", "Armar grabación"), (3, "I", "Monitoreo de entrada: escucharte en vivo por los auriculares o monitores"), (2, "S", "Solo"), (1, "M", "Mute")] {
-                                let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
-                                if widgets::tecla(ui, lado, on, widgets::color_bandera(k), texto).on_hover_text(tr(ayuda)).clicked() {
-                                    for m in self.flag_targets(i, k) {
-                                        flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
-                                    }
-                                }
-                            }
-                            if !self.config.ocultar_plugins_pista && self.admite_efectos(i) {
-                                self.boton_plugins(ui, i);
-                            }
-                        });
+                let t = &mut self.s.tracks[i];
+                let nombre = egui::TextEdit::singleline(&mut t.name).frame(egui::Frame::NONE).font(FontId::proportional(13.5)).text_color(TEXT()).desired_width((zona.width() - 92.0).max(60.0));
+                ui.add(nombre).on_hover_text(tr("Nombre de la pista (clic para editar)"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let mas = ui.add(egui::Button::new(RichText::new("···").size(13.0).color(TEXT_DIM())).frame(false)).on_hover_text(tr("Opciones de la pista"));
+                    egui::Popup::menu(&mas).show(|ui| {
+                        widgets::menu_style(ui);
+                        self.track_menu(ui, i);
                     });
-                    ui.horizontal(|ui| {
-                        if matches!(self.s.tracks[i].kind, TrackKind::AudioMono | TrackKind::AudioStereo) {
-                            self.input_combo(ui, i);
-                        }
-                        // Versiones grabadas (tomas): en la fila del subtítulo, donde siempre hay lugar.
-                        if self.s.tracks[i].takes.len() > 1 {
-                            self.boton_versiones(ui, i);
-                        }
-                        ui.add(egui::Label::new(RichText::new(&subtitulo).size(11.5).color(if proxy { METER[0] } else { TEXT_DIM() })).truncate());
-                    });
+                    if !self.config.ocultar_plugins_pista && self.admite_efectos(i) {
+                        self.boton_plugins(ui, i);
+                    }
                 });
             });
-            if r.height() < 76.0 {
+            // Fila 2: M S ● I R W en teclas cuadradas y el medidor horizontal.
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let lado = vec2(widgets::TECLA_CHICA, widgets::TECLA_CHICA);
+                for (k, texto, ayuda) in [(1, "M", "Mute"), (2, "S", "Solo"), (0, "", "Armar grabación"), (3, "I", "Monitoreo de entrada: escucharte en vivo por los auriculares o monitores")] {
+                    let on = flag(&self.s.tracks[i].params, k).load(Relaxed);
+                    // Grabar: un punto dibujado (la fuente no trae el círculo).
+                    let tecla = if k == 0 {
+                        widgets::tecla_dibujo(ui, lado, on, widgets::color_bandera(k), |p, r, tinta| _ = p.circle_filled(r.center(), 4.0, if on { tinta } else { METER[2] }))
+                    } else {
+                        widgets::tecla(ui, lado, on, widgets::color_bandera(k), texto)
+                    };
+                    if tecla.on_hover_text(tr(ayuda)).clicked() {
+                        for m in self.flag_targets(i, k) {
+                            flag(&self.s.tracks[m].params, k).store(!on, Relaxed);
+                        }
+                    }
+                }
+                // R y W: leer y escribir automatización (los modos finos siguen en el carril de automatización).
+                let modo = self.s.tracks[i].auto_mode;
+                if widgets::tecla(ui, lado, modo != 1, ACCENT(), "R").on_hover_text(tr("Leer la automatización")).clicked() {
+                    self.s.tracks[i].auto_mode = if modo == 1 { 0 } else { 1 };
+                }
+                if widgets::tecla(ui, lado, modo == 4, METER[1], "W").on_hover_text(tr("Escribir la automatización mientras suena")).clicked() {
+                    self.s.tracks[i].auto_mode = if modo == 4 { 0 } else { 4 };
+                }
+                // Medidor de la pista en una ranura oscura (entrada si está armada o monitoreando).
+                let t = &self.s.tracks[i];
+                let entrada = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo) && (t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed));
+                let nivel = if entrada { self.in_levels.get(i) } else { self.levels.get(i) }.copied().unwrap_or(0.0);
+                let (ranura, _) = ui.allocate_exact_size(vec2(ui.available_width().max(10.0), 8.0), Sense::hover());
+                ui.painter().rect_filled(ranura, rr(2.0), chrome::FONDO_HONDO);
+                let db = widgets::db(nivel);
+                let fill = ((db + 60.0) / 66.0).clamp(0.0, 1.0);
+                ui.painter().rect_filled(Rect::from_min_max(ranura.min, pos2(ranura.left() + fill * ranura.width(), ranura.bottom())), rr(2.0), METER[(db > -12.0) as usize + (db > -3.0) as usize]);
+            });
+            if r.height() < 74.0 {
                 return;
             }
-            ui.add_space(4.0);
+            // Fila 3: entrada, tomas y el subtítulo.
+            ui.horizontal(|ui| {
+                if matches!(self.s.tracks[i].kind, TrackKind::AudioMono | TrackKind::AudioStereo) {
+                    self.input_combo(ui, i);
+                }
+                // Versiones grabadas (tomas), con la flecha que pliega o despliega sus carriles.
+                if self.s.tracks[i].takes.len() > 1 {
+                    let t = &mut self.s.tracks[i];
+                    let ayuda = if t.show_takes { "Plegar las tomas (lo elegido sigue sonando igual)" } else { "Desplegar las tomas de esta pista" };
+                    // Botón con triángulo dibujado (la fuente no trae flechas): abajo = desplegadas.
+                    let texto = format!("{} {}", t.takes.len(), tr("tomas"));
+                    let b = egui::Button::new(RichText::new(format!("    {texto}")).size(11.0).color(TEXT())).fill(if t.show_takes { t.color.gamma_multiply(0.35) } else { ELEVATED() }).corner_radius(rr(5.0)).min_size(vec2(0.0, 18.0));
+                    let f = ui.add(b);
+                    let (c, k) = (f.rect.left_center() + vec2(10.0, 0.0), 4.0);
+                    let pts = if t.show_takes { vec![c + vec2(-k, -k * 0.6), c + vec2(k, -k * 0.6), c + vec2(0.0, k * 0.7)] } else { vec![c + vec2(-k * 0.6, -k), c + vec2(k * 0.7, 0.0), c + vec2(-k * 0.6, k)] };
+                    ui.painter().add(egui::Shape::convex_polygon(pts, TEXT(), Stroke::NONE));
+                    if f.on_hover_text(tr(ayuda)).clicked() {
+                        t.show_takes = !t.show_takes;
+                    }
+                    self.boton_versiones(ui, i);
+                }
+                ui.add(egui::Label::new(RichText::new(&subtitulo).size(11.0).color(if proxy { METER[0] } else { TEXT_DIM() })).truncate());
+            });
+            if r.height() < 104.0 {
+                return;
+            }
+            // Fila 4: volumen y panorama (también en el inspector y el mixer).
             ui.horizontal(|ui| {
                 let params = self.s.tracks[i].params.clone();
                 let id = self.s.tracks[i].id;
@@ -1473,21 +1726,22 @@ impl App {
                 let t = &self.s.tracks[i];
                 let entrada = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo) && (params.arm.load(Relaxed) || params.monitor.load(Relaxed));
                 let nivel = if entrada { self.in_levels.get(i) } else { self.levels.get(i) }.copied();
-                let f = widgets::fader_h(ui, &params.gain, (r.width() - 90.0 - NUMERO_W).max(60.0), nivel);
+                let f = widgets::fader_h(ui, &params.gain, (zona.width() - 48.0).max(60.0), nivel);
                 crate::controlador::menu(&f, crate::controlador::Pedido::Destino(crate::controlador::Destino::Volumen(id)));
                 let mut pan = params.pan.get();
-                let p = widgets::pan_knob(ui, &mut pan);
+                let p = widgets::pan_knob_chica(ui, &mut pan);
                 crate::controlador::menu(&p, crate::controlador::Pedido::Destino(crate::controlador::Destino::Panorama(id)));
                 if p.changed() {
                     params.pan.set(pan);
                 }
             });
-            if self.show_auto && r.height() >= 96.0 {
+            if self.show_auto && r.height() >= 134.0 {
                 let t = &mut self.s.tracks[i];
                 ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt(("auto", i)).width(70.0).selected_text(if t.auto_param == 0 { tr("Volumen") } else { tr("Panorama") }).show_ui(ui, |ui| {
+                    egui::ComboBox::from_id_salt(("auto", i)).width(70.0).selected_text(tr(["Volumen", "Panorama", "Ganancia"][t.auto_param.min(2) as usize])).show_ui(ui, |ui| {
                         ui.selectable_value(&mut t.auto_param, 0, tr("Volumen"));
                         ui.selectable_value(&mut t.auto_param, 1, tr("Panorama"));
+                        ui.selectable_value(&mut t.auto_param, 2, tr("Ganancia")).on_hover_text(tr("Línea de ganancia de toda la pista, antes de los efectos (de -24 a +12 dB)"));
                     });
                     // Modo de escritura: con la vista de automatización abierta, «Lectura» graba como «Toque».
                     const MODOS: [&str; 5] = ["Toque", "Apagado", "Toque", "Retención", "Escritura"];
@@ -1567,19 +1821,190 @@ impl App {
         }
     }
 
+    /// Al soltar una grabación de la toma `k` que se movió desde `antes`: lo que sonaba de ella en la
+    /// pista se mueve con ella (y recorta lo que quede debajo en su nuevo lugar).
+    fn grabacion_movida(&mut self, i: usize, k: usize, j: usize, antes: u64) {
+        let xf = self.xfade();
+        let t = &mut self.s.tracks[i];
+        let Some(nueva) = t.takes.get(k).and_then(|tk| tk.get(j)).cloned() else { return };
+        if nueva.start == antes {
+            return;
+        }
+        let vieja = Clip { start: antes, ..nueva.clone() };
+        let mover = |x: u64| (x as i64 + nueva.start as i64 - antes as i64).max(0) as u64;
+        let tramos: Vec<_> = t.clips.iter().filter(|c| sale_de(c, &vieja)).map(|c| (mover(c.start), mover(c.end()))).collect();
+        t.clips.retain(|c| !sale_de(c, &vieja));
+        for (a, b) in tramos {
+            poner_tramo(&mut t.clips, &nueva, a, b, xf);
+        }
+        for s in t.comp.iter_mut().filter(|s| s.2 == k && s.0 >= antes && s.1 <= vieja.end()) {
+            (s.0, s.1) = (mover(s.0), mover(s.1));
+        }
+        self.dirty = true;
+    }
+
+    /// La región `j` de la pista `i` se movió desde `antes`: si su audio es el de una grabación de toma,
+    /// el mismo tramo de la grabación (el material que usa la región) queda debajo de ella, en su nueva
+    /// posición. La grabación se corta en esos bordes, así lo demás que suena de ella queda en su lugar.
+    fn toma_sigue_a_region(&mut self, i: usize, j: usize, antes: u64) {
+        let Some(t) = self.s.tracks.get_mut(i) else { return };
+        let Some(c) = t.clips.get(j).cloned() else { return };
+        if c.start == antes || t.takes.is_empty() {
+            return;
+        }
+        let mismo = |a: &Clip, b: &Clip| matches!((a.buf(), b.buf()), (Some(x), Some(y)) if Arc::ptr_eq(x, y) || x.file == y.file);
+        // Material (frames del archivo) que usa la región.
+        let (m0, m1) = (c.offset, c.offset + c.len);
+        for toma in t.takes.iter_mut() {
+            let Some(jj) = toma.iter().position(|src| mismo(&c, src) && src.offset < m1 && src.offset + src.len > m0) else { continue };
+            let src = toma.remove(jj);
+            let en = |m: u64| (src.origin() + m as i64).max(0) as u64;
+            let (a, b) = (en(m0.max(src.offset)), en(m1.min(src.offset + src.len)));
+            let medio = src.trim(a, b).map(|m| Clip { start: (c.origin() + m.offset as i64).max(0) as u64, ..m });
+            let partes: Vec<Clip> = [src.trim(0, a), medio, src.trim(b, u64::MAX)].into_iter().flatten().collect();
+            toma.extend(partes);
+            toma.sort_by_key(|c| c.start);
+            break;
+        }
+        self.dirty = true;
+    }
+
+    /// Se soltó el borde de una grabación de toma: lo que suena de ella en la pista sigue a ese borde
+    /// (se prolonga o se acorta) y nada de lo que suena queda fuera de la grabación.
+    fn borde_de_toma_soltado(&mut self, i: usize, k: usize, j: usize, orig: &Clip) {
+        let t = &mut self.s.tracks[i];
+        let Some(nueva) = t.takes.get(k).and_then(|tk| tk.get(j)).cloned() else { return };
+        let mut out = vec![];
+        for c in t.clips.drain(..) {
+            if !sale_de(&c, orig) {
+                out.push(c);
+                continue;
+            }
+            let mut c = c;
+            if c.end() == orig.end() && nueva.end() > c.start {
+                c.len = nueva.end() - c.start;
+            }
+            if c.start == orig.start && nueva.start < c.end() {
+                let d = nueva.start as i64 - c.start as i64;
+                (c.start, c.offset, c.len) = (nueva.start, (c.offset as i64 + d).max(0) as u64, (c.len as i64 - d) as u64);
+            }
+            out.extend(c.trim(nueva.start, nueva.end()));
+        }
+        out.sort_by_key(|c| c.start);
+        t.clips = out;
+        self.dirty = true;
+    }
+
+    /// Cambia la línea de ganancia de una región o de una grabación de toma (pista, toma, región). En
+    /// una toma, lo que suena de esa grabación en la pista toma la misma línea.
+    fn poner_ganancia(&mut self, (i, k, j): (usize, Option<usize>, usize), l: Vec<(u64, f32)>) {
+        let linea = (!l.is_empty()).then(|| Arc::new(l));
+        let Some(t) = self.s.tracks.get_mut(i) else { return };
+        match k {
+            None => {
+                if let Some(c) = t.clips.get_mut(j) {
+                    c.ganancia = linea;
+                }
+            }
+            Some(k) => {
+                let Some(src) = t.takes.get_mut(k).and_then(|tk| tk.get_mut(j)) else { return };
+                src.ganancia = linea.clone();
+                let src = src.clone();
+                t.clips.iter_mut().filter(|c| sale_de(c, &src)).for_each(|c| c.ganancia = linea.clone());
+            }
+        }
+        self.dirty = true;
+    }
+
+    /// Quita de la pista lo que suena de la grabación `j` de la toma `k`.
+    fn quitar_lo_que_suena(&mut self, i: usize, k: usize, j: usize) {
+        let t = &mut self.s.tracks[i];
+        if let Some(src) = t.takes.get(k).and_then(|tk| tk.get(j)).cloned() {
+            t.clips.retain(|c| !sale_de(c, &src));
+        }
+    }
+
+    /// Donde se borró una toma vuelve a sonar lo que había antes: lo que grabaron `tomas` (las que
+    /// quedan, la más nueva primero) en esos tramos.
+    fn devolver_con(&mut self, i: usize, tomas: &[Vec<Clip>], tramos: &[(u64, u64)]) {
+        let (xf, min) = (self.xfade(), (self.sr() / 20.0) as u64);
+        let t = &mut self.s.tracks[i];
+        // Si quedó una sola toma la lista ya se vació: igual se rellena con ella.
+        let guardadas = std::mem::replace(&mut t.takes, tomas.to_vec());
+        for &r in tramos {
+            completar_tomas(t, xf, min, r);
+        }
+        t.takes = guardadas;
+    }
+
+    /// Quita la toma `k` de la lista (los tramos del comp que la usaban pasan a la primera).
+    fn quitar_toma(&mut self, i: usize, k: usize) {
+        let t = &mut self.s.tracks[i];
+        t.takes.remove(k);
+        t.comp = t.comp.iter().map(|&(a, b, x)| (a, b, if x == k { 0 } else if x > k { x - 1 } else { x })).collect();
+        if t.takes.len() <= 1 {
+            (t.takes, t.comp, t.show_takes) = (vec![], vec![], false);
+        }
+        self.dirty = true;
+    }
+
+    /// Menú de una grabación en un carril de tomas: usarla, escucharla sola o borrarla.
+    fn menu_toma(&mut self, ui: &mut egui::Ui, i: usize, k: usize, j: usize) {
+        let Some(c) = self.s.tracks.get(i).and_then(|t| t.takes.get(k)).and_then(|tk| tk.get(j)).cloned() else {
+            ui.close();
+            return;
+        };
+        ui.label(RichText::new(format!("{} {}", tr("Toma"), k + 1)).strong());
+        if ui.button(tr("Usar esta grabación entera")).clicked() {
+            self.edit();
+            self.comp_take(i, c.start, c.end(), k);
+            ui.close();
+        }
+        if ui.button(tr("Usar esta toma en todo lo que grabó")).clicked() {
+            self.edit();
+            self.usar_toma(i, k);
+            ui.close();
+        }
+        if ui.button(tr("Escuchar desde aquí")).clicked() {
+            self.go(c.start);
+            ui.close();
+        }
+        ui.separator();
+        if ui.button(tr("Borrar esta grabación de la toma")).on_hover_text(tr("Quita solo esta grabación; las otras tomas quedan igual")).clicked() {
+            self.edit();
+            self.quitar_lo_que_suena(i, k, j);
+            self.s.tracks[i].takes[k].remove(j);
+            let quedan = self.s.tracks[i].takes.clone();
+            if self.s.tracks[i].takes[k].is_empty() {
+                self.quitar_toma(i, k);
+            }
+            self.devolver_con(i, &quedan, &[(c.start, c.end())]);
+            self.dirty = true;
+            ui.close();
+        }
+    }
+
+    /// La toma `k` manda en todo lo que grabó; fuera de eso suena lo que ya sonaba.
+    fn usar_toma(&mut self, i: usize, k: usize) {
+        let tramos: Vec<_> = self.s.tracks[i].takes[k].iter().map(|c| (c.start, c.end())).collect();
+        for (a, b) in tramos {
+            self.comp_take(i, a, b, k);
+        }
+        self.status = format!("{} {} · {}", tr("Suena la toma"), k + 1, self.s.tracks[i].name);
+    }
+
     /// Selector del canal de la interfaz que alimenta la pista.
     /// Versiones de una pista de audio: cada vez que se graba encima queda una toma nueva en la misma
     /// pista. Se elige cuál suena entera, o se arma una mezcla por tramos en los carriles de tomas.
     fn boton_versiones(&mut self, ui: &mut egui::Ui, i: usize) {
         let t = &self.s.tracks[i];
         let n = t.takes.len();
-        // Toma que suena: la que se oye en todo lo que grabó (fuera de eso sigue la original), o
-        // ninguna si es una mezcla por tramos (comping).
-        let pisa = |k: usize, a: u64, b: u64| t.takes[k].iter().any(|c| c.start < b && c.end() > a);
-        let entera = (0..n).rev().find(|&k| t.comp.iter().all(|&(a, b, j)| j == k || (j == 0 && !pisa(k, a, b))));
+        // Tomas que suenan en la pista: si es una sola, se nombra; si no, es una mezcla por tramos.
+        let usadas = tomas_en_uso(t);
+        let entera = (usadas.len() == 1).then(|| usadas[0]);
         let texto = match entera {
-            Some(k) => format!("{} {}/{n}", tr("Toma"), k + 1),
-            None => format!("{} · {n}", tr("Mezcla de tomas")),
+            Some(k) => format!("{} {}", tr("Toma"), k + 1),
+            None => tr("Mezcla").to_string(),
         };
         let b = egui::Button::new(RichText::new(texto).size(11.0).strong().color(BG())).fill(ACCENT()).corner_radius(rr(5.0)).min_size(vec2(64.0, 18.0));
         let (mut elegida, mut carriles, mut fijar, mut borrar) = (None, false, false, None);
@@ -1589,7 +2014,7 @@ impl App {
             for k in (0..n).rev() {
                 let nombre = if k == 0 { format!("{} 1 · {}", tr("Toma"), tr("original")) } else { format!("{} {}", tr("Toma"), k + 1) };
                 ui.horizontal(|ui| {
-                    if ui.selectable_label(entera == Some(k), nombre).on_hover_text(tr("Que suene esta toma entera")).clicked() {
+                    if ui.selectable_label(usadas.contains(&k), nombre).on_hover_text(tr("Que mande esta toma: suena entera, y las otras solo donde esta no grabó")).clicked() {
                         elegida = Some(k);
                         ui.close();
                     }
@@ -1600,12 +2025,12 @@ impl App {
                 });
             }
             ui.separator();
-            if ui.button(tr("Editar y mover lo que suena…")).on_hover_text(tr("Deja lo que suena ahora como regiones normales: se pueden mover, recortar, cortar y editar. Las otras tomas se quitan de la pista (los archivos quedan en el proyecto).")).clicked() {
+            if ui.button(tr("Quedarme solo con lo que suena…")).on_hover_text(tr("Quita las tomas de la lista y deja la pista como está. Los archivos quedan en el proyecto.")).clicked() {
                 fijar = true;
                 ui.close();
             }
-            let texto = if self.s.tracks[i].show_takes { "Ocultar carriles de tomas" } else { "Elegir por tramos (carriles de tomas)…" };
-            if ui.button(tr(texto)).on_hover_text(tr("Toma las mejores partes de cada versión: arrastra sobre un carril para usar ese tramo")).clicked() {
+            let texto = if self.s.tracks[i].show_takes { "Plegar las tomas" } else { "Desplegar las tomas (elegir por tramos)" };
+            if ui.button(tr(texto)).on_hover_text(tr("En los carriles de tomas: clic en una grabación para usarla, barre para usar un tramo y arrastra su barra de arriba para moverla. Plegar no cambia lo elegido.")).clicked() {
                 carriles = true;
                 ui.close();
             }
@@ -1614,17 +2039,7 @@ impl App {
         .on_hover_text(tr("Versiones de esta pista: graba encima y elige la mejor toma sin crear otra pista"));
         if let Some(k) = elegida {
             self.edit();
-            let xf = self.xfade();
-            let t = &mut self.s.tracks[i];
-            t.comp = vec![(0, u64::MAX, 0)];
-            if k > 0 {
-                for (a, b) in t.takes[k].iter().map(|c| (c.start, c.end())).collect::<Vec<_>>() {
-                    t.comp = set_segment(&t.comp, a, b, k);
-                }
-            }
-            t.clips = comp_clips(&t.takes, &t.comp, xf);
-            self.dirty = true;
-            self.status = format!("{} {} · {}", tr("Suena la toma"), k + 1, self.s.tracks[i].name);
+            self.usar_toma(i, k);
         }
         if carriles {
             let t = &mut self.s.tracks[i];
@@ -1632,23 +2047,21 @@ impl App {
         }
         if let Some(k) = borrar {
             self.edit();
-            let xf = self.xfade();
-            let t = &mut self.s.tracks[i];
-            t.takes.remove(k);
-            // Los tramos de la toma borrada pasan a la primera que queda; las siguientes bajan un lugar.
-            t.comp = t.comp.iter().map(|&(a, b, j)| (a, b, if j == k { 0 } else if j > k { j - 1 } else { j })).collect();
-            t.clips = comp_clips(&t.takes, &t.comp, xf);
-            if t.takes.len() <= 1 {
-                (t.takes, t.comp, t.show_takes) = (vec![], vec![], false);
+            let tramos: Vec<_> = self.s.tracks[i].takes[k].iter().map(|c| (c.start, c.end())).collect();
+            // Las tomas que quedan, antes de que la lista se vacíe si queda una sola.
+            let quedan: Vec<_> = self.s.tracks[i].takes.iter().enumerate().filter(|e| e.0 != k).map(|e| e.1.clone()).collect();
+            for j in 0..self.s.tracks[i].takes[k].len() {
+                self.quitar_lo_que_suena(i, k, j);
             }
-            self.dirty = true;
+            self.quitar_toma(i, k);
+            self.devolver_con(i, &quedan, &tramos);
             self.status = format!("{} {} {}", tr("Toma"), k + 1, tr("borrada"));
         }
         if fijar {
             self.edit();
             let t = &mut self.s.tracks[i];
             (t.takes, t.comp, t.show_takes) = (vec![], vec![], false);
-            self.status = tr("Listo: la toma quedó como regiones normales; ya se puede mover y editar").into();
+            self.status = tr("Listo: quedó solo lo que suena; las otras tomas se quitaron de la pista").into();
         }
     }
 

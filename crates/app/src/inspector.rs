@@ -6,7 +6,7 @@ use egui::{RichText, vec2};
 
 /// Título de sección plegable del inspector (▾ PISTA).
 fn seccion(ui: &mut egui::Ui, id: &str, texto: &str, add: impl FnOnce(&mut egui::Ui)) {
-    egui::CollapsingHeader::new(RichText::new(tr(texto)).size(11.5).strong().color(TEXT_DIM())).id_salt(("inspector", id)).default_open(true).show(ui, |ui| {
+    egui::CollapsingHeader::new(RichText::new(tr(texto)).size(13.0).color(TEXT())).id_salt(("inspector", id)).default_open(true).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 8.0;
         add(ui);
     });
@@ -32,14 +32,14 @@ fn valor(ui: &mut egui::Ui, texto: String) {
 }
 
 impl App {
-    /// Pista que muestra el inspector: la primera seleccionada.
+    /// Pista que muestra el inspector: la primera seleccionada (o la primera pista).
     fn pista_inspector(&self) -> Option<usize> {
-        self.s.tracks.iter().position(|t| t.selected)
+        self.s.tracks.iter().position(|t| t.selected).or((!self.s.tracks.is_empty()).then_some(0))
     }
 
     pub fn inspector(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("Inspector")).size(15.0).strong());
+            ui.label(RichText::new(tr("Inspector")).size(13.0).color(TEXT_DIM()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").on_hover_text(tr("Ocultar (I)")).clicked() {
                     self.show_inspector = false;
@@ -52,7 +52,7 @@ impl App {
             return;
         };
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            seccion(ui, "pista", "PISTA", |ui| {
+            seccion(ui, "pista", "Pista", |ui| {
                 ui.horizontal(|ui| {
                     let t = &mut self.s.tracks[i];
                     // Muestra de color del alto del nombre, y el nombre a lo ancho.
@@ -113,7 +113,7 @@ impl App {
                     }
                 });
             });
-            seccion(ui, "envios", "ENVÍOS", |ui| {
+            seccion(ui, "envios", "Envíos", |ui| {
                 let envios = self.s.tracks[i].sends.clone();
                 if envios.is_empty() {
                     ui.label(RichText::new(tr("Sin envíos.")).size(12.0).color(TEXT_DIM()));
@@ -136,7 +136,7 @@ impl App {
                 }
             });
             if self.s.tracks[i].midi() {
-                seccion(ui, "instrumento", "INSTRUMENTO", |ui| {
+                seccion(ui, "instrumento", "Instrumento", |ui| {
                     self.instrument_combo(ui, i);
                     let propio = !self.s.tracks[i].instrument.is_empty();
                     let r = ui.button(tr("Abrir instrumento")).on_hover_text(tr("Clic: abrir la ventana del instrumento · clic derecho: más opciones"));
@@ -154,61 +154,64 @@ impl App {
                     });
                 });
             }
-            seccion(ui, "efectos", "EFECTOS", |ui| {
+            seccion(ui, "efectos", "Inserciones", |ui| {
                 let efectos: Vec<(String, Arc<Fx>)> = self.s.tracks[i].fx.iter().map(|f| (tr(f.nombre()).to_string(), f.clone())).collect();
-                if efectos.is_empty() {
-                    ui.label(RichText::new(tr("Sin efectos. Arrastra uno desde la biblioteca.")).size(12.0).color(TEXT_DIM()));
-                }
                 let mut quitar = None;
-                for (j, (nombre, fx)) in efectos.into_iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        let mut activo = !fx.bypass.load(Relaxed);
-                        if ui.checkbox(&mut activo, "").on_hover_text(tr("Activar o desactivar (bypass)")).changed() {
-                            fx.bypass.store(!activo, Relaxed);
-                        }
-                        // Fila del efecto: clic la abre, clic derecho da sus opciones.
-                        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), egui::Sense::click());
-                        if resp.hovered() {
-                            ui.painter().rect_filled(r, widgets::rr(5.0), ELEVATED());
-                        }
-                        ui.painter().circle_filled(r.left_center() + vec2(8.0, 0.0), 4.0, plugins::kind_color(Some(fx.kind)));
-                        ui.painter().text(r.left_center() + vec2(18.0, 0.0), egui::Align2::LEFT_CENTER, nombre, egui::FontId::proportional(13.0), if activo { TEXT() } else { TEXT_DIM() });
-                        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Clic: abrir el efecto · clic derecho: más opciones"));
-                        if resp.clicked() {
-                            self.abrir_efectos(i);
-                        }
-                        resp.context_menu(|ui| {
-                            widgets::menu_style(ui);
-                            if ui.button(tr("Abrir efecto")).clicked() {
+                // Ocho ranuras numeradas, como en una consola: encendido, nombre y, vacías, «Vacío».
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for n in 0..efectos.len().max(8) {
+                    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), egui::Sense::click());
+                    let pt = ui.painter();
+                    if resp.hovered() {
+                        pt.rect_filled(r, widgets::rr(4.0), ELEVATED());
+                    }
+                    pt.text(r.left_center() + vec2(6.0, 0.0), egui::Align2::LEFT_CENTER, (n + 1).to_string(), egui::FontId::proportional(11.5), TEXT_DIM());
+                    let boton = egui::Rect::from_center_size(r.left_center() + vec2(28.0, 0.0), vec2(16.0, 16.0));
+                    match efectos.get(n) {
+                        Some((nombre, fx)) => {
+                            let activo = !fx.bypass.load(Relaxed);
+                            widgets::draw_encendido(pt, boton, if activo { ACCENT() } else { TEXT_DIM() });
+                            pt.text(r.left_center() + vec2(44.0, 0.0), egui::Align2::LEFT_CENTER, nombre, egui::FontId::proportional(13.0), if activo { ACCENT() } else { TEXT_DIM() });
+                            let en_boton = resp.interact_pointer_pos().is_some_and(|p| boton.expand(4.0).contains(p));
+                            let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Clic: abrir el efecto · botón: encender o apagar · clic derecho: más opciones"));
+                            if resp.clicked() && en_boton {
+                                fx.bypass.store(activo, Relaxed);
+                            } else if resp.clicked() {
                                 self.abrir_efectos(i);
                             }
-                            if ui.button(tr(if activo { "Desactivar (bypass)" } else { "Activar" })).clicked() {
-                                fx.bypass.store(activo, Relaxed);
+                            resp.context_menu(|ui| {
+                                widgets::menu_style(ui);
+                                if ui.button(tr("Abrir efecto")).clicked() {
+                                    self.abrir_efectos(i);
+                                }
+                                if ui.button(tr(if activo { "Desactivar (bypass)" } else { "Activar" })).clicked() {
+                                    fx.bypass.store(activo, Relaxed);
+                                }
+                                ui.separator();
+                                if ui.button(RichText::new(tr("Eliminar efecto")).color(METER[2])).clicked() {
+                                    quitar = Some(n);
+                                }
+                            });
+                        }
+                        None => {
+                            widgets::draw_encendido(pt, boton, BORDER());
+                            let arrastrando = resp.dnd_hover_payload::<library::LibItem>().is_some();
+                            let soltado = resp.dnd_release_payload::<library::LibItem>();
+                            pt.text(r.left_center() + vec2(44.0, 0.0), egui::Align2::LEFT_CENTER, tr(if arrastrando { "Suelta aquí" } else { "Vacío" }), egui::FontId::proportional(12.5), if arrastrando { ACCENT() } else { TEXT_DIM() });
+                            if resp.on_hover_text(tr("Clic: agregar un efecto · o arrastra uno desde la biblioteca")).clicked() {
+                                self.abrir_efectos(i);
                             }
-                            ui.separator();
-                            if ui.button(RichText::new(tr("Eliminar efecto")).color(METER[2])).clicked() {
-                                quitar = Some(j);
+                            if let Some(item) = soltado {
+                                let pos = self.pos();
+                                self.drop_item(&item, Some(i), pos);
                             }
-                        });
-                    });
+                        }
+                    }
                 }
                 if let Some(j) = quitar {
                     self.edit();
                     self.s.tracks[i].fx.remove(j);
                     self.dirty = true;
-                }
-                // Zona para soltar efectos arrastrados desde la biblioteca.
-                let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), egui::Sense::click());
-                let arrastrando = resp.dnd_hover_payload::<library::LibItem>().is_some();
-                ui.painter().rect_stroke(r, widgets::rr(6.0), egui::Stroke::new(if arrastrando { 2.0 } else { 1.0 }, if arrastrando || resp.hovered() { ACCENT() } else { BORDER() }), egui::StrokeKind::Inside);
-                let texto = if arrastrando { tr("Suelta aquí para agregar el efecto") } else { tr("Abrir efectos de la pista…") };
-                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, texto, egui::FontId::proportional(12.5), if arrastrando { ACCENT() } else { TEXT() });
-                if resp.clicked() {
-                    self.abrir_efectos(i);
-                }
-                if let Some(item) = resp.dnd_release_payload::<library::LibItem>() {
-                    let pos = self.pos();
-                    self.drop_item(&item, Some(i), pos);
                 }
             });
         });

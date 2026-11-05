@@ -180,16 +180,6 @@ pub fn fader_h(ui: &mut egui::Ui, g: &AtomicF32, ancho: f32, nivel: Option<f32>)
     resp.on_hover_text(format!("{} {}", tr("Volumen"), db_text(g.get())))
 }
 
-/// Pestaña tipo píldora (panel inferior): rellena de acento cuando está activa.
-pub fn pildora(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
-    let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(13.5), if activa { BG() } else { TEXT() });
-    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 26.0, 28.0), Sense::click());
-    let p = ui.painter();
-    p.rect_filled(r, rr(7.0), if activa { ACCENT() } else if resp.hovered() { BORDER() } else { ELEVATED() });
-    p.galley(r.center() - galley.size() / 2.0, galley, TEXT());
-    resp
-}
-
 /// Botón de grabar: círculo rojo; fondo rojo mientras graba.
 pub fn record_button(ui: &mut egui::Ui, on: bool) -> Response {
     let (r, resp) = ui.allocate_exact_size(vec2(36.0, 28.0), Sense::click());
@@ -290,6 +280,27 @@ pub fn draw_pencil(p: &Painter, r: Rect, c: Color32) {
     let (l, t, rt, bo) = (b.left(), b.top(), b.right(), b.bottom());
     p.add(egui::Shape::convex_polygon(vec![pos2(l + 3.0, bo - 6.0), pos2(rt - 4.0, t), pos2(rt, t + 4.0), pos2(l + 6.0, bo - 3.0)], c, Stroke::NONE));
     p.add(egui::Shape::convex_polygon(vec![pos2(l + 3.0, bo - 5.0), pos2(l + 5.0, bo - 3.0), pos2(l, bo)], c, Stroke::NONE));
+}
+
+/// Ganancia: una línea con dos puntos que sube.
+pub fn draw_ganancia(p: &Painter, r: Rect, c: Color32) {
+    let b = caja_icono(r);
+    let (a, z) = (pos2(b.left(), b.bottom() - 3.0), pos2(b.right(), b.top() + 3.0));
+    let m = pos2(b.center().x, b.bottom() - 4.0);
+    p.add(egui::Shape::line(vec![a, m, z], Stroke::new(1.6, c)));
+    p.circle_filled(m, 2.2, c);
+    p.circle_filled(z, 2.2, c);
+}
+
+/// Botón de encendido (círculo abierto arriba con la raya), como en las ranuras de efectos.
+pub fn draw_encendido(p: &Painter, r: Rect, c: Color32) {
+    let (centro, radio) = (r.center() + vec2(0.0, 1.0), r.width().min(r.height()) * 0.36);
+    let arco: Vec<Pos2> = (0..=20).map(|k| {
+        let a = (40.0 + 280.0 * k as f32 / 20.0).to_radians();
+        centro + vec2(a.sin(), -a.cos()) * radio
+    }).collect();
+    p.add(egui::Shape::line(arco, Stroke::new(1.5, c)));
+    p.line_segment([centro - vec2(0.0, radio + 1.5), centro - vec2(0.0, radio * 0.2)], Stroke::new(1.5, c));
 }
 
 /// Inspector: panel con la columna izquierda marcada.
@@ -489,8 +500,13 @@ pub fn segmentado_con(ui: &mut egui::Ui, sel: &mut usize, opciones: &[&str], act
 }
 
 /// Perilla de panorama: anillo de fondo, arco de color desde el centro, marcas L/C/R y disco con brillo.
-pub fn pan_knob(ui: &mut egui::Ui, v: &mut f32) -> Response {
-    let (rect, mut resp) = ui.allocate_exact_size(vec2(56.0, 48.0), Sense::click_and_drag());
+/// Perilla de panorama más baja, para las cabeceras de pista (entra junto al fader).
+pub fn pan_knob_chica(ui: &mut egui::Ui, v: &mut f32) -> Response {
+    pan_knob_tam(ui, v, 0.6)
+}
+
+fn pan_knob_tam(ui: &mut egui::Ui, v: &mut f32, e: f32) -> Response {
+    let (rect, mut resp) = ui.allocate_exact_size(vec2(56.0, 48.0) * e, Sense::click_and_drag());
     let antes = *v;
     if resp.dragged() {
         *v = (*v - resp.drag_delta().y / 120.0).clamp(-1.0, 1.0);
@@ -502,20 +518,20 @@ pub fn pan_knob(ui: &mut egui::Ui, v: &mut f32) -> Response {
     if *v != antes {
         resp.mark_changed();
     }
-    let (c, r) = (rect.center() - vec2(0.0, 2.0), 16.0);
+    let (c, r) = (rect.center() - vec2(0.0, 2.0 * e), 16.0 * e);
     let angle = |x: f32| (x * 135.0).to_radians();
     let at = |a: f32, rad: f32| c + vec2(a.sin(), -a.cos()) * rad;
     let arc = |a0: f32, a1: f32, rad: f32| -> Vec<egui::Pos2> { (0..=32).map(|i| at(a0 + (a1 - a0) * i as f32 / 32.0, rad)).collect() };
     let p = ui.painter();
     let hot = resp.hovered() || resp.dragged();
-    p.add(egui::Shape::line(arc(angle(-1.0), angle(1.0), r + 4.0), Stroke::new(4.0, BG())));
+    p.add(egui::Shape::line(arc(angle(-1.0), angle(1.0), r + 4.0 * e), Stroke::new(4.0 * e, BG())));
     if v.abs() > 0.005 {
-        p.add(egui::Shape::line(arc(0.0, angle(*v), r + 4.0), Stroke::new(4.0, ACCENT())));
+        p.add(egui::Shape::line(arc(0.0, angle(*v), r + 4.0 * e), Stroke::new(4.0 * e, ACCENT())));
     }
     for (x, label) in [(-1.0, "L"), (1.0, "R")] {
-        p.text(at(angle(x), r + 10.0) + vec2(0.0, 4.0), Align2::CENTER_CENTER, tr(label), FontId::proportional(9.0), TEXT_DIM());
+        p.text(at(angle(x), r + 10.0 * e) + vec2(0.0, 4.0 * e), Align2::CENTER_CENTER, tr(label), FontId::proportional(9.0 * e.max(0.9)), TEXT_DIM());
     }
-    p.line_segment([at(0.0, r + 7.0), at(0.0, r + 10.0)], Stroke::new(1.5, TEXT_DIM()));
+    p.line_segment([at(0.0, r + 7.0 * e), at(0.0, r + 10.0 * e)], Stroke::new(1.5, TEXT_DIM()));
     perilla_3d(p, c, r, angle(*v), if hot { ACCENT() } else { TEXT() });
     resp
 }

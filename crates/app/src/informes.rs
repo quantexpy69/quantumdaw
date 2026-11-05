@@ -61,11 +61,47 @@ pub fn iniciar() {
         guardar("fallo", &resumen, &format!("Lugar: {lugar}\n\n{}", std::backtrace::Backtrace::force_capture()));
         previo(info);
     }));
+    #[cfg(unix)]
+    senales_fatales(&log);
     #[cfg(target_os = "linux")]
     if herramienta_pilas().is_some() {
         // Permite que eu-stack/gdb lean este proceso aunque ptrace esté restringido (Ubuntu y otros).
         unsafe { libc::prctl(libc::PR_SET_PTRACER, libc::PR_SET_PTRACER_ANY) };
         let _ = std::thread::Builder::new().name("vigilante".into()).spawn(vigilar);
+    }
+}
+
+/// Descriptor del registro para escribir desde un manejador de señales (sin bloqueos ni memoria nueva).
+#[cfg(unix)]
+static FD_LOG: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+/// Un cierre por una señal (fallo de memoria en un plugin o en el controlador de audio, por ejemplo) no
+/// pasa por el manejador de pánicos de Rust: se anota en el registro antes de que el proceso termine.
+#[cfg(unix)]
+fn senales_fatales(log: &Path) {
+    use std::os::fd::IntoRawFd;
+    let Ok(f) = OpenOptions::new().append(true).open(log) else { return };
+    FD_LOG.store(f.into_raw_fd(), Relaxed);
+    extern "C" fn al_fallar(senal: libc::c_int) {
+        let texto: &[u8] = match senal {
+            libc::SIGSEGV => b"\n[FALLO] El programa se cerro por SIGSEGV (acceso invalido a memoria: plugin, instrumento o controlador)\n",
+            libc::SIGBUS => b"\n[FALLO] El programa se cerro por SIGBUS (memoria o archivo inaccesible)\n",
+            libc::SIGABRT => b"\n[FALLO] El programa se cerro por SIGABRT (abortado por una biblioteca)\n",
+            libc::SIGILL => b"\n[FALLO] El programa se cerro por SIGILL\n",
+            _ => b"\n[FALLO] El programa se cerro por una senal\n",
+        };
+        let fd = FD_LOG.load(Relaxed);
+        if fd >= 0 {
+            unsafe { libc::write(fd, texto.as_ptr().cast(), texto.len()) };
+        }
+        // Vuelve al comportamiento normal de la señal y la repite para terminar como corresponde.
+        unsafe {
+            libc::signal(senal, libc::SIG_DFL);
+            libc::raise(senal);
+        }
+    }
+    for s in [libc::SIGSEGV, libc::SIGBUS, libc::SIGABRT, libc::SIGILL] {
+        unsafe { libc::signal(s, al_fallar as *const () as libc::sighandler_t) };
     }
 }
 
@@ -245,7 +281,13 @@ fn vigilar() {
         if parado < CUELGUE_SEG || avisado {
             continue;
         }
-        let Some(p) = pilas() else { continue };
+        let Some(p) = pilas() else {
+            // Sin poder leer las pilas igual queda anotado (con lo último que se estaba haciendo).
+            avisado = true;
+            let ultimo = CONTEXTO.lock().map(|c| c.iter().map(|(k, v)| format!("{k}: {v}")).collect::<Vec<_>>().join(" · ")).unwrap_or_default();
+            registrar("CUELGUE", &format!("La ventana dejó de responder durante más de {parado} segundos ({ultimo})"));
+            continue;
+        };
         // Un diálogo de archivos abierto o la ventana minimizada no son cuelgues.
         if p.contains("rfd") || en_reposo(&p) {
             revisado = ultimo;

@@ -164,6 +164,9 @@ pub struct TrackState {
     /// Automatización en (segundos, valor): volumen como posición de fader 0..1, panorama -1..1.
     pub vol_auto: Vec<(f64, f32)>,
     pub pan_auto: Vec<(f64, f32)>,
+    /// Línea de ganancia de la pista (segundos, posición 0..1 de la línea: -24 a +12 dB), antes de los efectos.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gain_auto: Vec<(f64, f32)>,
     /// Parámetros del QUANTUM Synth (pistas MIDI).
     pub synth: Vec<f32>,
     /// Instrumento de la pista MIDI: id del catálogo (instrumento real), "synth:<preset>" o "lv2:<uri>".
@@ -224,6 +227,9 @@ pub struct ClipState {
     /// Ganancia y ataque de cada nota (mismo orden que `notes`); vacío = valores por defecto.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes_extra: Vec<(u8, u8)>,
+    /// Línea de ganancia de la región: (segundos desde el inicio del material, dB).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ganancia: Vec<(f64, f32)>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

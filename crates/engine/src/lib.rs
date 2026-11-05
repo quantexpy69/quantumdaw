@@ -6,6 +6,7 @@ pub mod loudness;
 pub mod lv2;
 pub mod pro;
 mod dsp;
+pub mod antipop;
 pub mod expresion;
 mod fx;
 mod io;
@@ -147,13 +148,16 @@ pub struct Clip {
     pub fade_in: u64,
     pub fade_out: u64,
     pub gain: f32,
+    /// Línea de ganancia de la región: (frame del material, dB). Como está en frames del material (no
+    /// del timeline), se mueve con la región y sobrevive a los recortes.
+    pub ganancia: Option<Arc<Vec<(u64, f32)>>>,
     /// Estado de selección de la UI.
     pub selected: bool,
 }
 
 impl Clip {
     pub fn new(src: Source, start: u64, len: u64) -> Self {
-        Self { src, start, offset: 0, len, fade_in: 0, fade_out: 0, gain: 1.0, selected: false }
+        Self { src, start, offset: 0, len, fade_in: 0, fade_out: 0, gain: 1.0, ganancia: None, selected: false }
     }
     pub fn audio(buf: Arc<AudioBuf>, start: u64) -> Self {
         Self::new(Source::Audio(buf.clone()), start, buf.frames.len() as u64)
@@ -189,6 +193,9 @@ impl Clip {
         let (rel, to_end) = (t - self.start, self.end() - t);
         // Micro-fundido en los bordes (evita clics al cortar) y fades con curva de igual potencia.
         let mut g = self.gain * ((rel.min(to_end - 1)) as f32 / FADE as f32).min(1.0);
+        if let Some(db) = self.ganancia.as_deref().and_then(|l| automation_at(l, self.offset + rel)) {
+            g *= 10f32.powf(db / 20.0);
+        }
         if rel < self.fade_in {
             g *= (rel as f32 / self.fade_in as f32 * FRAC_PI_2).sin();
         }
@@ -346,6 +353,8 @@ pub struct Node {
     /// Automatización en (frame, valor): volumen como posición de fader 0..1, panorama -1..1.
     pub vol_auto: Vec<(u64, f32)>,
     pub pan_auto: Vec<(u64, f32)>,
+    /// Línea de ganancia de la pista (frame, dB), antes de los efectos.
+    pub gain_auto: Vec<(u64, f32)>,
     /// Envíos post-fader: (posición del destino en el grafo, ganancia). El grafo está ordenado
     /// topológicamente, así que el destino siempre se procesa después del origen.
     pub sends: Vec<(usize, f32)>,
@@ -392,6 +401,32 @@ pub struct Secuencia {
     pub bucle: bool,
 }
 
+/// El audio abierto: un hilo que tiene los streams. Al soltarlo, el hilo los cierra por su cuenta (sin
+/// bloquear a quien lo suelta).
+pub struct HiloAudio {
+    cerrar: Option<std::sync::mpsc::Sender<()>>,
+    hilo: Option<std::thread::JoinHandle<()>>,
+}
+
+impl HiloAudio {
+    /// Cierra el audio y espera (hasta 3 s) a que el hilo lo suelte. Devuelve si había audio abierto.
+    fn cerrar_y_esperar(mut self) -> bool {
+        drop(self.cerrar.take());
+        let Some(h) = self.hilo.take() else { return false };
+        let limite = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while !h.is_finished() && std::time::Instant::now() < limite {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        true
+    }
+}
+
+impl Drop for HiloAudio {
+    fn drop(&mut self) {
+        drop(self.cerrar.take());
+    }
+}
+
 /// Dispositivos y formato de audio. Los dispositivos son nodos de PipeWire ("" = por defecto, entrada "-" = ninguna).
 #[derive(Clone, Default, PartialEq)]
 pub struct AudioConfig {
@@ -436,6 +471,15 @@ pub struct Engine {
     /// Grabación: el hilo de audio copia la entrada a `rec_rx` (y el MIDI a `midi_rec_rx`) desde `rec_start`.
     pub recording: AtomicBool,
     pub rec_start: AtomicU64,
+    /// Latencia de grabación (frames): lo que tarda un sonido en salir por los parlantes, volver por la
+    /// entrada y llegar al motor. Se mide en cada bloque; al empezar a grabar queda fija en
+    /// `rec_latencia` (audio: ida y vuelta) y `rec_latencia_midi` (MIDI: solo la salida, lo que se oye
+    /// tarde al tocar sobre la pista).
+    pub latencia_salida: AtomicU64,
+    pub latencia_entrada: Arc<AtomicU64>,
+    pub latencia_cola: AtomicU64,
+    pub rec_latencia: AtomicU64,
+    pub rec_latencia_midi: AtomicU64,
     pub rec_rx: Mutex<rtrb::Consumer<f32>>,
     pub midi_rec_rx: Mutex<rtrb::Consumer<(u64, MidiEvent)>>,
     /// MIDI en vivo (teclados USB y teclado del piano roll) hacia el hilo de audio.
@@ -456,6 +500,12 @@ pub struct Engine {
     prefx: AtomicBool,
     /// Render offline de stems sin los efectos ni el volumen del master.
     sin_master: AtomicBool,
+    /// Exportando: el hilo de audio queda en silencio y no procesa (si procesara a la vez que el render
+    /// offline, los dos usarían los mismos efectos e instrumentos y el archivo saldría con ruido).
+    pub exportando: AtomicBool,
+    /// Avance del render offline en curso (0 a 1000) y pedido de cancelarlo.
+    pub progreso: AtomicU32,
+    pub cancelar: AtomicBool,
     /// Secuencia en escucha y su posición (frames).
     pub secuencia: ArcSwapOption<Secuencia>,
     pub secuencia_pos: AtomicU64,
@@ -579,6 +629,40 @@ pub fn avisos() -> Vec<String> {
 
 impl Engine {
     /// Abre salida y entrada con la misma frecuencia y prioridad de tiempo real.
+    /// Abre el audio en un hilo propio que se queda con los streams hasta que se cierre el
+    /// `HiloAudio`. Antes cierra el audio `anterior` (en ese mismo hilo) y espera a que PipeWire
+    /// suelte la interfaz. Si la interfaz no responde en `limite`, devuelve un error y la ventana
+    /// sigue respondiendo: abrir o cerrar ALSA puede quedarse esperando para siempre.
+    pub fn abrir_en_hilo(cfg: &AudioConfig, anterior: Option<HiloAudio>, limite: std::time::Duration) -> anyhow::Result<(Arc<Self>, HiloAudio)> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (cerrar, al_cerrar) = std::sync::mpsc::channel::<()>();
+        let cfg = cfg.clone();
+        let hilo = std::thread::Builder::new().name("audio".into()).spawn(move || {
+            if let Some(a) = anterior {
+                let habia = a.cerrar_y_esperar();
+                if habia {
+                    // PipeWire tarda en liberar la interfaz cuando entrada y salida son la misma placa.
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                }
+            }
+            match Self::start(&cfg) {
+                Ok((engine, streams)) => {
+                    if tx.send(Ok(engine)).is_ok() {
+                        // Hasta que se cierre (o se suelte) el HiloAudio.
+                        let _ = al_cerrar.recv();
+                    }
+                    drop(streams);
+                }
+                Err(e) => _ = tx.send(Err(format!("{e:#}"))),
+            }
+        })?;
+        match rx.recv_timeout(limite) {
+            Ok(Ok(engine)) => Ok((engine, HiloAudio { cerrar: Some(cerrar), hilo: Some(hilo) })),
+            Ok(Err(e)) => anyhow::bail!("{e}"),
+            Err(_) => anyhow::bail!("la interfaz de audio no respondió en {} s (desconéctala y vuelve a conectarla, o elige otra)", limite.as_secs()),
+        }
+    }
+
     pub fn start(cfg: &AudioConfig) -> anyhow::Result<(Arc<Self>, Vec<cpal::Stream>)> {
         Self::abrir(cfg, if cfg.buffer > 0 { cfg.buffer } else { BUFFER_AUTOMATICO })
     }
@@ -605,8 +689,15 @@ impl Engine {
         let (midi_tx, midi_rx) = rtrb::RingBuffer::new(1024);
         let (scope_tx, scope_rx) = rtrb::RingBuffer::new(sr);
         let mut input_error = None;
+        let lat_entrada = Arc::new(AtomicU64::new(0));
         if let (Some(dev), Some(in_cfg)) = (in_dev, in_cfg) {
-            let cb = move |d: &[f32], _: &_| d.iter().for_each(|&s| _ = in_tx.push(s));
+            let (lat, frames_seg) = (lat_entrada.clone(), sr as f64);
+            let cb = move |d: &[f32], info: &cpal::InputCallbackInfo| {
+                // Desde que el conversor capturó el sonido hasta este bloque.
+                let t = info.timestamp();
+                lat.store((t.callback.duration_since(t.capture).as_secs_f64() * frames_seg) as u64, Relaxed);
+                d.iter().for_each(|&s| _ = in_tx.push(s));
+            };
             match dev.build_input_stream(in_cfg, cb, |err| avisar(format!("error de entrada: {err}")), None).map_err(anyhow::Error::from).and_then(|s| Ok(s.play().map(|_| s)?)) {
                 Ok(s) => streams.push(s),
                 Err(e) => (input_error, in_ch) = (Some(e.to_string()), 0),
@@ -634,6 +725,11 @@ impl Engine {
             input_error,
             recording: false.into(),
             rec_start: 0.into(),
+            latencia_salida: 0.into(),
+            latencia_entrada: lat_entrada,
+            latencia_cola: 0.into(),
+            rec_latencia: 0.into(),
+            rec_latencia_midi: 0.into(),
             rec_rx: Mutex::new(rec_rx),
             midi_rec_rx: Mutex::new(midi_rec_rx),
             midi_tx: Arc::new(Mutex::new(midi_tx)),
@@ -647,6 +743,9 @@ impl Engine {
             prefader: AtomicBool::new(false),
             prefx: AtomicBool::new(false),
             sin_master: AtomicBool::new(false),
+            exportando: AtomicBool::new(false),
+            progreso: AtomicU32::new(0),
+            cancelar: AtomicBool::new(false),
             secuencia: ArcSwapOption::empty(),
             secuencia_pos: 0.into(),
         });
@@ -701,7 +800,10 @@ impl Engine {
             if node.click && playing {
                 self.click(tmp, pos);
             }
-            if playing {
+            // Grabando encima de una pista de audio armada, lo que ya tenía no suena (como en todo DAW):
+            // se oye solo la entrada nueva (con monitoreo) y el resto de las pistas.
+            let grabando_encima = !offline && node.input.is_some() && p.arm.load(Relaxed) && self.recording.load(Relaxed);
+            if playing && !grabando_encima {
                 node.clips.iter().for_each(|c| c.read(pos, tmp));
             }
             let listening = p.monitor.load(Relaxed) || p.arm.load(Relaxed);
@@ -750,6 +852,13 @@ impl Engine {
                     *s = [s[0] + a * m, s[1] + b * m];
                 }
                 p.in_meter.max(peak);
+            }
+            // Línea de ganancia de la pista: antes de los efectos, punto a punto (sin escalones).
+            if playing && !node.gain_auto.is_empty() {
+                for (k, s) in tmp.iter_mut().enumerate() {
+                    let g = automation_at(&node.gain_auto, pos + k as u64).map_or(1.0, |db| 10f32.powf(db / 20.0));
+                    *s = [s[0] * g, s[1] * g];
+                }
             }
             // Render previo a los efectos de una pista (congelar los canales de una batería).
             if offline && self.prefx.load(Relaxed) && elegida(&node.params) {
@@ -900,13 +1009,26 @@ impl Engine {
     }
 
     /// Mezcla offline de `[from, to)` como estéreo intercalado (de unas pistas o de todo el proyecto).
+    /// Mientras dura, el hilo de audio no procesa; `progreso` avanza de 0 a 1000 y `cancelar` lo corta
+    /// (devuelve lo hecho hasta ahí).
     pub fn bounce(&self, from: u64, to: u64, only: Option<&[Arc<Params>]>) -> Vec<f32> {
+        let antes = self.exportando.swap(true, Relaxed);
+        // Espera a que el hilo de audio termine el bloque que pudiera estar procesando.
+        std::thread::sleep(std::time::Duration::from_millis(30));
         let mut buf = [[0f32; 2]; BLOCK];
         let mut out = Vec::with_capacity((to.saturating_sub(from) * 2) as usize);
+        let largo = to.saturating_sub(from).max(1) as f64;
+        self.progreso.store(0, Relaxed);
         for pos in (from..to).step_by(BLOCK) {
+            if self.cancelar.load(Relaxed) {
+                break;
+            }
             self.render(&mut buf, pos, true, true, Live { audio: &[], midi: &[] }, only);
             out.extend(buf.iter().take((to - pos) as usize).flatten());
+            self.progreso.store(((pos - from) as f64 / largo * 1000.0) as u32, Relaxed);
         }
+        self.progreso.store(1000, Relaxed);
+        self.exportando.store(antes, Relaxed);
         out
     }
 }
@@ -925,7 +1047,14 @@ fn callback(e: Arc<Engine>, ch: usize, mut r: Rings) -> impl FnMut(&mut [f32], &
     let mut input = vec![0f32; BLOCK * ich];
     let mut midi = [[0u8; 3]; 128];
     let (mut was_recording, mut primed) = (false, false);
-    move |data, _| {
+    move |data, info: &cpal::OutputCallbackInfo| {
+        // Desde este bloque hasta que suena en la salida.
+        let t = info.timestamp();
+        e.latencia_salida.store((t.playback.duration_since(t.callback).as_secs_f64() * e.sample_rate as f64) as u64, Relaxed);
+        if e.exportando.load(Relaxed) {
+            data.fill(0.0);
+            return;
+        }
         let frames = data.len() / ch.max(1);
         let mut done = 0;
         while done < frames {
@@ -947,6 +1076,8 @@ fn callback(e: Arc<Engine>, ch: usize, mut r: Rings) -> impl FnMut(&mut [f32], &
                 c.commit_all();
             }
             primed = (primed || r.in_rx.slots() >= need * 3) && r.in_rx.slots() >= need;
+            // Lo que espera en el colchón de entrada también llega tarde.
+            e.latencia_cola.store((r.in_rx.slots() / ich.max(1)) as u64, Relaxed);
             match r.in_rx.read_chunk(need) {
                 Ok(c) if primed && need > 0 => {
                     let (a, b) = c.as_slices();
@@ -966,6 +1097,9 @@ fn callback(e: Arc<Engine>, ch: usize, mut r: Rings) -> impl FnMut(&mut [f32], &
             if recording {
                 if !was_recording {
                     e.rec_start.store(pos, Relaxed);
+                    let salida = e.latencia_salida.load(Relaxed);
+                    e.rec_latencia.store(salida + e.latencia_entrada.load(Relaxed) + e.latencia_cola.load(Relaxed), Relaxed);
+                    e.rec_latencia_midi.store(salida, Relaxed);
                 }
                 inp.iter().for_each(|&s| _ = r.rec_tx.push(s));
                 midi[..nm].iter().for_each(|&ev| _ = r.midi_rec_tx.push((pos, ev)));

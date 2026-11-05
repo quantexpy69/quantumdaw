@@ -9,6 +9,8 @@ const SIGNATURES: [(u32, u32); 8] = [(2, 4), (3, 4), (4, 4), (5, 4), (6, 8), (7,
 const BOX_H: f32 = 40.0;
 /// Altura total de una fila de la barra de control (contenido, márgenes y borde).
 pub const BAR_ROW_H: f32 = BOX_H + 12.0;
+/// Fondo más hondo de la barra de transporte y los visores de tiempo.
+pub const FONDO_HONDO: Color32 = Color32::from_rgb(0x10, 0x16, 0x1B);
 
 fn item(ui: &mut egui::Ui, label: &str, shortcut: &str) -> bool {
     ui.add(egui::Button::new(tr(label)).shortcut_text(shortcut)).clicked()
@@ -218,7 +220,7 @@ impl App {
                 ui.menu_button(tr("Altura de pistas"), |ui| {
                     widgets::menu_style(ui);
                     ui.label(RichText::new(tr("Afecta a las pistas seleccionadas (o a todas). También puedes arrastrar el borde inferior de cada cabecera.")).size(11.0).color(TEXT_DIM()));
-                    for (label, h) in [("Compacta", 60.0), ("Normal", TRACK_H), ("Grande", 160.0), ("Muy grande", 240.0)] {
+                    for (label, h) in [("Compacta", timeline::MIN_H), ("Normal", TRACK_H), ("Grande", 160.0), ("Muy grande", 240.0)] {
                         if ui.button(tr(label)).clicked() {
                             let any = self.s.tracks.iter().any(|t| t.selected);
                             self.s.tracks.iter_mut().filter(|t| !any || t.selected).for_each(|t| t.height = h);
@@ -267,7 +269,7 @@ impl App {
             });
             ui.menu_button(RichText::new(tr("Herramientas")).size(14.5), |ui| {
                 widgets::menu_style(ui);
-                for (tool, label) in [(Tool::Select, "Selección (V)"), (Tool::Pencil, "Lápiz de automatización (P)"), (Tool::Blade, "Cuchilla (B)")] {
+                for (tool, label) in [(Tool::Select, "Selección (V)"), (Tool::Pencil, "Lápiz de automatización (P)"), (Tool::Blade, "Cuchilla (B)"), (Tool::Ganancia, "Línea de ganancia de regiones (G)")] {
                     if ui.radio(self.tool == tool, tr(label)).clicked() {
                         self.set_tool(tool);
                     }
@@ -333,7 +335,40 @@ impl App {
                 if !self.meta.artist.is_empty() {
                     ui.label(RichText::new(format!("· {}", self.meta.artist)).size(12.5).color(TEXT_DIM()));
                 }
-                ui.label(RichText::new(song).size(13.5).strong().color(TEXT()));
+                // Clic en el nombre: ponerle nombre a la canción (y a su carpeta) y el artista.
+                let b = egui::Button::new(RichText::new(&song).size(13.5).strong().color(TEXT())).fill(ELEVATED()).corner_radius(widgets::rr(5.0));
+                let mut renombrar = false;
+                egui::containers::menu::MenuButton::from_button(b)
+                    .ui(ui, |ui| {
+                        widgets::menu_style(ui);
+                        ui.set_min_width(260.0);
+                        ui.label(RichText::new(tr("NOMBRE DE LA CANCIÓN")).size(10.0).color(TEXT_DIM()));
+                        if self.meta.title.is_empty() {
+                            self.meta.title = self.dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        }
+                        let r = ui.add(egui::TextEdit::singleline(&mut self.meta.title).desired_width(240.0));
+                        renombrar |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        ui.label(RichText::new(tr("ARTISTA")).size(10.0).color(TEXT_DIM()));
+                        ui.add(egui::TextEdit::singleline(&mut self.meta.artist).desired_width(240.0).hint_text(tr("Opcional")));
+                        ui.add_space(4.0);
+                        if ui.button(tr("Guardar con este nombre")).on_hover_text(tr("Renombra también la carpeta del proyecto y lo guarda")).clicked() {
+                            renombrar = true;
+                        }
+                        if renombrar {
+                            ui.close();
+                        }
+                    })
+                    .0
+                    .on_hover_text(tr("Clic: ponerle nombre a la canción"));
+                if renombrar {
+                    let nombre = self.meta.title.clone();
+                    let r = self.renombrar_carpeta(&nombre);
+                    if r.is_ok() {
+                        self.save();
+                    } else {
+                        self.report("", r);
+                    }
+                }
             });
         });
     }
@@ -348,7 +383,7 @@ impl App {
     /// medidor del máster a la derecha. Cada zona se mide en el cuadro anterior para ubicarla; si no
     /// caben en una línea, las vistas pasan a una segunda fila centrada.
     pub fn control_bar(&mut self, ui: &mut egui::Ui) {
-        self.bar_widths.resize(3, 0.0);
+        self.bar_widths.resize(4, 0.0);
         let ancho = ui.available_width();
         let alto = BOX_H;
         let (fila, _) = ui.allocate_exact_size(vec2(ancho, alto), egui::Sense::hover());
@@ -361,11 +396,13 @@ impl App {
             hijo.min_rect().width()
         }
         let margen = 10.0;
-        // Izquierda: transporte agrupado y el tiempo.
+        // Izquierda: la canción abierta y lo seleccionado (el transporte está en la barra de abajo).
         let w_izq = zona(ui, fila.left() + margen, fila, |ui| {
-            widgets::grupo(ui, |ui| self.transport_box(ui));
-            ui.add_space(14.0);
-            self.lcd_box(ui);
+            let cancion = if self.meta.title.is_empty() { self.dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { self.meta.title.clone() };
+            ui.label(RichText::new(cancion).size(13.0).strong().color(TEXT()));
+            let n = self.s.tracks.iter().flat_map(|t| &t.clips).filter(|c| c.selected).count();
+            let sel = if n == 0 { tr("Nada seleccionado").to_string() } else { format!("{n} {}", tr("región(es) seleccionada(s)")) };
+            ui.label(RichText::new(sel).size(12.0).italics().color(TEXT_DIM()));
         });
         // Derecha: medidor del máster, pegado al borde (con el ancho medido en el cuadro anterior).
         let w_der = zona(ui, fila.right() - margen - self.bar_widths[2], fila, |ui| self.medidor_master(ui));
@@ -384,6 +421,28 @@ impl App {
         if (self.bar_widths[1] - w).abs() > 1.0 || (self.bar_widths[2] - w_der).abs() > 1.0 || dos != self.bar_two_rows {
             (self.bar_widths[1], self.bar_widths[2], self.bar_two_rows) = (w, w_der, dos);
             ui.ctx().request_discard("ubicar la barra de control");
+        }
+    }
+
+    /// Barra de transporte (abajo): frecuencia, tiempo y compases grandes, botones de transporte,
+    /// metrónomo, métrica y tempo, centrados en la ventana.
+    pub fn barra_transporte(&mut self, ui: &mut egui::Ui) {
+        let fila = ui.max_rect();
+        let ancho = self.bar_widths.get(3).copied().unwrap_or(0.0);
+        let x = (fila.center().x - ancho / 2.0).max(fila.left());
+        let caja = egui::Rect::from_min_max(egui::pos2(x, fila.top()), fila.max);
+        let mut hijo = ui.new_child(egui::UiBuilder::new().max_rect(caja).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        hijo.spacing_mut().interact_size.y = 30.0;
+        hijo.label(RichText::new(format!("{:.1} kHz", self.engine.sample_rate as f32 / 1000.0)).size(12.0).color(TEXT_DIM()));
+        hijo.add_space(18.0);
+        self.lcd_box(&mut hijo);
+        hijo.add_space(18.0);
+        widgets::grupo(&mut hijo, |ui| self.transport_box(ui));
+        let w = hijo.min_rect().width();
+        self.bar_widths.resize(4, 0.0);
+        if (self.bar_widths[3] - w).abs() > 1.0 {
+            self.bar_widths[3] = w;
+            ui.ctx().request_discard("centrar el transporte");
         }
     }
 
@@ -426,6 +485,8 @@ impl App {
                 }
                 if widgets::chip(ui, self.ver_escenario, widgets::draw_escenario, tr("Escenario"), VERDE_PLAY).on_hover_text(tr("Escenario de clips: lanza regiones y escenas en bucle")).clicked() {
                     self.ver_escenario = !self.ver_escenario;
+                    // El lanzador ocupa el lado derecho: la biblioteca se cierra para dejarle lugar.
+                    self.show_lib &= !self.ver_escenario;
                 }
                 if widgets::chip(ui, self.show_mixer, widgets::draw_editor, tr("Editor"), VERDE_PLAY).on_hover_text(tr("Panel inferior: mixer, dispositivos, piano roll y editores")).clicked() {
                     self.show_mixer = !self.show_mixer;
@@ -433,10 +494,11 @@ impl App {
             });
             widgets::grupo(ui, |ui| {
                 type Draw = fn(&egui::Painter, egui::Rect, Color32);
-                let tools: [(Tool, Draw, &str, keys::Cmd); 3] = [
+                let tools: [(Tool, Draw, &str, keys::Cmd); 4] = [
                     (Tool::Select, widgets::draw_pointer, "Puntero", keys::Cmd::Select),
                     (Tool::Pencil, widgets::draw_pencil, "Lápiz", keys::Cmd::Pencil),
                     (Tool::Blade, widgets::draw_scissors, "Cuchilla", keys::Cmd::Blade),
+                    (Tool::Ganancia, widgets::draw_ganancia, "Ganancia", keys::Cmd::Ganancia),
                 ];
                 for (tool, draw, nombre, cmd) in tools {
                     if widgets::chip(ui, self.tool == tool, draw, tr(nombre), ACCENT()).on_hover_text(atajo(self, cmd.label(), cmd)).clicked() {
@@ -514,10 +576,11 @@ impl App {
             "lcd" => self.lcd_box(ui),
             _ => {
                 type Draw = fn(&egui::Painter, egui::Rect, Color32);
-                let tools: [(Tool, Draw, &str, &str); 3] = [
+                let tools: [(Tool, Draw, &str, &str); 4] = [
                     (Tool::Select, widgets::draw_pointer, "Puntero", "Selección (V)"),
                     (Tool::Pencil, widgets::draw_pencil, "Lápiz", "Lápiz: automatización y muestras (P)"),
                     (Tool::Blade, widgets::draw_scissors, "Cuchilla", "Cuchilla: clic en una región para cortarla (B)"),
+                    (Tool::Ganancia, widgets::draw_ganancia, "Ganancia", "Ganancia: clic en una región agrega un punto, arrastra para moverlo, clic derecho lo borra (G)"),
                 ];
                 for (tool, draw, nombre, tip) in tools {
                     if widgets::icon_text_button(ui, self.tool == tool, draw, tr(nombre)).on_hover_text(tr(tip)).clicked() {
@@ -687,7 +750,7 @@ impl App {
         ui.horizontal_centered(|ui| {
             // Punto verde (audio en marcha), atajos clave y el último mensaje.
             let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), egui::Sense::hover());
-            ui.painter().circle_filled(r.center(), 4.0, if self.streams.is_empty() { METER[2] } else { VERDE_PLAY });
+            ui.painter().circle_filled(r.center(), 4.0, if self.streams.is_none() { METER[2] } else { VERDE_PLAY });
             for (tecla, accion) in [("Espacio", "reproducir"), ("Ctrl+K", "comandos"), ("Shift+R", "capturar"), ("X", "mixer"), ("Y", "biblioteca")] {
                 ui.label(RichText::new(tecla).size(11.5).color(TEXT()));
                 ui.label(RichText::new(tr(accion)).size(11.5).color(TEXT_DIM()));
@@ -715,6 +778,7 @@ impl App {
     }
 
     pub fn dialogs(&mut self, ctx: &egui::Context) {
+        self.ventana_progreso(ctx);
         enum Act {
             NewTrack(String, TrackKind, u32, Option<Color32>),
             Settings(AudioConfig, u16, String),
