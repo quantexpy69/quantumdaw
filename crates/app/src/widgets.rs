@@ -3,10 +3,11 @@ use crate::*;
 use egui::{Align2, FontId, Painter, Pos2, Rect, Response, Sense, Stroke, pos2, vec2};
 use engine::{AtomicF32, fader_gain, fader_pos};
 
-/// Preferencia "interfaz redondeada" (afecta a widgets de egui y a lo dibujado a mano).
+/// Preferencia "interfaz redondeada" (afecta a widgets de egui y a lo dibujado a mano). Todas las
+/// esquinas comparten un tope chico para que cajas, menús y botones se vean de la misma familia.
 pub static ROUND: AtomicBool = AtomicBool::new(true);
 pub fn rr(r: f32) -> f32 {
-    if ROUND.load(Relaxed) { r } else { r.min(2.0) }
+    if ROUND.load(Relaxed) { r.min(4.0) } else { r.min(2.0) }
 }
 
 pub fn db(gain: f32) -> f32 {
@@ -135,16 +136,26 @@ pub fn icon_button_color(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, C
     resp
 }
 
-/// Pestaña de vista en mayúsculas con subrayado del color de acento cuando está activa.
+/// Pestaña (vistas y paneles de abajo): texto normal, la activa sobre una píldora elevada con una
+/// línea de acento abajo. La misma en toda la interfaz para que los menús se vean iguales.
 pub fn pestana(ui: &mut egui::Ui, activa: bool, texto: &str) -> Response {
-    let galley = ui.painter().layout_no_wrap(texto.to_uppercase(), egui::FontId::proportional(13.5), if activa { TEXT() } else { TEXT_DIM() });
-    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 18.0, 30.0), Sense::click());
+    let mut t = texto.to_lowercase();
+    if let Some(c) = t.chars().next() {
+        t = c.to_uppercase().collect::<String>() + &t[c.len_utf8()..];
+    }
+    // Siglas (MIDI) y nombres propios en mayúsculas se dejan como están.
+    let t = if texto.split_whitespace().any(|w| w == "MIDI") { t.replace("midi", "MIDI") } else { t };
+    let galley = ui.painter().layout_no_wrap(t, egui::FontId::proportional(12.0), TEXT());
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 20.0, 24.0), Sense::click());
     let color = if activa || resp.hovered() { TEXT() } else { TEXT_DIM() };
     let p = ui.painter();
-    p.galley_with_override_text_color(pos2(r.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0 - 2.0), galley, color);
     if activa {
-        p.rect_filled(Rect::from_center_size(pos2(r.center().x, r.bottom() - 2.0), vec2(18.0, 3.0)), rr(1.5), ACCENT());
+        p.rect_filled(r.shrink2(vec2(0.0, 1.0)), rr(3.0), ELEVATED());
+        p.rect_filled(Rect::from_min_max(pos2(r.left() + 6.0, r.bottom() - 3.0), pos2(r.right() - 6.0, r.bottom() - 1.0)), rr(1.0), ACCENT());
+    } else if resp.hovered() {
+        p.rect_filled(r.shrink2(vec2(0.0, 1.0)), rr(3.0), ELEVATED().gamma_multiply(0.5));
     }
+    p.galley_with_override_text_color(pos2(r.center().x - galley.size().x / 2.0, r.center().y - galley.size().y / 2.0 - 1.0), galley, color);
     resp
 }
 
@@ -394,7 +405,8 @@ pub fn draw_biblioteca(p: &Painter, r: Rect, c: Color32) {
 /// `color` (como un interruptor encendido). Mismo alto que el resto de los botones de la barra.
 pub fn chip(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), texto: &str, color: Color32) -> Response {
     let galley = ui.painter().layout_no_wrap(texto.to_string(), egui::FontId::proportional(12.5), TEXT());
-    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 36.0, 28.0), Sense::click());
+    let ancho = if texto.is_empty() { 28.0 } else { galley.size().x + 34.0 };
+    let (r, resp) = ui.allocate_exact_size(vec2(ancho, 24.0), Sense::click());
     let activo = ui.is_enabled();
     let tinta = if !activo {
         TEXT_DIM().gamma_multiply(0.6)
@@ -407,12 +419,13 @@ pub fn chip(ui: &mut egui::Ui, on: bool, draw: fn(&Painter, Rect, Color32), text
     };
     let p = ui.painter();
     if on {
-        p.rect(r, rr(7.0), color.gamma_multiply(0.16), Stroke::new(1.0, color.gamma_multiply(0.45)), egui::StrokeKind::Inside);
+        p.rect(r, rr(3.0), color.gamma_multiply(0.16), Stroke::new(1.0, color.gamma_multiply(0.45)), egui::StrokeKind::Inside);
     } else if resp.hovered() && activo {
-        p.rect_filled(r, rr(7.0), BORDER());
+        p.rect_filled(r, rr(3.0), BORDER());
     }
-    draw(p, Rect::from_center_size(r.left_center() + vec2(15.0, 0.0), vec2(16.0, 16.0)), tinta);
-    p.galley_with_override_text_color(pos2(r.left() + 27.0, r.center().y - galley.size().y / 2.0), galley, tinta);
+    let icono = if texto.is_empty() { r.center() } else { r.left_center() + vec2(14.0, 0.0) };
+    draw(p, Rect::from_center_size(icono, vec2(15.0, 15.0)), tinta);
+    p.galley_with_override_text_color(pos2(r.left() + 26.0, r.center().y - galley.size().y / 2.0), galley, tinta);
     resp
 }
 
@@ -421,8 +434,8 @@ pub fn grupo<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     egui::Frame::new()
         .fill(BG())
         .stroke(Stroke::new(1.0, BORDER()))
-        .corner_radius(rr(9.0))
-        .inner_margin(egui::Margin::same(2))
+        .corner_radius(rr(4.0))
+        .inner_margin(egui::Margin::same(1))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             add(ui)
@@ -717,11 +730,11 @@ pub fn edit_menu(resp: &Response, add: impl FnOnce(&mut egui::Ui)) {
 pub fn menu_style(ui: &mut egui::Ui) {
     let st = ui.style_mut();
     for ts in [egui::TextStyle::Body, egui::TextStyle::Button] {
-        st.text_styles.insert(ts, egui::FontId::proportional(15.5));
+        st.text_styles.insert(ts, egui::FontId::proportional(13.0));
     }
-    st.spacing.button_padding = vec2(12.0, 6.0);
-    st.spacing.item_spacing.y = 6.0;
-    st.spacing.interact_size.y = 30.0;
+    st.spacing.button_padding = vec2(10.0, 4.0);
+    st.spacing.item_spacing.y = 2.0;
+    st.spacing.interact_size.y = 24.0;
 }
 
 /// Lado de las teclas de pista: en el mixer y el inspector, y en la cabecera de la pista (más baja).

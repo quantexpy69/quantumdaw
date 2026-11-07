@@ -1,4 +1,4 @@
-//! Formato de proyecto `.qproj` (JSON), proyecto demo y exportación de audio.
+//! Formato de proyecto `.qtm` (JSON; antes `project.qproj`), proyecto demo y exportación de audio.
 mod export;
 
 pub mod partitura;
@@ -7,7 +7,39 @@ pub use export::{Format, export, write_wav};
 use serde::{Deserialize, Serialize};
 use std::{f32::consts::TAU, fs, path::Path};
 
+/// Archivo de proyecto de versiones anteriores (se sigue abriendo; al guardar pasa a `.qtm`).
 pub const FILE: &str = "project.qproj";
+/// Extensión del proyecto QUANTUM: `<carpeta>/<nombre de la carpeta>.qtm`.
+pub const EXT: &str = "qtm";
+
+/// Archivo `.qtm` que corresponde a la carpeta (lleva su nombre).
+fn qtm_de(dir: &Path) -> std::path::PathBuf {
+    dir.join(format!("{}.{EXT}", dir.file_name().unwrap_or_default().to_string_lossy()))
+}
+
+/// Archivo del proyecto de la carpeta: su `.qtm` (o cualquier `.qtm` si la carpeta se renombró) o el
+/// `project.qproj` de versiones anteriores. Si no hay ninguno, el `.qtm` que se creará al guardar.
+pub fn archivo(dir: &Path) -> std::path::PathBuf {
+    let propio = qtm_de(dir);
+    if propio.exists() {
+        return propio;
+    }
+    let otro = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|e| e == EXT)).min();
+    otro.or_else(|| Some(dir.join(FILE)).filter(|p| p.exists())).unwrap_or(propio)
+}
+
+/// ¿La carpeta tiene un proyecto?
+pub fn existe(dir: &Path) -> bool {
+    archivo(dir).exists()
+}
+
+/// Carpeta del proyecto a partir de lo que se abrió: la carpeta misma o su archivo `.qtm`/`.qproj`.
+pub fn carpeta_de(p: &Path) -> std::path::PathBuf {
+    match p.extension().map(|e| e.to_string_lossy().to_lowercase()) {
+        Some(e) if p.is_file() && (e == EXT || e == "qproj") => p.parent().unwrap_or(p).to_path_buf(),
+        _ => p.to_path_buf(),
+    }
+}
 pub const AUDIO_DIR: &str = "Audio Files";
 pub const RENDER_DIR: &str = "Rendered";
 pub const BACKUP_DIR: &str = "Backups";
@@ -259,7 +291,7 @@ impl TrackState {
 
 impl Project {
     pub fn load(dir: &Path) -> anyhow::Result<Self> {
-        let mut p: Self = serde_json::from_str(&fs::read_to_string(dir.join(FILE))?)?;
+        let mut p: Self = serde_json::from_str(&fs::read_to_string(archivo(dir))?)?;
         anyhow::ensure!(p.version <= VERSION, "proyecto de una versión más nueva ({})", p.version);
         for (i, t) in p.tracks.iter_mut().enumerate() {
             if let Some(file) = t.file.take() {
@@ -278,19 +310,25 @@ impl Project {
         for d in [AUDIO_DIR, RENDER_DIR, BACKUP_DIR, PROXY_DIR, VIDEO_DIR] {
             fs::create_dir_all(dir.join(d))?;
         }
-        let actual = dir.join(FILE);
-        if actual.exists() {
-            let copia = dir.join(BACKUP_DIR).join(format!("project-{}.qproj", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")));
-            fs::copy(&actual, copia)?;
-            let mut copias: Vec<_> = fs::read_dir(dir.join(BACKUP_DIR))?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "qproj")).collect();
+        let anterior = archivo(dir);
+        let actual = qtm_de(dir);
+        if anterior.exists() {
+            let copia = dir.join(BACKUP_DIR).join(format!("project-{}.{EXT}", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")));
+            fs::copy(&anterior, copia)?;
+            let mut copias: Vec<_> = fs::read_dir(dir.join(BACKUP_DIR))?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "qproj" || e == EXT) && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("project-"))).collect();
             copias.sort();
             for vieja in copias.iter().take(copias.len().saturating_sub(BACKUPS)) {
                 let _ = fs::remove_file(vieja);
             }
         }
-        let temporal = dir.join(format!("{FILE}.tmp"));
+        let temporal = dir.join(format!("{}.tmp", actual.file_name().unwrap_or_default().to_string_lossy()));
         fs::write(&temporal, serde_json::to_string_pretty(self)?)?;
-        fs::rename(temporal, actual)?;
+        fs::rename(temporal, &actual)?;
+        // El archivo viejo (project.qproj, o el .qtm con el nombre anterior de la carpeta) ya quedó
+        // copiado en Backups: se quita para que haya un solo proyecto en la carpeta.
+        if anterior != actual && anterior.exists() {
+            let _ = fs::remove_file(&anterior);
+        }
         // Guardado a mano: el autoguardado ya no hace falta.
         let _ = fs::remove_file(dir.join(BACKUP_DIR).join(AUTOSAVE));
         Ok(())
@@ -308,7 +346,7 @@ impl Project {
     /// Autoguardado más nuevo que el proyecto guardado (cambios que quedaron sin guardar tras un cierre).
     pub fn autoguardado_pendiente(dir: &Path) -> Option<std::time::SystemTime> {
         let auto = fs::metadata(dir.join(BACKUP_DIR).join(AUTOSAVE)).and_then(|m| m.modified()).ok()?;
-        let guardado = fs::metadata(dir.join(FILE)).and_then(|m| m.modified()).ok();
+        let guardado = fs::metadata(archivo(dir)).and_then(|m| m.modified()).ok();
         guardado.is_none_or(|g| auto > g).then_some(auto)
     }
 
@@ -324,7 +362,7 @@ impl Project {
 
     /// Carga el proyecto o, si no existe, genera uno de demostración.
     pub fn open_or_demo(dir: &Path) -> anyhow::Result<Self> {
-        if dir.join(FILE).exists() {
+        if existe(dir) {
             return Self::load(dir);
         }
         let rate = 44_100;

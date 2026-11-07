@@ -11,11 +11,11 @@ const NUMERO_W: f32 = 22.0;
 pub const HEADER_W: f32 = 356.0;
 pub const HEADER_MIN: f32 = 280.0;
 pub const HEADER_MAX: f32 = 720.0;
-const RULER_H: f32 = 30.0;
+const RULER_H: f32 = 24.0;
 const TITLE_H: f32 = 20.0;
-const TEMPO_H: f32 = 22.0;
+const TEMPO_H: f32 = 20.0;
 const MARK_H: f32 = 22.0;
-const SPAN_H: f32 = 24.0;
+const SPAN_H: f32 = 20.0;
 const MARK: Color32 = Color32::from_rgb(0xFF, 0xC8, 0x57);
 /// Columna de grupos (barra vertical con el nombre, como en Ardour).
 const GROUP_W: f32 = 20.0;
@@ -171,7 +171,9 @@ impl App {
         // Ajuste a la rejilla siguiendo el mapa de tempo.
         let (snap_on, beat, unit) = (self.snap, self.engine.beat_frames(), self.engine.unit.load(Relaxed));
         let tmap = self.s.tempo.clone();
-        let snap = move |f: f64| (if snap_on { engine::frame_at_beat(&tmap, sr, unit, engine::beats_at(&tmap, sr, unit, f).round()) } else { f }).max(0.0) as u64;
+        // Paso de la rejilla en tiempos del compás (compás entero, 1/2 … 1/32).
+        let paso = self.paso_rejilla();
+        let snap = move |f: f64| (if snap_on { engine::frame_at_beat(&tmap, sr, unit, (engine::beats_at(&tmap, sr, unit, f) / paso).round() * paso) } else { f }).max(0.0) as u64;
         let sample_zoom = pps / sr >= 1.0;
 
         let ruler_r = ui.interact(ruler, Id::new("ruler"), Sense::click_and_drag());
@@ -802,14 +804,13 @@ impl App {
         }
         let grid = painter.with_clip_rect(Rect::from_min_max(ruler.min, full.max));
         let marks = painter.with_clip_rect(mark_lane);
-        marks.rect_filled(mark_lane, 0.0, Color32::from_rgb(0x18, 0x18, 0x1C));
+        marks.rect_filled(mark_lane, 0.0, chrome::FONDO_HONDO);
         let mut k = first as u64 / step * step;
         while x_of(bar_at(k as f64) as u64) < full.right() {
             let x = x_of(bar_at(k as f64) as u64);
-            grid.vline(x, ruler.center().y..=full.bottom(), Stroke::new(1.0, BORDER()));
-            grid.text(pos2(x + 4.0, ruler.top() + 3.0), Align2::LEFT_TOP, (k + 1).to_string(), FontId::monospace(11.0), TEXT_DIM());
-            marks.vline(x, mark_lane.bottom() - 6.0..=mark_lane.bottom(), Stroke::new(1.0, BORDER()));
-            marks.text(pos2(x + 3.0, mark_lane.bottom() - 1.0), Align2::LEFT_BOTTOM, (k + 1).to_string(), FontId::monospace(9.0), TEXT_DIM().gamma_multiply(0.7));
+            grid.vline(x, ruler.top() + 4.0..=full.bottom(), Stroke::new(1.0, BORDER()));
+            grid.text(pos2(x + 4.0, ruler.top() + 3.0), Align2::LEFT_TOP, (k + 1).to_string(), FontId::proportional(11.0), TEXT());
+            marks.vline(x, mark_lane.bottom() - 4.0..=mark_lane.bottom(), Stroke::new(1.0, BORDER()));
             if step == 1 && beat / sr * pps > 14.0 {
                 for b in 1..beats as u64 {
                     grid.vline(x_of(self.frame_of(k as f64 * beats + b as f64) as u64), lanes_top..=full.bottom(), Stroke::new(1.0, PANEL()));
@@ -819,12 +820,12 @@ impl App {
         }
         // Carril de tempo: un tramo por cambio de tempo, con su BPM.
         let tp = painter.with_clip_rect(tempo_lane);
-        tp.rect_filled(tempo_lane, 0.0, Color32::from_rgb(0x1F, 0x1F, 0x24));
+        tp.rect_filled(tempo_lane, 0.0, PANEL());
         for (k, &(s, bpm)) in self.s.tempo.iter().enumerate() {
             let (xa, xb) = (x_of(s), self.s.tempo.get(k + 1).map_or(full.right(), |n| x_of(n.0)));
             tp.rect_filled(Rect::from_x_y_ranges(xa..=xb, tempo_lane.y_range()), 0.0, ACCENT().gamma_multiply(if k % 2 == 0 { 0.12 } else { 0.22 }));
             tp.vline(xa, tempo_lane.y_range(), Stroke::new(2.0, ACCENT()));
-            tp.text(pos2(xa + 5.0, tempo_lane.center().y), Align2::LEFT_CENTER, format!("{bpm:.1} BPM"), FontId::proportional(11.5), TEXT());
+            tp.text(pos2(xa + 5.0, tempo_lane.center().y), Align2::LEFT_CENTER, format!("{bpm:.1} BPM"), FontId::proportional(10.5), TEXT());
         }
         for (lane, kind) in [(arr_lane, NameKind::Section), (chord_lane, NameKind::Chord)] {
             if lane.height() > 0.0 {
@@ -843,10 +844,20 @@ impl App {
         let (ls, le) = (self.engine.loop_start.load(Relaxed), self.engine.loop_end.load(Relaxed));
         if le > ls {
             let on = self.engine.looping.load(Relaxed);
-            let r = Rect::from_x_y_ranges(x_of(ls)..=x_of(le), ruler.bottom() - 9.0..=ruler.bottom() - 1.0);
-            grid.rect_filled(r, rr(4.0), if on { METER[1] } else { BORDER() });
+            // Rango de loop en toda la altura de la regla (como en las consolas), con sus bordes marcados
+            // y un velo sobre las pistas cuando está activo.
+            let color = if on { ACCENT() } else { TEXT_DIM() };
+            let r = Rect::from_x_y_ranges(x_of(ls)..=x_of(le), ruler.top() + 1.0..=ruler.bottom() - 1.0);
+            grid.rect_filled(r, rr(2.0), color.gamma_multiply(if on { 0.28 } else { 0.12 }));
+            grid.rect_filled(Rect::from_x_y_ranges(r.x_range(), r.bottom() - 3.0..=r.bottom()), 0.0, color);
+            for x in [r.left(), r.right()] {
+                grid.vline(x, r.y_range(), Stroke::new(2.0, color));
+            }
             if on {
-                lp.rect_filled(Rect::from_x_y_ranges(r.x_range(), body.y_range()), 0.0, METER[1].gamma_multiply(0.04));
+                lp.rect_filled(Rect::from_x_y_ranges(r.x_range(), body.y_range()), 0.0, ACCENT().gamma_multiply(0.06));
+                for x in [r.left(), r.right()] {
+                    lp.vline(x, body.y_range(), Stroke::new(1.0, ACCENT().gamma_multiply(0.5)));
+                }
             }
         }
         if let Some((a, b)) = self.time_sel {
@@ -1054,11 +1065,13 @@ impl App {
                 continue;
             }
             grid.vline(x, ruler.top()..=full.bottom(), Stroke::new(1.0, MARK.gamma_multiply(0.45)));
-            let font = FontId::proportional(11.5);
+            let font = FontId::proportional(11.0);
             let w = ui.fonts_mut(|fo| fo.layout_no_wrap(name.clone(), font.clone(), BG()).size().x);
-            let pill = Rect::from_min_size(pos2(x, mark_lane.top() + 2.0), vec2(w.min(110.0) + 12.0, MARK_H - 8.0));
+            // La etiqueta no pisa la siguiente marca: se recorta hasta ella.
+            let libre = self.s.markers.iter().map(|m| x_of(m.0)).filter(|&nx| nx > x + 1.0).fold(f32::INFINITY, f32::min) - x - 3.0;
+            let pill = Rect::from_min_size(pos2(x, mark_lane.top() + 3.0), vec2((w.min(140.0) + 12.0).min(libre.max(14.0)), MARK_H - 6.0));
             let on = self.mark_drag == Some(k);
-            marks.rect_filled(pill, CornerRadius { nw: 0, ne: 6, sw: 0, se: 6 }, if on { TEXT() } else { MARK });
+            marks.rect_filled(pill, CornerRadius { nw: 0, ne: 3, sw: 0, se: 3 }, if on { TEXT() } else { MARK });
             marks.with_clip_rect(pill.intersect(mark_lane)).text(pill.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, name, font, BG());
         }
 
@@ -1160,16 +1173,24 @@ impl App {
             self.dialog = Some(Dialog::NewTrack(String::new(), TrackKind::AudioStereo, 1, None));
         }
         painter.rect_filled(Rect::from_min_max(full.min, pos2(x0, lanes_top)), 0.0, PANEL());
-        painter.text(pos2(full.left() + 12.0, tempo_lane.center().y), Align2::LEFT_CENTER, tr("TEMPO"), FontId::proportional(11.0), ACCENT());
-        painter.text(pos2(full.left() + 12.0, mark_lane.center().y), Align2::LEFT_CENTER, tr("MARCAS"), FontId::proportional(11.0), MARK);
-        for (lane, label, hint) in [(arr_lane, "ARREGLO", "doble clic: Intro, Estrofa, Coro…"), (chord_lane, "ACORDES", "doble clic: añadir acorde")] {
-            if lane.height() > 0.0 {
-                painter.text(pos2(full.left() + 12.0, lane.center().y), Align2::LEFT_CENTER, tr(label), FontId::proportional(11.0), METER[1]);
-                painter.text(pos2(x0 - 8.0, lane.center().y), Align2::RIGHT_CENTER, tr(hint), FontId::proportional(10.0), TEXT_DIM());
-            }
+        // Nombres de los carriles globales con un punto de su color (las ayudas están en el tooltip).
+        let etiqueta = |lane: Rect, texto: &str, color: Color32| {
+            painter.circle_filled(pos2(full.left() + 12.0, lane.center().y), 3.0, color);
+            painter.text(pos2(full.left() + 21.0, lane.center().y), Align2::LEFT_CENTER, tr(texto), FontId::proportional(11.0), TEXT_DIM());
+        };
+        etiqueta(mark_lane, "Marcas", MARK);
+        etiqueta(Rect::from_min_max(pos2(full.left(), ruler.top()), pos2(x0, ruler.bottom())), "Compases", TEXT_DIM());
+        if arr_lane.height() > 0.0 {
+            etiqueta(arr_lane, "Arreglo", METER[1]);
         }
-        painter.text(pos2(x0 - 8.0, mark_lane.center().y), Align2::RIGHT_CENTER, tr("doble clic o M: añadir marca"), FontId::proportional(10.0), TEXT_DIM());
-        painter.text(pos2(x0 - 8.0, tempo_lane.center().y), Align2::RIGHT_CENTER, tr("arrastra para cambiar el tempo de un tramo"), FontId::proportional(10.0), TEXT_DIM());
+        if chord_lane.height() > 0.0 {
+            etiqueta(chord_lane, "Acordes", Color32::from_rgb(0xE0, 0xB0, 0x3A));
+        }
+        etiqueta(tempo_lane, "Tempo", ACCENT());
+        let linea = |y: f32| painter.hline(full.left()..=x0, y, Stroke::new(1.0, BORDER().gamma_multiply(0.6)));
+        for y in [mark_lane.bottom(), ruler.bottom(), arr_lane.bottom(), chord_lane.bottom(), lanes_top] {
+            linea(y);
+        }
         // Divisor entre cabeceras y regiones: se arrastra para ensanchar o estrechar las cabeceras.
         let div = ui.interact(Rect::from_x_y_ranges(x0 - 4.0..=x0 + 3.0, full.y_range()), Id::new("header-divider"), Sense::click_and_drag()).on_hover_text(tr("Arrastra para cambiar el ancho de las pistas"));
         if div.hovered() || div.dragged() {
@@ -2068,6 +2089,11 @@ impl App {
     /// Botón de entrada de una pista de audio: de qué canales de la interfaz entra el sonido al grabar
     /// o monitorear. Se ve en la cabecera, el mixer y el inspector.
     pub fn input_combo(&mut self, ui: &mut egui::Ui, i: usize) {
+        self.input_combo_ancho(ui, i, 58.0);
+    }
+
+    /// Selector de entrada con el ancho dado (en el mixer ocupa todo el canal).
+    pub fn input_combo_ancho(&mut self, ui: &mut egui::Ui, i: usize, ancho: f32) {
         let (n, t) = (self.engine.in_channels, &self.s.tracks[i]);
         let stereo = t.kind == TrackKind::AudioStereo;
         // Par estéreo (In 1-2) o una entrada sola (In 2: un micrófono, que suena al centro).
@@ -2078,7 +2104,7 @@ impl App {
         };
         let actual = t.input;
         let texto = RichText::new(label(actual)).size(11.0).strong().color(if n == 0 { METER[1] } else { TEXT() });
-        let b = egui::Button::new(texto).fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(5.0)).min_size(vec2(58.0, 18.0));
+        let b = egui::Button::new(texto).fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(rr(2.0)).min_size(vec2(ancho, 18.0));
         let (mut elegido, mut configurar) = (None, false);
         egui::containers::menu::MenuButton::from_button(b).ui(ui, |ui| {
             widgets::menu_style(ui);

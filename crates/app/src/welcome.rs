@@ -90,7 +90,7 @@ fn scan(root: &Path) -> Vec<Listed> {
     let songs = |d: &Path| dirs(d).into_iter().filter_map(|s| Some((s.clone(), Project::load(&s).ok()?))).collect::<Vec<_>>();
     let mut out: Vec<Listed> = dirs(root)
         .into_iter()
-        .filter(|d| !d.join(project::FILE).exists())
+        .filter(|d| !project::existe(d))
         .map(|d| (d.file_name().unwrap_or_default().to_string_lossy().to_string(), Collection::load(&d), songs(&d)))
         .filter(|l| l.1.is_some() || !l.2.is_empty())
         .collect();
@@ -99,6 +99,23 @@ fn scan(root: &Path) -> Vec<Listed> {
         out.push((String::new(), None, loose));
     }
     out
+}
+
+/// Proyectos (discos, EP…) de la carpeta de proyectos: (nombre, carpeta).
+pub fn proyectos() -> Vec<(String, PathBuf)> {
+    let raiz = projects_dir();
+    let mut v: Vec<(String, PathBuf)> = fs::read_dir(&raiz).into_iter().flatten().flatten().map(|e| e.path()).filter(|d| d.is_dir() && !project::existe(d) && (Collection::load(d).is_some() || fs::read_dir(d).into_iter().flatten().flatten().any(|e| project::existe(&e.path())))).map(|d| (d.file_name().unwrap_or_default().to_string_lossy().to_string(), d)).collect();
+    v.sort();
+    v
+}
+
+/// Crea la ficha de un proyecto nuevo (si no existe) y devuelve su carpeta.
+pub fn crear_proyecto(nombre: &str, autor: &str) -> anyhow::Result<PathBuf> {
+    let dir = projects_dir().join(safe(nombre).replace('_', " ").trim());
+    if Collection::load(&dir).is_none() {
+        Collection { name: nombre.to_string(), author: autor.to_string(), created_at: now_text(), description: String::new() }.save(&dir)?;
+    }
+    Ok(dir)
 }
 
 /// Datos básicos de una canción en una línea: autor, creación, último guardado, formato, tempo y pistas.
@@ -188,7 +205,7 @@ impl App {
         let base = root.join(safe(w.name.trim()).replace('_', " ").trim());
         let mut dir = base.clone();
         let mut n = 2;
-        while dir.join(project::FILE).exists() {
+        while project::existe(&dir) {
             (dir, n) = (PathBuf::from(format!("{} {n}", base.display())), n + 1);
         }
         let mut meta = w.meta.clone();
@@ -212,7 +229,7 @@ impl App {
     }
 
     /// Mueve la carpeta de una canción dentro de otro proyecto (si es la abierta, la sigue).
-    fn mover_cancion(&mut self, origen: &Path, proyecto: &Path) -> anyhow::Result<()> {
+    pub(crate) fn mover_cancion(&mut self, origen: &Path, proyecto: &Path) -> anyhow::Result<()> {
         anyhow::ensure!(!self.recording(), "{}", tr("Para la grabación antes de mover la canción"));
         let destino = proyecto.join(origen.file_name().unwrap_or_default());
         anyhow::ensure!(!destino.exists(), "{} «{}»", tr("Ya hay una canción con ese nombre en"), proyecto.file_name().unwrap_or_default().to_string_lossy());
@@ -376,7 +393,7 @@ fn saludo() -> &'static str {
 
 /// Tiempo transcurrido desde que se guardó un proyecto («hace 2 h»).
 fn hace(dir: &Path) -> String {
-    let Some(s) = fs::metadata(dir.join(project::FILE)).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|e| e.as_secs()) else {
+    let Some(s) = fs::metadata(project::archivo(dir)).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|e| e.as_secs()) else {
         return String::new();
     };
     match s {
@@ -792,7 +809,7 @@ impl App {
         let nombre = self.config.author.split_whitespace().next().map(str::to_string).unwrap_or_else(|| user_name().split_whitespace().next().unwrap_or("").to_string());
         let nombre: String = nombre.chars().take(1).flat_map(char::to_uppercase).chain(nombre.chars().skip(1)).collect();
         let saludo_txt = if nombre.is_empty() { tr(saludo()).to_string() } else { format!("{}, {nombre}", tr(saludo())) };
-        let ultimo = self.config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned();
+        let ultimo = self.config.recent.iter().find(|d| project::existe(d)).cloned();
         // Banner: degradado con el logo de fondo, el saludo y los accesos rápidos.
         let (banner, _) = ui.allocate_exact_size(vec2(ancho, 120.0), egui::Sense::hover());
         // Colores opacos: los extremos y la malla se superponen y con transparencia se notaría la unión.
@@ -830,7 +847,8 @@ impl App {
                         }));
                     }
                     if let Some(dir) = ultimo {
-                        let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let carpeta = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let nombre = Project::load(&dir).ok().map(|p| p.meta.title).filter(|t| !t.is_empty()).unwrap_or(carpeta);
                         let b = egui::Button::new(RichText::new(format!("{}  ·  {nombre}", tr("Continuar"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(0.0, 42.0)).corner_radius(rr(10.0));
                         if ui.add(b).clicked() {
                             *action = Some(Box::new(move |app: &mut Self| {
@@ -850,7 +868,7 @@ impl App {
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(col);
-                titulo(ui, "NUEVO PROYECTO", "");
+                titulo(ui, "NUEVA CANCIÓN", "");
                 ui.add_space(6.0);
                 let n = TEMPLATES.len() as f32;
                 let tarjeta = vec2((col - 10.0 * (n - 1.0)) / n, 104.0);
@@ -880,10 +898,28 @@ impl App {
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     paso_a_paso(ui, "TEMPO (BPM)", &mut w.bpm, 20.0..=300.0, 1.0, "");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Max), |ui| {
-                        let b = egui::Button::new(RichText::new(format!("+  {}", tr("Crear proyecto"))).size(14.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(220.0, 40.0)).corner_radius(rr(10.0));
-                        if ui.add(b).clicked() {
-                            let mut nueva = Welcome { name: tr("Mi canción").into(), author: w.author.clone(), bpm: w.bpm, template: w.template, ..Default::default() };
+                    ui.add_space(12.0);
+                    // Proyecto (disco, EP…) donde se guarda la canción nueva; vacío = suelta.
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(tr("PROYECTO")).size(10.0).color(TEXT_DIM()));
+                        let listing = w.listing.get_or_insert_with(|| scan(&projects_dir())).clone();
+                        let actual = if w.collection.is_empty() { tr("Sin proyecto").to_string() } else { w.collection.clone() };
+                        egui::ComboBox::from_id_salt("proyecto-nueva").width(170.0).selected_text(actual).show_ui(ui, |ui| {
+                            widgets::menu_style(ui);
+                            if ui.selectable_label(w.collection.is_empty(), tr("Sin proyecto")).clicked() {
+                                w.collection.clear();
+                            }
+                            for (nombre, _, _) in listing.iter().filter(|l| !l.0.is_empty()) {
+                                if ui.selectable_label(&w.collection == nombre, nombre).clicked() {
+                                    w.collection = nombre.clone();
+                                }
+                            }
+                        });
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let b = egui::Button::new(RichText::new(tr("Crear canción")).size(13.0).strong().color(BG())).fill(ACCENT()).min_size(vec2(160.0, 34.0)).corner_radius(rr(4.0));
+                        if ui.add(b).on_hover_text(tr("Crea la canción con la plantilla, el tempo y el proyecto elegidos")).clicked() {
+                            let mut nueva = Welcome { name: tr("Mi canción").into(), author: w.author.clone(), bpm: w.bpm, template: w.template, collection: w.collection.clone(), ..Default::default() };
                             nueva.folder = w.folder.clone();
                             *action = Some(Box::new(move |app: &mut Self| {
                                 let r = app.create_song(&nueva);
@@ -906,7 +942,10 @@ impl App {
                     });
                 });
                 ui.add_space(6.0);
-                let recientes: Vec<PathBuf> = self.config.recent.iter().filter(|d| d.join(project::FILE).exists()).take(4).cloned().collect();
+                // Las últimas canciones trabajadas: ordenadas por su último guardado (no por haberlas abierto).
+                let mut recientes: Vec<(PathBuf, std::time::SystemTime)> = self.config.recent.iter().filter(|d| project::existe(d)).filter_map(|d| Some((d.clone(), fs::metadata(project::archivo(d)).and_then(|m| m.modified()).ok()?))).collect();
+                recientes.sort_by_key(|r| std::cmp::Reverse(r.1));
+                let recientes: Vec<PathBuf> = recientes.into_iter().map(|r| r.0).take(5).collect();
                 egui::Frame::new().fill(PANEL()).stroke(egui::Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(8.0).show(ui, |ui| {
                 ui.set_min_height(200.0);
                 ui.set_width(ui.available_width());
@@ -920,7 +959,12 @@ impl App {
                     });
                 }
                 for dir in recientes {
-                    let nombre = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    // Título de la canción (no el nombre de la carpeta) y, si está en uno, su proyecto.
+                    let p = Project::load(&dir).ok();
+                    let carpeta = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let nombre = p.as_ref().map(|p| p.meta.title.clone()).filter(|t| !t.is_empty()).unwrap_or(carpeta);
+                    // Solo si está dentro de un proyecto de la carpeta de proyectos.
+                    let disco = dir.parent().filter(|d| d.parent() == Some(projects_dir().as_path())).and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string());
                     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), egui::Sense::click());
                     if resp.hovered() {
                         ui.painter().rect_filled(r, rr(8.0), ELEVATED());
@@ -930,7 +974,14 @@ impl App {
                     ui.painter().rect_filled(insignia, rr(8.0), c.gamma_multiply(0.22));
                     let iniciales: String = nombre.chars().take(2).collect::<String>().to_uppercase();
                     ui.painter().text(insignia.center(), egui::Align2::CENTER_CENTER, iniciales, egui::FontId::proportional(12.0), c);
-                    ui.painter().with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(70.0, 0.0))).text(r.left_center() + vec2(48.0, 0.0), egui::Align2::LEFT_CENTER, &nombre, egui::FontId::proportional(14.0), TEXT());
+                    let recorte = ui.painter().with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(70.0, 0.0)));
+                    match &disco {
+                        Some(d) => {
+                            recorte.text(r.left_center() + vec2(48.0, -8.0), egui::Align2::LEFT_CENTER, &nombre, egui::FontId::proportional(13.0), TEXT());
+                            recorte.text(r.left_center() + vec2(48.0, 9.0), egui::Align2::LEFT_CENTER, d, egui::FontId::proportional(11.0), TEXT_DIM());
+                        }
+                        None => _ = recorte.text(r.left_center() + vec2(48.0, 0.0), egui::Align2::LEFT_CENTER, &nombre, egui::FontId::proportional(13.0), TEXT()),
+                    }
                     ui.painter().text(r.right_center() - vec2(10.0, 0.0), egui::Align2::RIGHT_CENTER, hace(&dir), egui::FontId::proportional(11.0), TEXT_DIM());
                     if resp.on_hover_text(dir.display().to_string()).clicked() {
                         *action = Some(Box::new(move |app: &mut Self| {

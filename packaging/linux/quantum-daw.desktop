@@ -11,3 +11,4 @@ Terminal=false
 Categories=AudioVideo;Audio;Midi;Recorder;
 Keywords=daw;audio;música;midi;grabación;mezcla;music;recording;mixing;
 StartupWMClass=quantum-daw
+MimeType=application/x-quantum-daw;

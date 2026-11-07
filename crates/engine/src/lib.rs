@@ -7,8 +7,12 @@ pub mod lv2;
 pub mod pro;
 mod dsp;
 pub mod antipop;
+pub mod dereverb;
+mod sobremuestreo;
+mod reverb_fdn;
 pub mod expresion;
 mod fx;
+pub mod fx_nuevos;
 mod io;
 mod sampler;
 mod synth;
@@ -16,7 +20,7 @@ mod tempo;
 
 pub use devices::{DeviceInfo, MidiConnections, al_llegar_control, audio_devices, connect_midi, controles, llegadas_desde, midi_ports, registrar_llegada, tomar_controles};
 pub use dsp::{detect_bpm, find_onsets, find_peaks, find_silences, peak, pitch_shift, stretch};
-pub use fx::{BANDAS, Fx, FxKind, biquad, curves_banda, curves_response, db, eq_response, frecuencia_banda};
+pub use fx::{BANDAS, Fx, FxKind, PUNTOS, Vivo, biquad, curves_banda, curves_response, db, eq_response, frecuencia_banda};
 pub use io::{decode, resample};
 pub use sampler::Sampler;
 pub use synth::{SYNTH_PARAMS, Synth};
@@ -786,6 +790,9 @@ impl Engine {
         let graph = self.graph.load();
         let any_solo = graph.iter().any(|n| n.params.solo.load(Relaxed));
         let bpm_now = bpm_at(&self.tempo.load(), pos as f64);
+        // Posición en negras para los efectos que van a tempo (auto pan, puerta rítmica, auto filtro).
+        fx_nuevos::POSICION.store(tempo::beats_at(&self.tempo.load(), sr as f64, 4, pos as f64).to_bits(), Relaxed);
+        fx_nuevos::SONANDO.store(playing, Relaxed);
         let secuencia = if offline { Events::new() } else { self.eventos_secuencia(out.len() as u64) };
         for node in graph.iter() {
             let p = &node.params;

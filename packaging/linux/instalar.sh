@@ -25,6 +25,8 @@ done
 install -Dm644 com.quantumdaw.QuantumDAW.metainfo.xml "$PREFIX/share/metainfo/com.quantumdaw.QuantumDAW.metainfo.xml"
 sed "s|^Exec=quantum-daw|Exec=$PREFIX/bin/quantum-daw|" quantum-daw.desktop | install -Dm644 /dev/stdin "$PREFIX/share/applications/quantum-daw.desktop"
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+install -Dm644 quantum-daw-mime.xml "$PREFIX/share/mime/packages/quantum-daw.xml"
+update-mime-database "$PREFIX/share/mime" 2>/dev/null || true
 touch "$PREFIX/share/icons/hicolor"
 gtk-update-icon-cache -q -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 

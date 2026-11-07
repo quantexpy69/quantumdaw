@@ -39,6 +39,7 @@ mod plugins;
 mod preferencias;
 mod proxies;
 mod routing;
+mod sesiones;
 mod timeline;
 mod transcripcion;
 mod video;
@@ -270,7 +271,7 @@ fn main() -> eframe::Result {
     informes::iniciar();
     let config = Config::load();
     let welcome = std::env::args().nth(1).is_none() && !config.hide_welcome;
-    let dir = std::env::args().nth(1).map(PathBuf::from).or_else(|| config.recent.iter().find(|d| d.join(project::FILE).exists()).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));
+    let dir = std::env::args().nth(1).map(|a| project::carpeta_de(Path::new(&a))).or_else(|| config.recent.iter().find(|d| project::existe(d)).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));
     widgets::ROUND.store(!config.square, Relaxed);
     i18n::set(config.lang);
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([1500.0, 940.0]).with_app_id("quantum-daw").with_title("QUANTUM");
@@ -700,6 +701,8 @@ struct App {
     time_sel: Option<(u64, u64)>,
     tool: Tool,
     snap: bool,
+    /// Rejilla del ajuste: índice en `chrome::REJILLAS`.
+    rejilla: usize,
     show_auto: bool,
     /// Panel inferior (pestañas: 0 mixer, 1 piano roll, 2 analizador).
     show_mixer: bool,
@@ -729,7 +732,6 @@ struct App {
     mark_drag: Option<usize>,
     /// Ancho de cada fila de la barra de control (para centrarlas).
     bar_widths: Vec<f32>,
-    bar_two_rows: bool,
     /// Editor de audio del panel inferior.
     aedit: Option<audioedit::AudioEdit>,
     /// Mientras se renderizan proxys o MIDI a audio, el motor procesa todo en vivo.
@@ -810,6 +812,8 @@ struct App {
     fx_window: Option<usize>,
     /// Informe de error pendiente de enviar o descartar.
     informe: Option<informes::Pendiente>,
+    /// Avisos de la última sesión de otro programa que se abrió (lo que no se trajo tal cual).
+    aviso_sesion: Option<String>,
     /// Cambios sin guardar, último autoguardado y autoguardado pendiente de recuperar (su fecha).
     cambios: bool,
     autoguardado: std::time::Instant,
@@ -924,6 +928,7 @@ impl App {
             time_sel: None,
             tool: Tool::Select,
             snap: true,
+            rejilla: 2,
             show_auto: false,
             show_mixer: true,
             vista_mix: false,
@@ -947,7 +952,6 @@ impl App {
             mark_ctx: None,
             mark_drag: None,
             bar_widths: vec![],
-            bar_two_rows: false,
             aedit: None,
             render_vivo: false,
             video_track: None,
@@ -1032,6 +1036,7 @@ impl App {
             generador: Default::default(),
             paleta: None,
             informe: informes::pendiente(),
+            aviso_sesion: None,
             status: String::new(),
         };
         #[cfg(feature = "pro")]
@@ -1333,6 +1338,11 @@ impl App {
         self.cambios &= r.is_err();
         if r.is_ok() {
             self.foto_guardada = serde_json::to_value(self.to_project()).ok();
+            // Recientes = lo último trabajado: guardar la sube al primer lugar.
+            self.config.recent.retain(|d| d != &self.dir);
+            self.config.recent.insert(0, self.dir.clone());
+            self.config.recent.truncate(12);
+            self.config.save();
         }
         self.report(format!("Proyecto guardado en {}", self.dir.display()), r);
     }
@@ -1356,7 +1366,7 @@ impl App {
     }
 
     fn open_dir(&mut self, dir: PathBuf) -> anyhow::Result<()> {
-        let p = if dir.join(project::FILE).exists() { Project::load(&dir)? } else { Project::default() };
+        let p = if project::existe(&dir) { Project::load(&dir)? } else { Project::default() };
         // Si quedaron cambios sin guardar (cierre inesperado), se ofrece recuperarlos.
         self.recuperar = Project::autoguardado_pendiente(&dir);
         if self.recuperar.is_none() {
@@ -1367,12 +1377,26 @@ impl App {
     }
 
     fn open_dialog(&mut self, new: bool) -> anyhow::Result<()> {
-        let title = if new { "Elige o crea la carpeta del nuevo proyecto" } else { "Abrir carpeta de proyecto" };
         let _ = fs::create_dir_all(projects_dir());
-        let Some(dir) = rfd::FileDialog::new().set_title(title).set_directory(projects_dir()).pick_folder() else {
+        if new {
+            let Some(dir) = rfd::FileDialog::new().set_title(tr("Elige o crea la carpeta de la canción nueva")).set_directory(projects_dir()).pick_folder() else {
+                return Ok(());
+            };
+            return self.open_dir(dir);
+        }
+        // Abrir: el archivo .qtm (o .qproj de versiones anteriores) o una sesión de otro programa.
+        let dialogo = rfd::FileDialog::new()
+            .set_title(tr("Abrir canción"))
+            .set_directory(projects_dir())
+            .add_filter(tr("Canción QUANTUM (.qtm)"), &[project::EXT, "qproj"])
+            .add_filter(tr("Sesión de otro programa"), &["dawproject", "song", "cpr", "npr", "ptx", "ptf", "pts"]);
+        let Some(f) = dialogo.pick_file() else {
             return Ok(());
         };
-        self.open_dir(dir)
+        if sesiones::es_sesion(&f) {
+            return self.abrir_sesion_externa(&f);
+        }
+        self.open_dir(project::carpeta_de(&f))
     }
 
     fn import(&mut self, paths: Vec<PathBuf>) {
@@ -1388,6 +1412,24 @@ impl App {
         if src.extension().is_some_and(|e| e.eq_ignore_ascii_case("mid") || e.eq_ignore_ascii_case("midi")) {
             return self.importar_midi(src, at);
         }
+        let buf = self.traer_audio(src)?;
+        let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let i = match into.filter(|&i| self.s.tracks.get(i).is_some_and(|t| !t.midi())) {
+            Some(i) => {
+                self.edit();
+                i
+            }
+            None => {
+                self.add_track(stem, TrackKind::AudioStereo);
+                self.s.tracks.len() - 1
+            }
+        };
+        self.s.tracks[i].clips.push(Clip::audio(buf, at));
+        Ok(())
+    }
+
+    /// Decodifica `src` y lo deja como WAV en «Audio Files» (sin sobrescribir): el audio de la región.
+    fn traer_audio(&mut self, src: &Path) -> anyhow::Result<Arc<AudioBuf>> {
         let frames = engine::decode(src, self.engine.sample_rate)?;
         let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let audio_dir = self.dir.join(AUDIO_DIR);
@@ -1407,18 +1449,7 @@ impl App {
             project::write_wav(&audio_dir.join(&name), self.engine.sample_rate, 2, self.rec_bits, &samples)?;
             name
         };
-        let i = match into.filter(|&i| self.s.tracks.get(i).is_some_and(|t| !t.midi())) {
-            Some(i) => {
-                self.edit();
-                i
-            }
-            None => {
-                self.add_track(stem, TrackKind::AudioStereo);
-                self.s.tracks.len() - 1
-            }
-        };
-        self.s.tracks[i].clips.push(Clip::audio(AudioBuf::new(format!("{AUDIO_DIR}/{name}"), frames), at));
-        Ok(())
+        Ok(AudioBuf::new(format!("{AUDIO_DIR}/{name}"), frames))
     }
 
     /// Guarda audio procesado como archivo nuevo del proyecto (las ediciones nunca tocan el original).
@@ -2667,14 +2698,14 @@ impl App {
                     self.fx_window = Some(i);
                     self.enfocar_ventana = Some("fx");
                 }
-                if self.bottom_tab == 0 && ui.button(tr(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" })).clicked() {
+                if self.bottom_tab == 0 && ui.button(tr(if self.mixer_float { "Acoplar" } else { "Flotar" })).on_hover_text(tr(if self.mixer_float { "Acoplar mixer" } else { "Mixer flotante" })).clicked() {
                     if self.mixer_float {
                         self.acoplar("mixer-win");
                     } else {
                         self.mixer_float = true;
                     }
                 }
-                if self.bottom_tab == 0 && !self.mixer_float && ui.button(tr("Ventana independiente")).on_hover_text(tr("Abre el mixer fuera del programa (por ejemplo en otro monitor)")).clicked() {
+                if self.bottom_tab == 0 && !self.mixer_float && ui.button(tr("Separar")).on_hover_text(tr("Abre el mixer fuera del programa (por ejemplo en otro monitor)")).clicked() {
                     self.mixer_float = true;
                     self.alternar_separada("mixer-win");
                 }
@@ -2729,18 +2760,19 @@ fn theme(ctx: &egui::Context) {
     v.widgets.hovered.weak_bg_fill = BORDER();
     v.window_stroke.color = BORDER();
     ctx.set_visuals(v);
-    let r = widgets::rr(8.0) as u8;
+    // Esquinas chicas en todo (como las consolas de estudio): controles 3 px, menús 4 y ventanas 6.
+    let r = widgets::rr(4.0) as u8;
     ctx.all_styles_mut(|s| {
         let w = &mut s.visuals.widgets;
         for st in [&mut w.noninteractive, &mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
             st.corner_radius = (r - r / 4).into();
         }
-        (s.visuals.window_corner_radius, s.visuals.menu_corner_radius) = ((r + 4).into(), r.into());
+        (s.visuals.window_corner_radius, s.visuals.menu_corner_radius) = ((r + 2).into(), r.into());
         // Todos los controles con la misma altura, relleno y borde fino: botones, menús
         // desplegables, campos y casillas quedan parejos en cualquier pantalla y sistema.
-        s.spacing.button_padding = egui::vec2(10.0, 5.0);
-        s.spacing.interact_size = egui::vec2(40.0, 28.0);
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        s.spacing.button_padding = egui::vec2(8.0, 3.0);
+        s.spacing.interact_size = egui::vec2(36.0, 24.0);
+        s.spacing.item_spacing = egui::vec2(6.0, 4.0);
         s.spacing.combo_width = 120.0;
         s.spacing.icon_width = 16.0;
         s.spacing.icon_spacing = 6.0;
@@ -2755,9 +2787,9 @@ fn theme(ctx: &egui::Context) {
         s.visuals.window_shadow = egui::Shadow { offset: [0, 10], blur: 28, spread: 0, color: Color32::from_black_alpha(120) };
         // Las etiquetas no se seleccionan como texto: el puntero sigue siendo la flecha.
         s.interaction.selectable_labels = false;
-        // Texto algo más grande que el de egui por defecto, legible en cualquier pantalla.
+        // Una sola escala de texto para toda la interfaz: cuerpo y botones 12.5, chico 10.5, títulos 16.
         use egui::{FontId, TextStyle};
-        for (style, size) in [(TextStyle::Body, 13.5), (TextStyle::Button, 13.5), (TextStyle::Small, 10.5), (TextStyle::Heading, 19.0), (TextStyle::Monospace, 13.0)] {
+        for (style, size) in [(TextStyle::Body, 12.5), (TextStyle::Button, 12.5), (TextStyle::Small, 10.5), (TextStyle::Heading, 16.0), (TextStyle::Monospace, 12.0)] {
             let family = if style == TextStyle::Monospace { egui::FontFamily::Monospace } else { egui::FontFamily::Proportional };
             s.text_styles.insert(style, FontId::new(size, family));
         }
@@ -2824,29 +2856,31 @@ impl eframe::App for App {
         }
         self.engine.scope_on.store(self.show_mixer && self.bottom_tab == 2, Relaxed);
         // Franja del logo separada del menú; la barra de control crece según sus filas de cajas.
-        egui::Panel::top("title").exact_size(42.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 12, right: 12, top: 6, bottom: 6 })).show(ui, |ui| self.title_bar(ui));
+        egui::Panel::top("title").exact_size(36.0).frame(egui::Frame::new().fill(BG()).inner_margin(egui::Margin { left: 12, right: 12, top: 4, bottom: 4 })).show(ui, |ui| self.title_bar(ui));
         // Arriba: transporte con las vistas y, debajo, la barra de herramientas del arreglo.
-        let bar_h = self.bar_rows().len() as f32 * (chrome::BAR_ROW_H + 6.0) + 6.0;
-        egui::Panel::top("control").exact_size(bar_h).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin::symmetric(6, 3))).show(ui, |ui| self.control_bar(ui));
-        egui::Panel::top("herramientas").exact_size(40.0).frame(egui::Frame::new().fill(ELEVATED()).inner_margin(egui::Margin::symmetric(12, 4))).show(ui, |ui| self.barra_herramientas(ui));
+        egui::Panel::top("herramientas").exact_size(36.0).frame(egui::Frame::new().fill(ELEVATED()).inner_margin(egui::Margin::symmetric(12, 4))).show(ui, |ui| self.barra_herramientas(ui));
         egui::Panel::bottom("status").exact_size(24.0).show(ui, |ui| self.status_bar(ui));
         // Transporte abajo, como en las consolas de estudio: tiempo grande, botones y tempo.
         egui::Panel::bottom("transporte").exact_size(56.0).frame(egui::Frame::new().fill(chrome::FONDO_HONDO).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| self.barra_transporte(ui));
+        // Inspector y biblioteca a todo el alto (como en las consolas de estudio); el panel de abajo va
+        // entre los dos.
+        if self.show_inspector {
+            egui::Panel::left("inspector").default_size(250.0).min_size(220.0).resizable(true).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin { left: 10, right: 10, top: 6, bottom: 6 })).show(ui, |ui| self.inspector(ui));
+        }
+        if self.show_lib && !self.lib_float {
+            egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));
+        }
         if self.show_mixer {
-            let default = if self.config.bottom_h > 0.0 { self.config.bottom_h } else { 440.0 };
-            let panel = egui::Panel::bottom("bottom").default_size(default).min_size(140.0).resizable(true).show(ui, |ui| self.bottom_panel(ui));
+            // El panel nunca tapa el arreglo entero: como mucho el 65 % del alto disponible.
+            let tope = (ui.available_height() * 0.65).max(200.0);
+            let default = if self.config.bottom_h > 0.0 { self.config.bottom_h } else { 440.0 }.min(tope);
+            let panel = egui::Panel::bottom("bottom").default_size(default).min_size(140.0).max_size(tope).resizable(true).show(ui, |ui| self.bottom_panel(ui));
             // Recordar la altura elegida (al soltar el ratón) para la próxima vez.
             let h = panel.response.rect.height();
             if (h - self.config.bottom_h).abs() > 2.0 && !ctx.input(|i| i.pointer.any_down()) {
                 self.config.bottom_h = h;
                 self.config.save();
             }
-        }
-        if self.show_inspector {
-            egui::Panel::left("inspector").default_size(250.0).min_size(220.0).resizable(true).frame(egui::Frame::new().fill(PANEL()).inner_margin(egui::Margin { left: 10, right: 10, top: 6, bottom: 6 })).show(ui, |ui| self.inspector(ui));
-        }
-        if self.show_lib && !self.lib_float {
-            egui::Panel::right("library").default_size(280.0).resizable(true).show(ui, |ui| self.library(ui));
         }
         let consola = self.vista_mix && !self.mixer_float;
         // Lanzador de clips (escenario) al lado del arreglo, a la derecha.

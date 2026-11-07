@@ -50,6 +50,9 @@ done
 mkdir -p "$HOME/.local/share/applications"
 sed "s|@BIN@|$BIN|" assets/quantum-daw.desktop > "$HOME/.local/share/applications/quantum-daw.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+# Las canciones .qtm se abren con doble clic en QUANTUM.
+install -Dm644 assets/quantum-daw-mime.xml "$HOME/.local/share/mime/packages/quantum-daw.xml"
+update-mime-database "$HOME/.local/share/mime" 2>/dev/null || true
 # El escritorio guarda los iconos en caché: se le avisa que cambiaron (sin index.theme hace falta -t).
 touch "$ICONOS"
 gtk-update-icon-cache -q -f -t "$ICONOS" 2>/dev/null || true

@@ -27,15 +27,40 @@ pub const PLUGINS_TAB: usize = 3;
 /// Índices de las secciones de efectos e instrumentos (para abrirlas desde la pantalla inicial).
 pub const FX_TAB: usize = 1;
 pub const INSTRUMENTS_TAB: usize = 2;
-const FX_CATEGORIES: [(&str, &[FxKind]); 6] = [
+const FX_CATEGORIES: [(&str, &[FxKind]); 10] = [
     ("QUANTUM Pro", &[FxKind::VocalPro, FxKind::MasterPro, FxKind::TapePro, FxKind::SpacePro]),
-    ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::DeEsser, FxKind::AntiPop]),
-    ("EQ y filtros", &[FxKind::Curves, FxKind::Eq]),
-    ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb, FxKind::Chorus]),
-    ("Color y saturación", &[FxKind::Drive]),
-    ("Afinación", &[FxKind::Tune]),
+    ("Voz", &[FxKind::VozAlFrente, FxKind::AntiPop, FxKind::DeEsser, FxKind::Tune]),
+    ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::Transitorios]),
+    ("EQ y filtros", &[FxKind::Curves, FxKind::Eq, FxKind::FiltroDj, FxKind::AutoFiltro]),
+    ("Movimiento", &[FxKind::AutoPan, FxKind::PuertaRitmica, FxKind::Phaser, FxKind::Flanger, FxKind::Chorus]),
+    ("Estéreo", &[FxKind::Ancho]),
+    ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb]),
+    ("Distorsión y color", &[FxKind::Drive, FxKind::LoFi]),
+    ("Creativos", &[FxKind::TapeStop, FxKind::Desplazador]),
+    ("Afinación y utilidad", &[FxKind::Afinador, FxKind::Utilidad]),
 ];
 const FS_TYPES: [&str; 9] = ["ext4", "btrfs", "xfs", "vfat", "exfat", "ntfs", "ntfs3", "fuseblk", "f2fs"];
+
+/// Menú de efectos nativos agrupados por categoría (el «+» de las inserciones).
+pub fn menu_efectos(ui: &mut egui::Ui) -> Option<FxKind> {
+    let mut elegido = None;
+    for (cat, kinds) in FX_CATEGORIES {
+        let disponibles: Vec<FxKind> = kinds.iter().copied().filter(|k| FxKind::disponibles().any(|d| d == *k)).collect();
+        if disponibles.is_empty() {
+            continue;
+        }
+        ui.menu_button(tr(cat), |ui| {
+            crate::widgets::menu_style(ui);
+            for k in disponibles {
+                if ui.button(tr(k.name())).on_hover_text(tr(describe(k))).clicked() {
+                    elegido = Some(k);
+                    ui.close();
+                }
+            }
+        });
+    }
+    elegido
+}
 
 fn describe(k: FxKind) -> &'static str {
     match k {
@@ -51,6 +76,20 @@ fn describe(k: FxKind) -> &'static str {
         FxKind::Chorus => "Ancho y movimiento",
         FxKind::DeEsser => "Controla las eses de la voz",
         FxKind::AntiPop => "Quita los golpes de P y T sin saturar",
+        FxKind::VozAlFrente => "Quita el eco de la sala: voz al frente",
+        FxKind::Ancho => "Imagen estéreo con graves en mono",
+        FxKind::AutoPan => "Panorama que se mueve a tempo",
+        FxKind::FiltroDj => "Una perilla: graves o agudos fuera",
+        FxKind::AutoFiltro => "Filtro con LFO y envolvente",
+        FxKind::PuertaRitmica => "Cortes rítmicos a tempo",
+        FxKind::Phaser => "Barrido de fases en estéreo",
+        FxKind::Flanger => "Silbido metálico que se mueve",
+        FxKind::LoFi => "Menos bits y muestras",
+        FxKind::TapeStop => "La cinta frena y arranca",
+        FxKind::Utilidad => "Ganancia, fase, mono y canales",
+        FxKind::Transitorios => "Más o menos golpe y cola",
+        FxKind::Desplazador => "Corre todas las frecuencias",
+        FxKind::Afinador => "Nota y cents en vivo",
         FxKind::TapePro => "Cinta y válvula con VU analógicos",
         FxKind::SpacePro => "Reverb 3D, shimmer y eco",
         FxKind::VocalPro => "Toda la cadena de voz en una pantalla",
@@ -195,7 +234,7 @@ pub fn scan_plugins(propias: &[PathBuf]) -> Vec<(String, &'static str, PathBuf)>
 impl App {
     pub fn library(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("Biblioteca")).strong().size(15.0));
+            ui.label(RichText::new(tr("Biblioteca")).strong().size(13.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().button_padding = vec2(6.0, 2.0);
                 if ui.small_button("×").on_hover_text(tr("Ocultar (Y)")).clicked() {
@@ -398,12 +437,12 @@ impl App {
         let is_dir = path.is_dir();
         let open = self.tree_open.contains(path);
         let selected = self.preview_file.as_deref() == Some(path);
-        let resp = row(ui, 28.0, indent, selected, |p, r| {
+        let resp = row(ui, 24.0, indent, selected, |p, r| {
             if is_dir {
                 arrow(p, r.left_center() + vec2(12.0, 0.0), open, TEXT_DIM());
             }
             file_icon(p, r.left_center() + vec2(30.0, 0.0), is_dir, if is_dir { METER[1] } else { ACCENT() });
-            title(p, r.left_center() + vec2(44.0, 0.0), label, 14.0, TEXT());
+            title(p, r.left_center() + vec2(44.0, 0.0), label, 12.5, TEXT());
         });
         if !is_dir {
             resp.dnd_set_drag_payload(LibItem::File(path.to_path_buf()));
@@ -586,7 +625,7 @@ impl App {
         // Bombo y platillo dibujados.
         p.circle_stroke(tile.center() + vec2(0.0, 4.0), 9.0, Stroke::new(1.8, color));
         p.line_segment([tile.center() + vec2(-12.0, -10.0), tile.center() + vec2(2.0, -12.0)], Stroke::new(1.8, color));
-        p.text(pos2(tile.right() + 10.0, r.top() + 19.0), Align2::LEFT_CENTER, "Q Drums", FontId::proportional(13.5), TEXT());
+        p.text(pos2(tile.right() + 10.0, r.top() + 19.0), Align2::LEFT_CENTER, "Q Drums", FontId::proportional(12.5), TEXT());
         p.text(pos2(tile.right() + 10.0, r.top() + 37.0), Align2::LEFT_CENTER, recortar(p, tr("Ritmos por estilo, variaciones y rellenos"), 10.5, r.right() - tile.right() - 20.0), FontId::proportional(10.5), TEXT_DIM());
         resp.dnd_set_drag_payload(LibItem::Drummer);
         if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tr("Clic: abrir con la pista MIDI elegida · arrastrar: sobre una pista (o al espacio vacío para crear una)")).clicked() {
@@ -723,7 +762,7 @@ impl App {
             grupo(ui, "MIS KITS", instruments::kits().len());
             for (id, nombre) in instruments::kits() {
                 let r = row(ui, 40.0, 0.0, false, |p, r| {
-                    p.text(pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, &nombre, FontId::proportional(13.5), TEXT());
+                    p.text(pos2(r.left() + 12.0, r.center().y), Align2::LEFT_CENTER, &nombre, FontId::proportional(12.5), TEXT());
                     p.text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, tr("Kit propio"), FontId::proportional(10.5), METER[0]);
                 });
                 if let Some(sid) = instruments::id_estatico(&id) {
@@ -756,7 +795,7 @@ impl App {
             }
             for (id, nombre, carpeta) in libs {
                 let r = row(ui, 40.0, 0.0, false, |p, r| {
-                    p.text(pos2(r.left() + 12.0, r.top() + 13.0), Align2::LEFT_CENTER, recortar(p, &nombre, 13.5, r.width() - 70.0), FontId::proportional(13.5), TEXT());
+                    p.text(pos2(r.left() + 12.0, r.top() + 13.0), Align2::LEFT_CENTER, recortar(p, &nombre, 12.5, r.width() - 70.0), FontId::proportional(12.5), TEXT());
                     p.text(pos2(r.left() + 12.0, r.top() + 29.0), Align2::LEFT_CENTER, recortar(p, &carpeta, 10.5, r.width() - 70.0), FontId::proportional(10.5), TEXT_DIM());
                     p.text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "SFZ", FontId::proportional(10.5), METER[0]);
                 });
@@ -799,7 +838,7 @@ impl App {
                 p.rect_filled(tile, rr(8.0), c.gamma_multiply(0.22));
                 p.text(tile.center(), Align2::CENTER_CENTER, e.family.chars().next().unwrap_or('·').to_string(), FontId::proportional(15.0), c);
                 let libre = r.right() - tile.right() - 110.0;
-                p.text(pos2(tile.right() + 10.0, r.top() + 17.0), Align2::LEFT_CENTER, recortar(p, e.name, 13.5, libre), FontId::proportional(13.5), TEXT());
+                p.text(pos2(tile.right() + 10.0, r.top() + 17.0), Align2::LEFT_CENTER, recortar(p, e.name, 12.5, libre), FontId::proportional(12.5), TEXT());
                 p.text(pos2(tile.right() + 10.0, r.top() + 35.0), Align2::LEFT_CENTER, recortar(p, &format!("{} · {}", tr(e.family), e.license), 10.5, libre), FontId::proportional(10.5), TEXT_DIM());
                 // Estado como píldora y estrella.
                 let g = p.layout_no_wrap(estado.clone(), FontId::proportional(10.5), color);
@@ -1073,6 +1112,57 @@ pub fn icono_fx(p: &Painter, c: Pos2, k: FxKind, color: Color32) {
         }
         FxKind::DeEsser => _ = p.text(c, Align2::CENTER_CENTER, "S", FontId::proportional(16.0), color),
         FxKind::AntiPop => _ = p.text(c, Align2::CENTER_CENTER, "P", FontId::proportional(16.0), color),
+        FxKind::VozAlFrente => {
+            p.circle_filled(c + vec2(-4.0, 0.0), 3.5, color);
+            for (k, a) in [(1.0, 0.7), (2.0, 0.4)] {
+                p.add(egui::Shape::line((0..=8).map(|j| j as f32 / 8.0 * 1.6 - 0.8).map(|ang| c + vec2(-4.0, 0.0) + vec2(ang.cos(), ang.sin()) * (4.0 + k * 3.5)).collect(), Stroke::new(1.3, color.gamma_multiply(a * 0.5))));
+            }
+        }
+        FxKind::Ancho => {
+            p.circle_stroke(c + vec2(-3.5, 0.0), 5.0, s);
+            p.circle_stroke(c + vec2(3.5, 0.0), 5.0, s);
+        }
+        FxKind::AutoPan => {
+            p.line_segment([c + vec2(-8.0, 0.0), c + vec2(8.0, 0.0)], s);
+            p.circle_filled(c + vec2(3.0, 0.0), 3.0, color);
+            p.line_segment([c + vec2(-8.0, -4.0), c + vec2(-8.0, 4.0)], s);
+            p.line_segment([c + vec2(8.0, -4.0), c + vec2(8.0, 4.0)], s);
+        }
+        FxKind::FiltroDj | FxKind::AutoFiltro => {
+            let f = |t: f32| if t < 0.55 { -3.0 - (-(t - 0.55) * (t - 0.55) * 200.0).exp() * 3.0 } else { -3.0 + (t - 0.55) * 26.0 };
+            p.add(egui::Shape::line(curva(&f), s));
+            if k == FxKind::AutoFiltro {
+                p.line_segment([c + vec2(-6.0, 7.0), c + vec2(6.0, 7.0)], Stroke::new(1.0, color.gamma_multiply(0.6)));
+            }
+        }
+        FxKind::PuertaRitmica => (0..4).for_each(|i| _ = p.rect_filled(Rect::from_min_size(c + vec2(-9.0 + i as f32 * 5.0, if i % 2 == 0 { -5.0 } else { 1.0 }), vec2(3.5, if i % 2 == 0 { 10.0 } else { 4.0 })), 1.0, color)),
+        FxKind::Phaser | FxKind::Flanger => {
+            for (d, a) in [(0.0, 1.0), (1.6, 0.55)] {
+                let f = move |t: f32| (t * std::f32::consts::TAU * 2.0 + d).sin() * 4.0 * (1.0 - t * 0.5);
+                p.add(egui::Shape::line(curva(&f), Stroke::new(1.5, color.gamma_multiply(a))));
+            }
+        }
+        FxKind::LoFi => {
+            let f = |t: f32| ((t * std::f32::consts::TAU).sin() * 2.0).round() * -2.5;
+            p.add(egui::Shape::line(curva(&f), s));
+        }
+        FxKind::TapeStop => {
+            let f = |t: f32| (t * std::f32::consts::TAU * (3.0 - t * 2.5)).sin() * 5.0 * (1.0 - t);
+            p.add(egui::Shape::line(curva(&f), s));
+        }
+        FxKind::Utilidad => {
+            p.line_segment([c + vec2(0.0, -8.0), c + vec2(0.0, 8.0)], s);
+            p.rect_filled(Rect::from_center_size(c + vec2(0.0, 2.0), vec2(9.0, 4.0)), 1.0, color);
+        }
+        FxKind::Transitorios => _ = p.add(egui::Shape::line(vec![c + vec2(-9.0, 6.0), c + vec2(-5.0, -7.0), c + vec2(-2.0, 1.0), c + vec2(9.0, 5.0)], s)),
+        FxKind::Desplazador => {
+            p.line_segment([c + vec2(-8.0, 0.0), c + vec2(7.0, 0.0)], s);
+            p.add(egui::Shape::convex_polygon(vec![c + vec2(9.0, 0.0), c + vec2(4.0, -4.0), c + vec2(4.0, 4.0)], color, Stroke::NONE));
+        }
+        FxKind::Afinador => {
+            p.add(egui::Shape::line((0..=12).map(|i| i as f32 / 12.0 * std::f32::consts::PI).map(|a| c + vec2(0.0, 6.0) + vec2(-a.cos(), -a.sin()) * 9.0).collect(), s));
+            p.line_segment([c + vec2(0.0, 6.0), c + vec2(3.0, -2.0)], s);
+        }
         FxKind::Externo => _ = p.circle_stroke(c, 7.0, s),
         FxKind::TapePro => {
             for x in [-5.0, 5.0] {

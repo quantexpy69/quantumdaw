@@ -29,6 +29,22 @@ pub enum FxKind {
     DeEsser,
     /// QUANTUM ANTIPOP: baja los golpes de las P/B y el chasquido de las T/K, y no deja saturar.
     AntiPop,
+    /// QUANTUM Voz al frente: quita el eco de la sala para que la voz suene cerca (ver `dereverb.rs`).
+    VozAlFrente,
+    /// Nativos de movimiento, estéreo, color y utilidad (ver `fx_nuevos.rs`).
+    Ancho,
+    AutoPan,
+    FiltroDj,
+    AutoFiltro,
+    PuertaRitmica,
+    Phaser,
+    Flanger,
+    LoFi,
+    TapeStop,
+    Utilidad,
+    Transitorios,
+    Desplazador,
+    Afinador,
     /// Plugins Pro (de pago, ver `pro.rs`).
     TapePro,
     SpacePro,
@@ -48,7 +64,39 @@ const FFT_HOP: usize = 256;
 pub const BANDAS: usize = 96;
 
 impl FxKind {
-    pub const ALL: [Self; 16] = [Self::Eq, Self::Curves, Self::Compressor, Self::Limiter, Self::Gate, Self::DeEsser, Self::AntiPop, Self::Delay, Self::Reverb, Self::Chorus, Self::Drive, Self::Tune, Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
+    pub const ALL: [Self; 30] = [
+        Self::Eq,
+        Self::Curves,
+        Self::Compressor,
+        Self::Limiter,
+        Self::Gate,
+        Self::DeEsser,
+        Self::AntiPop,
+        Self::VozAlFrente,
+        Self::Delay,
+        Self::Reverb,
+        Self::Chorus,
+        Self::Drive,
+        Self::Tune,
+        Self::Ancho,
+        Self::AutoPan,
+        Self::FiltroDj,
+        Self::AutoFiltro,
+        Self::PuertaRitmica,
+        Self::Phaser,
+        Self::Flanger,
+        Self::LoFi,
+        Self::TapeStop,
+        Self::Utilidad,
+        Self::Transitorios,
+        Self::Desplazador,
+        Self::Afinador,
+        Self::VocalPro,
+        Self::MasterPro,
+        Self::TapePro,
+        Self::SpacePro,
+    ];
+    pub const NUEVOS: [Self; 13] = [Self::Ancho, Self::AutoPan, Self::FiltroDj, Self::AutoFiltro, Self::PuertaRitmica, Self::Phaser, Self::Flanger, Self::LoFi, Self::TapeStop, Self::Utilidad, Self::Transitorios, Self::Desplazador, Self::Afinador];
     pub const PRO: [Self; 4] = [Self::VocalPro, Self::MasterPro, Self::TapePro, Self::SpacePro];
 
     /// Efectos de esta compilación: los Pro solo si su módulo está incluido.
@@ -81,6 +129,20 @@ impl FxKind {
             Self::Chorus => "Chorus",
             Self::DeEsser => "De-esser",
             Self::AntiPop => "QUANTUM ANTIPOP",
+            Self::VozAlFrente => "QUANTUM Voz al frente",
+            Self::Ancho => "Ancho estéreo",
+            Self::AutoPan => "Auto pan",
+            Self::FiltroDj => "Filtro DJ",
+            Self::AutoFiltro => "Auto filtro",
+            Self::PuertaRitmica => "Puerta rítmica",
+            Self::Phaser => "Phaser",
+            Self::Flanger => "Flanger",
+            Self::LoFi => "Lo-Fi",
+            Self::TapeStop => "Tape stop",
+            Self::Utilidad => "Utilidad",
+            Self::Transitorios => "Transitorios",
+            Self::Desplazador => "Desplazador de frecuencia",
+            Self::Afinador => "Afinador",
             Self::TapePro => "QUANTUM Tape Pro",
             Self::SpacePro => "QUANTUM Space Pro",
             Self::VocalPro => "QUANTUM Vocal Pro",
@@ -114,6 +176,7 @@ impl FxKind {
                 ("Release ms", 10.0, 1000.0, 150.0),
                 ("Rodilla dB", 0.0, 12.0, 3.0),
                 ("Mezcla", 0.0, 1.0, 1.0),
+                ("Detección", 0.0, 1.0, 0.0),
             ],
             Self::Delay => &[
                 ("Tiempo ms", 10.0, 2000.0, 375.0),
@@ -133,7 +196,21 @@ impl FxKind {
                 ("Corte graves", 20.0, 1000.0, 100.0),
                 ("Anchura", 0.0, 1.0, 1.0),
             ],
-            Self::Drive => &[("Drive dB", 0.0, 36.0, 12.0), ("Mezcla", 0.0, 1.0, 1.0), ("Tono", 500.0, 20000.0, 12000.0), ("Salida dB", -24.0, 6.0, 0.0), ("Modo", 0.0, 2.0, 0.0)],
+            Self::Drive => &[("Drive dB", 0.0, 36.0, 12.0), ("Mezcla", 0.0, 1.0, 1.0), ("Tono", 500.0, 20000.0, 12000.0), ("Salida dB", -24.0, 6.0, 0.0), ("Modo", 0.0, 5.0, 0.0)],
+            Self::VozAlFrente => &[("Quitar eco", 0.0, 1.0, 0.6), ("Sala s", 0.2, 4.0, 1.0), ("Suavidad", 0.0, 1.0, 0.5), ("Presencia dB", 0.0, 8.0, 2.0), ("Salida dB", -12.0, 12.0, 0.0), ("Escuchar lo quitado", 0.0, 1.0, 0.0)],
+            Self::Ancho => &[("Anchura", 0.0, 2.0, 1.3), ("Graves en mono Hz", 20.0, 500.0, 120.0), ("Salida dB", -12.0, 12.0, 0.0)],
+            Self::AutoPan => &[("División", 0.0, 5.0, 1.0), ("Profundidad", 0.0, 1.0, 0.7), ("Forma", 0.0, 2.0, 0.0), ("Fase", 0.0, 1.0, 0.0)],
+            Self::FiltroDj => &[("Filtro", -1.0, 1.0, 0.0), ("Resonancia", 0.0, 1.0, 0.3)],
+            Self::AutoFiltro => &[("Tipo", 0.0, 2.0, 0.0), ("Corte Hz", 40.0, 18000.0, 900.0), ("Resonancia", 0.0, 1.0, 0.5), ("División", 0.0, 5.0, 1.0), ("LFO", 0.0, 1.0, 0.5), ("Envolvente", -1.0, 1.0, 0.0), ("Mezcla", 0.0, 1.0, 1.0)],
+            Self::PuertaRitmica => &[("Patrón", 0.0, 7.0, 0.0), ("División", 0.0, 5.0, 4.0), ("Profundidad", 0.0, 1.0, 1.0), ("Suavizado ms", 0.5, 30.0, 3.0), ("Mezcla", 0.0, 1.0, 1.0)],
+            Self::Phaser => &[("Velocidad Hz", 0.02, 8.0, 0.4), ("Profundidad", 0.0, 1.0, 0.7), ("Realimentación", 0.0, 0.9, 0.5), ("Etapas", 0.0, 2.0, 1.0), ("Mezcla", 0.0, 1.0, 1.0)],
+            Self::Flanger => &[("Velocidad Hz", 0.02, 8.0, 0.25), ("Profundidad ms", 0.1, 8.0, 2.5), ("Realimentación", -0.9, 0.9, 0.6), ("Mezcla", 0.0, 1.0, 1.0)],
+            Self::LoFi => &[("Bits", 2.0, 16.0, 8.0), ("Reducción", 1.0, 32.0, 4.0), ("Tono", 500.0, 20000.0, 9000.0), ("Mezcla", 0.0, 1.0, 1.0)],
+            Self::TapeStop => &[("Parar", 0.0, 1.0, 0.0), ("Frenado ms", 50.0, 3000.0, 800.0), ("Arranque ms", 0.0, 2000.0, 300.0)],
+            Self::Utilidad => &[("Ganancia dB", -36.0, 36.0, 0.0), ("Panorama", -1.0, 1.0, 0.0), ("Anchura", 0.0, 2.0, 1.0), ("Mono", 0.0, 1.0, 0.0), ("Invertir izq.", 0.0, 1.0, 0.0), ("Invertir der.", 0.0, 1.0, 0.0), ("Cambiar canales", 0.0, 1.0, 0.0)],
+            Self::Transitorios => &[("Ataque", -1.0, 1.0, 0.0), ("Sostenido", -1.0, 1.0, 0.0), ("Salida dB", -12.0, 12.0, 0.0)],
+            Self::Desplazador => &[("Desplazamiento Hz", -2000.0, 2000.0, 0.0), ("Mezcla", 0.0, 1.0, 1.0)],
+            Self::Afinador => &[("La de referencia Hz", 415.0, 466.0, 440.0)],
             Self::Curves => &[
                 ("Corte graves", 20.0, 600.0, 20.0),
                 ("Graves dB", -18.0, 18.0, 0.0),
@@ -264,9 +341,6 @@ struct State {
     env: f32,
     line: Vec<[f32; 2]>,
     idx: usize,
-    /// Reverb tipo Freeverb: índices pares = canal izquierdo, impares = derecho.
-    combs: Vec<(Vec<f32>, usize, f32)>,
-    allpasses: Vec<(Vec<f32>, usize)>,
     /// Filtros de un polo (graves/agudos en delay, reverb y saturación): [filtro][canal].
     lp: [[f32; 2]; 3],
     pre: Vec<[f32; 2]>,
@@ -283,6 +357,15 @@ struct State {
     demo_n: u64,
     lv2: Option<Box<crate::lv2::Instancia>>,
     antipop: Option<Box<crate::antipop::AntiPop>>,
+    nuevo: Option<Box<crate::fx_nuevos::Estado>>,
+    dereverb: Option<Box<crate::dereverb::DeReverb>>,
+    /// Saturación: sobremuestreo ×4 por canal.
+    os: [crate::sobremuestreo::Sobremuestreo; 2],
+    /// Delay: tiempo actual (en muestras) que se acerca suave al pedido, sin clics.
+    retardo: f32,
+    /// Compresor: potencia media (para la detección RMS).
+    potencia: f32,
+    fdn: Option<Box<crate::reverb_fdn::Fdn>>,
 }
 
 pub struct Fx {
@@ -306,19 +389,73 @@ pub struct Fx {
     pub medidores: Vec<AtomicF32>,
     /// Plugin LV2 (tipo `Externo`): nombre, parámetros y su instancia en `State`.
     pub lv2: Option<Arc<crate::lv2::Info>>,
+    /// Historial reciente para los visores en vivo.
+    pub vivo: Vivo,
     state: Mutex<State>,
+}
+
+/// Puntos que guarda el historial (uno cada ~25 ms: unos 4 segundos).
+pub const PUNTOS: usize = 160;
+
+/// Historial de los visores: pico de entrada y de salida (lineal) y reducción (dB) por punto, en un
+/// anillo. Solo lo escribe el hilo de audio y lo lee la interfaz, sin bloqueos.
+pub struct Vivo {
+    pub entrada: Vec<AtomicF32>,
+    pub salida: Vec<AtomicF32>,
+    pub reduccion: Vec<AtomicF32>,
+    /// Próximo punto a escribir.
+    pub pos: AtomicUsize,
+    /// Nivel actual (con caída suave) de entrada y salida, para los medidores.
+    pub nivel: [AtomicF32; 2],
+    acum: [AtomicF32; 3],
+    muestras: AtomicUsize,
+}
+
+impl Default for Vivo {
+    fn default() -> Self {
+        let v = || (0..PUNTOS).map(|_| AtomicF32::new(0.0)).collect();
+        Self { entrada: v(), salida: v(), reduccion: v(), pos: AtomicUsize::new(0), nivel: Default::default(), acum: Default::default(), muestras: AtomicUsize::new(0) }
+    }
+}
+
+impl Vivo {
+    fn anotar(&self, entrada: f32, salida: f32, reduccion: f32, n: usize, sr: f32) {
+        for (k, v) in [entrada, salida].into_iter().enumerate() {
+            let caida = self.nivel[k].get() * (-(n as f32) / (0.3 * sr)).exp();
+            self.nivel[k].set(v.max(caida));
+        }
+        for (a, v) in self.acum.iter().zip([entrada, salida, reduccion]) {
+            a.set(a.get().max(v));
+        }
+        let m = self.muestras.load(Relaxed) + n;
+        if (m as f32) < 0.025 * sr {
+            self.muestras.store(m, Relaxed);
+            return;
+        }
+        self.muestras.store(0, Relaxed);
+        let i = self.pos.load(Relaxed) % PUNTOS;
+        for (dest, a) in [&self.entrada, &self.salida, &self.reduccion].into_iter().zip(&self.acum) {
+            dest[i].set(a.get());
+            a.set(0.0);
+        }
+        self.pos.store((i + 1) % PUNTOS, Relaxed);
+    }
+
+    /// Valores del más viejo al más nuevo.
+    pub fn serie(&self, cual: &[AtomicF32]) -> Vec<f32> {
+        let p = self.pos.load(Relaxed);
+        (0..PUNTOS).map(|k| cual[(p + k) % PUNTOS].get()).collect()
+    }
 }
 
 impl Fx {
     pub fn new(kind: FxKind, sample_rate: u32) -> Self {
-        let scale = sample_rate as f32 / 44_100.0;
         let mut st = State { ratio: 1.0, target: 1.0, ..Default::default() };
         match kind {
             FxKind::Delay => st.line = vec![[0.0; 2]; sample_rate as usize * 2 + 1],
             FxKind::Reverb => {
                 st.pre = vec![[0.0; 2]; (sample_rate as f32 * 0.25) as usize];
-                st.combs = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617].map(|n| (vec![0.0; (n as f32 * scale) as usize], 0, 0.0)).into();
-                st.allpasses = [556, 579, 441, 464].map(|n| (vec![0.0; (n as f32 * scale) as usize], 0)).into();
+                st.fdn = Some(Box::new(crate::reverb_fdn::Fdn::new(sample_rate as f32)));
             }
             FxKind::Tune => (st.line, st.ana, st.yin) = (vec![[0.0; 2]; 8192], vec![0.0; YIN_W], vec![0.0; YIN_W]),
             FxKind::Curves => st.espectral = Some(Box::new(Espectral::new(sample_rate as f32))),
@@ -329,6 +466,8 @@ impl Fx {
             }
             FxKind::Chorus => st.line = vec![[0.0; 2]; sample_rate as usize / 20 + 2],
             FxKind::AntiPop => st.antipop = Some(Box::new(crate::antipop::AntiPop::new(sample_rate as f32))),
+            FxKind::VozAlFrente => st.dereverb = Some(Box::new(crate::dereverb::DeReverb::new(sample_rate as f32))),
+            k if FxKind::NUEVOS.contains(&k) => st.nuevo = Some(Box::new(crate::fx_nuevos::Estado::new(k, sample_rate as f32))),
             k if k.pro().is_some() => st.pro = crate::pro::crear(k, sample_rate),
             _ => {}
         }
@@ -336,7 +475,7 @@ impl Fx {
         let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
         let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
         let medidores = if kind.pro().is_some() { (0..crate::pro::MEDIDORES).map(|_| AtomicF32::new(-120.0)).collect() } else { vec![] };
-        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, lv2: None, state: Mutex::new(st) }
+        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, lv2: None, vivo: Vivo::default(), state: Mutex::new(st) }
     }
 
     /// Plugin LV2 como efecto o instrumento (None si no se puede abrir).
@@ -394,6 +533,25 @@ impl Fx {
         if self.bypass.load(Relaxed) {
             return;
         }
+        // Visores en vivo: picos de entrada y salida y la reducción, solo al reproducir en tiempo real.
+        let pico = |b: &[[f32; 2]]| b.iter().fold(0f32, |m, s| m.max(s[0].abs()).max(s[1].abs()));
+        let entrada = if offline { 0.0 } else { pico(buf) };
+        self.process_interno(buf, sr, bpm, offline, clave);
+        if !offline {
+            self.vivo.anotar(entrada, pico(buf), self.reduccion_actual(), buf.len(), sr);
+        }
+    }
+
+    /// Reducción de ganancia que muestra el visor (dB, positiva), según el efecto.
+    fn reduccion_actual(&self) -> f32 {
+        match self.kind {
+            FxKind::Compressor | FxKind::Limiter | FxKind::Gate | FxKind::DeEsser | FxKind::VozAlFrente => self.readout[0].get(),
+            FxKind::AntiPop => self.readout[0].get().max(self.readout[1].get()),
+            _ => 0.0,
+        }
+    }
+
+    fn process_interno(&self, buf: &mut [[f32; 2]], sr: f32, bpm: f32, offline: bool, clave: Option<&[[f32; 2]]>) {
         let Some(mut st) = (if offline { self.state.lock().ok() } else { self.state.try_lock().ok() }) else {
             return;
         };
@@ -408,6 +566,16 @@ impl Fx {
             if !crate::pro::licenciado(self.kind) {
                 crate::pro::demo(buf, &mut st.demo_n, sr);
             }
+            return;
+        }
+        if let Some(n) = st.nuevo.as_mut() {
+            n.procesar(self.kind, buf, &p, bpm, &self.readout);
+            return;
+        }
+        if let Some(d) = st.dereverb.as_mut() {
+            let a = crate::dereverb::Ajustes { reduccion: p[0], sala: p[1], suavidad: p[2], presencia: p[3], salida: p[4], escuchar: p[5] >= 0.5 };
+            d.procesar(buf, &a);
+            self.readout[0].set(d.reduccion_db);
             return;
         }
         match self.kind {
@@ -429,11 +597,15 @@ impl Fx {
             FxKind::Compressor => {
                 let (att, rel, makeup) = ((-1.0 / (p[3].max(0.05) * 0.001 * sr)).exp(), (-1.0 / (p[4] * 0.001 * sr)).exp(), db(p[2]));
                 let (knee, slope, mix) = (p[5].max(0.01), 1.0 - 1.0 / p[1], p[6]);
+                let rms_coef = 1.0 - (-1.0 / (0.01 * sr)).exp();
                 let mut gr = 0f32;
                 for (i, s) in buf.iter_mut().enumerate() {
                     // Con sidechain el detector escucha la pista clave en vez de la propia señal.
                     let det = clave.and_then(|c| c.get(i)).unwrap_or(s);
-                    let lvl = det[0].abs().max(det[1].abs());
+                    // Detección: pico (rápido, para transitorios) o RMS de 10 ms (más musical), mezclables.
+                    let pico = det[0].abs().max(det[1].abs());
+                    st.potencia += ((det[0] * det[0] + det[1] * det[1]) * 0.5 - st.potencia) * rms_coef;
+                    let lvl = pico + (st.potencia.max(0.0).sqrt() * std::f32::consts::SQRT_2 - pico) * p[7];
                     let coef = if lvl > st.env { att } else { rel };
                     st.env = lvl + coef * (st.env - lvl);
                     let over = 20.0 * st.env.max(1e-6).log10() - p[0];
@@ -453,11 +625,20 @@ impl Fx {
                 let n = st.line.len();
                 // Sincronía: 1/1, 1/2, 1/4, 1/8, 1/16 y 1/8 con puntillo, a partir del tempo.
                 let ms = if p[6] >= 0.5 { 60_000.0 / bpm.max(20.0) * [4.0, 2.0, 1.0, 0.5, 0.25, 0.75][(p[7].round() as usize).min(5)] } else { p[0] };
-                let d = ((ms / 1000.0 * sr) as usize).clamp(1, n - 1);
+                let d = (ms / 1000.0 * sr).clamp(1.0, (n - 2) as f32);
+                if st.retardo <= 0.0 {
+                    st.retardo = d;
+                }
+                // Al cambiar el tiempo, el retardo se desliza en ~50 ms (como una cinta) en vez de saltar.
+                let desliz = 1.0 - (-1.0 / (0.05 * sr)).exp();
                 let (hp, lp) = (one_pole(p[4], sr), one_pole(p[5], sr));
                 let ping = p[3] >= 0.5;
                 for s in buf.iter_mut() {
-                    let r = st.line[(st.idx + n - d) % n];
+                    st.retardo += (d - st.retardo) * desliz;
+                    let (k, f) = (st.retardo as usize, st.retardo.fract());
+                    let a = st.line[(st.idx + n - k) % n];
+                    let b = st.line[(st.idx + n - k - 1) % n];
+                    let r = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
                     // La repetición pasa por un filtro de graves (paso alto) y de agudos (paso bajo).
                     let mut fb = [0f32; 2];
                     for ch in 0..2 {
@@ -471,10 +652,12 @@ impl Fx {
                 }
             }
             FxKind::Reverb => {
-                let (fb, damp) = (0.7 + 0.28 * p[0], p[1] * 0.4);
+                // Red de retardos realimentada (ver `reverb_fdn.rs`): pre-delay, corte de graves de la
+                // entrada, cola estéreo con su anchura y mezcla. 5,3 iguala el nivel de la reverb anterior.
                 let (pre, hp, width) = (((p[3] / 1000.0 * sr) as usize).min(st.pre.len().saturating_sub(1)), one_pole(p[4], sr), p[5]);
+                let ajustes = crate::reverb_fdn::Ajustes { tamano: p[0], amortiguacion: p[1] };
+                let Some(fdn) = st.fdn.as_mut() else { return };
                 for s in buf.iter_mut() {
-                    // Pre-delay y corte de graves antes de la reverb.
                     let n = st.pre.len().max(1);
                     let d = st.pre.get((st.pre_idx + n - pre) % n).copied().unwrap_or(*s);
                     if let Some(slot) = st.pre.get_mut(st.pre_idx) {
@@ -483,46 +666,39 @@ impl Fx {
                     st.pre_idx = (st.pre_idx + 1) % n;
                     let m = if pre == 0 { (s[0] + s[1]) * 0.5 } else { (d[0] + d[1]) * 0.5 };
                     st.lp[0][0] += (m - st.lp[0][0]) * hp;
-                    let input = (m - st.lp[0][0]) * 0.06;
-                    let mut wet = [0f32; 2];
-                    for (i, (line, idx, lp)) in st.combs.iter_mut().enumerate() {
-                        let y = line[*idx];
-                        *lp = y * (1.0 - damp) + *lp * damp;
-                        line[*idx] = input + *lp * fb;
-                        *idx = (*idx + 1) % line.len();
-                        wet[i % 2] += y;
-                    }
-                    for (i, (line, idx)) in st.allpasses.iter_mut().enumerate() {
-                        let (b, x) = (line[*idx], wet[i % 2]);
-                        line[*idx] = x + b * 0.5;
-                        wet[i % 2] = b - x;
-                        *idx = (*idx + 1) % line.len();
-                    }
-                    // Anchura: 0 = mono, 1 = estéreo completo.
+                    let wet = fdn.procesar(m - st.lp[0][0], &ajustes);
                     let mid = (wet[0] + wet[1]) * 0.5;
                     let wet = [mid + (wet[0] - mid) * width, mid + (wet[1] - mid) * width];
-                    *s = [s[0] * (1.0 - p[2]) + wet[0] * p[2] * 3.0, s[1] * (1.0 - p[2]) + wet[1] * p[2] * 3.0];
+                    *s = [s[0] * (1.0 - p[2]) + wet[0] * p[2] * 5.3, s[1] * (1.0 - p[2]) + wet[1] * p[2] * 5.3];
                 }
             }
             FxKind::Drive => {
                 let (g, tone, out, mode) = (db(p[0]), one_pole(p[2], sr), db(p[3]), p[4].round() as u8);
+                // Modos: suave (tanh), duro, válvula, plegado (wavefolder), rectificado y cinta. La curva se
+                // aplica sobremuestreada ×4 (sin aliasing) y la señal seca se alinea con la procesada.
+                let curva = move |x: f32| {
+                    let d = x * g;
+                    let sat = match mode {
+                        1 => d.clamp(-1.0, 1.0),
+                        3 => (d * 0.5 * PI).sin(),
+                        4 => (d.abs() * 1.4).tanh() * 0.8 + d.tanh() * 0.2,
+                        5 => (d * 0.8).atan() * 0.85,
+                        2 => {
+                            if d >= 0.0 {
+                                d.tanh()
+                            } else {
+                                (d * 0.6).tanh() / 0.6 * 0.8
+                            }
+                        }
+                        _ => d.tanh(),
+                    };
+                    sat / g.sqrt()
+                };
                 for s in buf.iter_mut() {
                     for (ch, x) in s.iter_mut().enumerate() {
-                        let d = *x * g;
-                        // Modos: suave (tanh), duro (recorte) y válvula (asimétrico).
-                        let sat = match mode {
-                            1 => d.clamp(-1.0, 1.0),
-                            2 => {
-                                if d >= 0.0 {
-                                    d.tanh()
-                                } else {
-                                    (d * 0.6).tanh() / 0.6 * 0.8
-                                }
-                            }
-                            _ => d.tanh(),
-                        } / g.sqrt();
+                        let (sat, seca) = st.os[ch].procesar(*x, curva);
                         st.lp[2][ch] += (sat - st.lp[2][ch]) * tone;
-                        *x = (*x + (st.lp[2][ch] - *x) * p[1]) * out;
+                        *x = (seca + (st.lp[2][ch] - seca) * p[1]) * out;
                     }
                 }
             }
@@ -643,7 +819,7 @@ impl Fx {
                 self.vu[1].set(rms(buf));
             }
             // Los Pro se procesan arriba (con su estado propio).
-            FxKind::TapePro | FxKind::SpacePro | FxKind::VocalPro | FxKind::MasterPro | FxKind::Externo => {}
+            _ => {}
         }
     }
 
@@ -699,7 +875,7 @@ fn nearest(note: f32, key: i32, scale: &[u8]) -> f32 {
 }
 
 /// Detección de frecuencia fundamental YIN (70 Hz–1 kHz); `None` si no hay tono claro.
-fn yin(x: &[f32], sr: f32) -> Option<f32> {
+pub(crate) fn yin(x: &[f32], sr: f32) -> Option<f32> {
     let w = x.len() / 2;
     if x.iter().map(|v| v * v).sum::<f32>() / (x.len() as f32) < 1e-5 {
         return None;
@@ -1123,5 +1299,34 @@ mod pruebas_lv2 {
             fx.tocar(&mut buf, &[], true);
         }
         assert!(buf.iter().any(|s| s[0].abs() > 1e-3), "el sintetizador no sonó");
+    }
+
+    #[test]
+    fn el_delay_no_hace_clic_al_cambiar_el_tiempo() {
+        // Un seno lento por el delay (solo la repetición); a mitad se cambia el tiempo de 300 a 120 ms.
+        let sr = 48_000.0;
+        let fx = Fx::new(FxKind::Delay, 48_000);
+        fx.params[0].set(300.0);
+        fx.params[1].set(0.0);
+        fx.params[2].set(1.0);
+        let mut salto = 0f32;
+        let mut previo = 0f32;
+        for b in 0..200 {
+            if b == 100 {
+                fx.params[0].set(120.0);
+            }
+            let mut buf: Vec<[f32; 2]> = (0..256).map(|i| (((b * 256 + i) as f32) * std::f32::consts::TAU * 110.0 / sr).sin() * 0.5).map(|v| [v, v]).collect();
+            let seco = buf.clone();
+            fx.process(&mut buf, sr, 120.0, true);
+            for (s, d) in buf.iter().zip(&seco) {
+                let rep = s[0] - d[0];
+                if b > 40 {
+                    salto = salto.max((rep - previo).abs());
+                }
+                previo = rep;
+            }
+        }
+        // Un seno de 110 Hz a 0,5 cambia como mucho ~0,007 por muestra; un salto de lectura daría ~0,5.
+        assert!(salto < 0.05, "salto {salto}");
     }
 }

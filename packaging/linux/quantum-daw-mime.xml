@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-quantum-daw">
+    <comment>Canción de QUANTUM</comment>
+    <comment xml:lang="en">QUANTUM song</comment>
+    <icon name="quantum-daw"/>
+    <glob pattern="*.qtm"/>
+    <glob pattern="project.qproj"/>
+  </mime-type>
+</mime-info>

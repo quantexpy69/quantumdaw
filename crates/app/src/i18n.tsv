@@ -1881,7 +1881,6 @@ Frec. plosivas	Plosive freq.	Freq. plosivas
 Consonantes T/K	Consonants T/K	Consoantes T/K
 Frec. consonantes	Consonant freq.	Freq. consoantes
 Escuchar lo quitado	Listen to what's removed	Ouvir o que foi tirado
-Techo	Ceiling	Teto
 Quita los golpes de P y T sin saturar	Removes P and T pops without clipping	Tira os estalos de P e T sem saturar
 Baja los golpes de aire de las P y B y el chasquido de las T y K, sutil y solo en el instante en que aparecen. La voz normal pasa intacta y un techo suave evita que el audio sature.	Lowers the air bursts of P and B and the click of T and K, subtly and only at the moment they appear. Normal voice passes untouched and a soft ceiling keeps the audio from clipping.	Abaixa os golpes de ar do P e B e o estalo do T e K, sutil e só no instante em que aparecem. A voz normal passa intacta e um teto suave evita que o áudio sature.
 Exportando	Exporting	Exportando
@@ -1889,7 +1888,6 @@ Exportando…	Exporting…	Exportando…
 Exportación cancelada	Export cancelled	Exportação cancelada
 Cancelando…	Cancelling…	Cancelando…
 archivos	files	arquivos
-Ganancia	Gain	Ganho
 toda la pista	whole track	faixa inteira
 Línea de ganancia de toda la pista, antes de los efectos (de -24 a +12 dB)	Gain line for the whole track, before the effects (-24 to +12 dB)	Linha de ganho da faixa inteira, antes dos efeitos (de -24 a +12 dB)
 Línea de ganancia de regiones (G)	Region gain line (G)	Linha de ganho das regiões (G)
@@ -1903,7 +1901,6 @@ Lo grabado se corre hacia atrás lo que tarda el clic en salir y tu voz o instru
 ORGANIZAR EN PROYECTOS	ORGANIZE INTO PROJECTS	ORGANIZAR EM PROJETOS
 Un proyecto agrupa canciones (un disco, un EP, un cliente). Crea uno y mueve tus canciones con «Mover a…».	A project groups songs (an album, an EP, a client). Create one and move your songs with "Move to…".	Um projeto agrupa músicas (um disco, um EP, um cliente). Crie um e mova suas músicas com «Mover para…».
 Nombre del proyecto nuevo	New project name	Nome do projeto novo
-Crear proyecto	Create project	Criar projeto
 Proyecto creado:	Project created:	Projeto criado:
 Mover a…	Move to…	Mover para…
 Para la grabación antes de mover la canción	Stop recording before moving the song	Pare a gravação antes de mover a música
@@ -1922,3 +1919,135 @@ Clic: agregar un efecto · o arrastra uno desde la biblioteca	Click: add an effe
 MIDI Remote	MIDI Remote	MIDI Remote
 Agregar un efecto	Add an effect	Adicionar um efeito
 Panorama · arrastra · doble clic: centro	Pan · drag · double-click: center	Pan · arraste · clique duplo: centro
+Ancho estéreo	Stereo Width	Largura estéreo
+Auto pan	Auto Pan	Auto pan
+Filtro DJ	DJ Filter	Filtro DJ
+Auto filtro	Auto Filter	Auto filtro
+Puerta rítmica	Rhythmic Gate	Gate rítmico
+Phaser	Phaser	Phaser
+Flanger	Flanger	Flanger
+Lo-Fi	Lo-Fi	Lo-Fi
+Tape stop	Tape Stop	Tape stop
+Transitorios	Transients	Transientes
+Desplazador de frecuencia	Frequency Shifter	Deslocador de frequência
+Afinador	Tuner	Afinador
+Movimiento	Movement	Movimento
+Estéreo	Stereo	Estéreo
+Distorsión y color	Distortion & color	Distorção e cor
+Creativos	Creative	Criativos
+Afinación y utilidad	Pitch & tools	Afinação e utilidades
+Paso bajo	Low-pass	Passa-baixa
+Paso alto	High-pass	Passa-alta
+Paso banda	Band-pass	Passa-banda
+Sin filtro	No filter	Sem filtro
+Plegado	Fold	Dobra
+Rectificado	Rectify	Retificado
+Cinta	Tape	Fita
+Correlación	Correlation	Correlação
+Toca o canta una nota	Play or sing a note	Toque ou cante uma nota
+Altavoces	Speakers	Alto-falantes
+Sin salida	No output	Sem saída
+Envíos y ruteo…	Sends and routing…	Envios e roteamento…
+Leer	Read	Ler
+Retener	Latch	Reter
+Escribir	Write	Escrever
+Importar	Import	Importar
+Graves en mono Hz	Mono bass Hz	Graves em mono Hz
+Profundidad	Depth	Profundidade
+Forma	Shape	Forma
+Fase	Phase	Fase
+Filtro	Filter	Filtro
+Corte Hz	Cutoff Hz	Corte Hz
+LFO	LFO	LFO
+Envolvente	Envelope	Envelope
+Suavizado ms	Smoothing ms	Suavização ms
+Realimentación	Feedback	Realimentação
+Etapas	Stages	Estágios
+Bits	Bits	Bits
+Reducción	Downsample	Redução
+Frenado ms	Stop time ms	Frenagem ms
+Arranque ms	Start time ms	Partida ms
+Mono	Mono	Mono
+Invertir izq.	Invert left	Inverter esq.
+Invertir der.	Invert right	Inverter dir.
+Cambiar canales	Swap channels	Trocar canais
+Desplazamiento Hz	Shift Hz	Deslocamento Hz
+La de referencia Hz	Reference A Hz	Lá de referência Hz
+Bypass	Bypass	Bypass
+Abre o cierra la imagen estéreo (de mono a súper ancho) y deja los graves en el centro para que nada se pierda en mono. Muestra la correlación entre los canales.	Opens or narrows the stereo image (from mono to extra wide) and keeps the bass centered so nothing is lost in mono. Shows the correlation between channels.	Abre ou fecha a imagem estéreo (de mono a super larga) e mantém os graves no centro para nada se perder em mono. Mostra a correlação entre os canais.
+Mueve el sonido de un altavoz al otro al ritmo de la canción: seno, triángulo o cuadrada, con profundidad y fase.	Moves the sound from one speaker to the other in time with the song: sine, triangle or square, with depth and phase.	Move o som de um alto-falante ao outro no ritmo da música: seno, triângulo ou quadrada, com profundidade e fase.
+Una sola perilla: a la izquierda quita los agudos, a la derecha quita los graves y al centro deja la pista como está.	One knob: left removes the highs, right removes the lows and the middle leaves the track as it is.	Um só botão: à esquerda tira os agudos, à direita tira os graves e no centro deixa a faixa como está.
+Filtro que se mueve solo: con un LFO a tempo, con la fuerza de la señal (envolvente) o con ambos. Paso bajo, alto o banda.	A filter that moves by itself: with a tempo-synced LFO, with the signal level (envelope) or both. Low-pass, high-pass or band-pass.	Filtro que se move sozinho: com um LFO no tempo, com a força do sinal (envelope) ou ambos. Passa-baixa, alta ou banda.
+Corta el sonido en ritmo con ocho patrones de 16 pasos, a tempo, con profundidad y suavizado para que no haga clic.	Chops the sound rhythmically with eight 16-step patterns, in time, with depth and smoothing so it never clicks.	Corta o som no ritmo com oito padrões de 16 passos, no tempo, com profundidade e suavização para não estalar.
+Barrido clásico de fases: 4, 6 u 8 etapas con realimentación, abierto en estéreo.	Classic phase sweep: 4, 6 or 8 stages with feedback, spread in stereo.	Varredura clássica de fases: 4, 6 ou 8 estágios com realimentação, aberta em estéreo.
+Retardo cortísimo que se mueve: el silbido metálico de los discos, con realimentación positiva o negativa.	A very short moving delay: the metallic whoosh of records, with positive or negative feedback.	Atraso curtíssimo que se move: o assobio metálico dos discos, com realimentação positiva ou negativa.
+Menos bits y menos muestras: el color de los samplers viejos y los videojuegos, con un tono para suavizarlo.	Fewer bits and fewer samples: the color of old samplers and video games, with a tone control to soften it.	Menos bits e menos amostras: a cor dos samplers antigos e videogames, com um tom para suavizar.
+El motor de la cinta se apaga y el sonido frena bajando de tono; al soltar vuelve a arrancar. Ideal automatizando «Parar».	The tape motor switches off and the sound slows down in pitch; release it and it starts again. Best automating «Stop».	O motor da fita desliga e o som freia baixando o tom; ao soltar volta a partir. Ideal automatizando «Parar».
+Ganancia limpia en cualquier lugar de la cadena: panorama, anchura, mono, invertir la fase de cada lado y cambiar canales, con medidor de pico.	Clean gain anywhere in the chain: pan, width, mono, per-side phase invert and channel swap, with a peak meter.	Ganho limpo em qualquer lugar da cadeia: pan, largura, mono, inverter a fase de cada lado e trocar canais, com medidor de pico.
+Modela el golpe y la cola: más o menos ataque y más o menos sostenido, sin umbral que ajustar.	Shapes the hit and the tail: more or less attack and sustain, with no threshold to set.	Molda o golpe e a cauda: mais ou menos ataque e sustentação, sem limiar para ajustar.
+Mueve todas las frecuencias la misma cantidad de hercios: desde un leve movimiento metálico hasta voces de robot.	Moves every frequency by the same number of hertz: from a light metallic movement to robot voices.	Move todas as frequências a mesma quantidade de hertz: de um leve movimento metálico até vozes de robô.
+Muestra la nota que suena y cuántos cents está desafinada, en vivo. Deja pasar el audio sin tocarlo.	Shows the note being played and how many cents off it is, live. The audio passes through untouched.	Mostra a nota que soa e quantos cents está desafinada, ao vivo. O áudio passa sem alteração.
+Imagen estéreo con graves en mono	Stereo image with mono bass	Imagem estéreo com graves em mono
+Panorama que se mueve a tempo	Pan that moves in time	Pan que se move no tempo
+Una perilla: graves o agudos fuera	One knob: lows or highs out	Um botão: graves ou agudos fora
+Filtro con LFO y envolvente	Filter with LFO and envelope	Filtro com LFO e envelope
+Cortes rítmicos a tempo	Rhythmic cuts in time	Cortes rítmicos no tempo
+Barrido de fases en estéreo	Stereo phase sweep	Varredura de fases em estéreo
+Silbido metálico que se mueve	Moving metallic whoosh	Assobio metálico que se move
+Menos bits y muestras	Fewer bits and samples	Menos bits e amostras
+La cinta frena y arranca	The tape stops and starts	A fita freia e parte
+Ganancia, fase, mono y canales	Gain, phase, mono and channels	Ganho, fase, mono e canais
+Más o menos golpe y cola	More or less hit and tail	Mais ou menos golpe e cauda
+Corre todas las frecuencias	Shifts every frequency	Desloca todas as frequências
+Nota y cents en vivo	Note and cents live	Nota e cents ao vivo
+QUANTUM Voz al frente	QUANTUM Voice Front	QUANTUM Voz à frente
+Quitar eco	Remove echo	Tirar eco
+Sala s	Room s	Sala s
+Suavidad	Smoothness	Suavidade
+Presencia dB	Presence dB	Presença dB
+Eco quitado	Echo removed	Eco removido
+Quita el eco de la sala: voz al frente	Removes room echo: voice up front	Tira o eco da sala: voz à frente
+Quita el eco de la sala para que la voz suene cerca y al frente: compara cómo se apaga cada banda con cómo se apagaría la sala y baja solo la cola; la voz directa y las notas sostenidas pasan intactas. Con presencia para adelantarla aún más.	Removes room echo so the voice sounds close and up front: it compares how each band fades with how the room would fade and lowers only the tail; the direct voice and sustained notes pass untouched. With presence to bring it even further forward.	Tira o eco da sala para a voz soar perto e à frente: compara como cada banda se apaga com como a sala se apagaria e baixa só a cauda; a voz direta e as notas sustentadas passam intactas. Com presença para adiantá-la ainda mais.
+Abrir canción…	Open song…	Abrir música…
+Abrir sesión de otro programa	Open a session from another app	Abrir sessão de outro programa
+Se crea una canción nueva; la sesión original no se toca	A new song is created; the original session is not touched	Cria-se uma música nova; a sessão original não é alterada
+Studio One (.song)	Studio One (.song)	Studio One (.song)
+DAWproject: Cubase 14, Studio One, Bitwig (.dawproject)	DAWproject: Cubase 14, Studio One, Bitwig (.dawproject)	DAWproject: Cubase 14, Studio One, Bitwig (.dawproject)
+Cubase (.cpr): solo el audio	Cubase (.cpr): audio only	Cubase (.cpr): só o áudio
+Pro Tools (.ptx): solo el audio	Pro Tools (.ptx): audio only	Pro Tools (.ptx): só o áudio
+Logic Pro (.logicx): solo el audio	Logic Pro (.logicx): audio only	Logic Pro (.logicx): só o áudio
+Elige la carpeta .logicx	Choose the .logicx folder	Escolha a pasta .logicx
+No se pudo abrir la sesión	Could not open the session	Não foi possível abrir a sessão
+Para la grabación antes de abrir otra sesión	Stop recording before opening another session	Pare a gravação antes de abrir outra sessão
+Sesión abierta	Session opened	Sessão aberta
+Se abrió como canción nueva. Ten en cuenta:	It was opened as a new song. Keep in mind:	Foi aberta como música nova. Atenção:
+Entendido	Got it	Entendido
+Audio…	Audio…	Áudio…
+MIDI…	MIDI…	MIDI…
+Video…	Video…	Vídeo…
+Pantalla inicial	Start screen	Tela inicial
+Canción QUANTUM (.qtm)	QUANTUM song (.qtm)	Música QUANTUM (.qtm)
+Sesión de otro programa	Session from another app	Sessão de outro programa
+Abrir canción	Open song	Abrir música
+Elige o crea la carpeta de la canción nueva	Choose or create the folder for the new song	Escolha ou crie a pasta da nova música
+NUEVA CANCIÓN	NEW SONG	NOVA MÚSICA
+PROYECTO	PROJECT	PROJETO
+Sin proyecto	No project	Sem projeto
+Crea la canción con la plantilla, el tempo y el proyecto elegidos	Creates the song with the chosen template, tempo and project	Cria a música com o modelo, o tempo e o projeto escolhidos
+Mover a un proyecto	Move to a project	Mover para um projeto
+Proyecto nuevo	New project	Projeto novo
+Crear y mover	Create and move	Criar e mover
+Canción movida a	Song moved to	Música movida para
+Renombra también la carpeta de la canción y la guarda	Also renames the song folder and saves it	Também renomeia a pasta da música e a salva
+Rejilla: a qué se ajustan las regiones, las marcas y el loop	Grid: what regions, markers and the loop snap to	Grade: ao que se ajustam regiões, marcadores e o loop
+Compás	Bar	Compasso
+1/4 tresillo	1/4 triplet	1/4 tercina
+Panel inferior: mixer, efectos, piano roll y editores (X)	Bottom panel: mixer, effects, piano roll and editors (X)	Painel inferior: mixer, efeitos, piano roll e editores (X)
+Nueva canción…	New song…	Nova música…
+Canciones recientes	Recent songs	Músicas recentes
+Voz directa	Direct voice	Voz direta
+Sin señal	No signal	Sem sinal
+Abierta	Open	Aberta
+Cerrada	Closed	Fechada
+Detección	Detection	Detecção
+Pico	Peak	Pico
