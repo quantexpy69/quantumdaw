@@ -2073,3 +2073,10 @@ Piano eléctrico	Electric piano	Piano elétrico
 Lento	Slow	Lento
 Rápido	Fast	Rápido
 Keys	Keys	Keys
+Sistema de audio	Audio system	Sistema de áudio
+ALSA (compatibilidad)	ALSA (compatibility)	ALSA (compatibilidade)
+PipeWire nativo (recomendado)	Native PipeWire (recommended)	PipeWire nativo (recomendado)
+Bloques del sistema	System blocks	Blocos do sistema
+El sistema obliga a todos los programas a usar bloques de	The system forces every program to use blocks of	O sistema obriga todos os programas a usar blocos de
+Con un búfer más chico el audio se corta (crujidos y saturación) y la latencia real sigue siendo la del sistema. Para tocar y grabar MIDI con poca latencia, baja el búfer del sistema en Ubuntu Studio Audio Configuration (o el control de audio del panel) a 256, o prueba en una terminal: pw-metadata -n settings 0 clock.force-quantum 256	With a smaller buffer the audio drops out (crackles and distortion) and the real latency is still the system's. To play and record MIDI with low latency, lower the system buffer to 256 in Ubuntu Studio Audio Configuration (or the panel's audio control), or try in a terminal: pw-metadata -n settings 0 clock.force-quantum 256	Com um buffer menor o áudio falha (estalos e saturação) e a latência real continua sendo a do sistema. Para tocar e gravar MIDI com pouca latência, baixe o buffer do sistema para 256 no Ubuntu Studio Audio Configuration (ou no controle de áudio do painel), ou teste num terminal: pw-metadata -n settings 0 clock.force-quantum 256
+La latencia real es la del sistema, no la elegida aquí. Puedes cambiarla en Ubuntu Studio Audio Configuration (o el control de audio del panel).	The real latency is the system's, not the one chosen here. You can change it in Ubuntu Studio Audio Configuration (or the panel's audio control).	A latência real é a do sistema, não a escolhida aqui. Você pode mudá-la no Ubuntu Studio Audio Configuration (ou no controle de áudio do painel).

@@ -36,9 +36,19 @@ if [[ "$PWD" == *" "* ]]; then
 fi
 
 # Con la carpeta pro/ (repositorio privado) se incluyen los plugins QUANTUM Pro.
-PRO=()
-[ -f pro/mod.rs ] && PRO=(--features pro)
-cargo build --release ${PRO[@]+"${PRO[@]}"}
+FEATURES=()
+[ -f pro/mod.rs ] && FEATURES+=(pro)
+# PipeWire nativo: el búfer elegido en QUANTUM se pide directamente al servidor de audio (sin la
+# emulación de ALSA, que se corta con búferes chicos). Necesita sus cabeceras y libclang.
+if pkg-config --exists libpipewire-0.3 libspa-0.2 2>/dev/null; then
+  FEATURES+=(pipewire)
+else
+  echo "Aviso: sin PipeWire nativo (el audio irá por ALSA). Para búferes chicos con poca latencia instala:"
+  echo "  sudo apt install libpipewire-0.3-dev libspa-0.2-dev libclang-dev   (o el equivalente de tu distribución)"
+fi
+ARGS=()
+[ ${#FEATURES[@]} -gt 0 ] && ARGS=(--features "$(IFS=,; echo "${FEATURES[*]}")")
+cargo build --release ${ARGS[@]+"${ARGS[@]}"}
 BIN="$HOME/.local/bin/quantum-daw"
 install -Dm755 "$TARGET/release/quantum-daw" "$BIN"
 # Icono: SVG y PNG de cada tamaño (algunos paneles y docks prefieren PNG).

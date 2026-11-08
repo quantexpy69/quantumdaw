@@ -66,6 +66,9 @@ pub struct Project {
     pub sample_rate: u32,
     /// 0 = tamaño de buffer del sistema.
     pub buffer: u32,
+    /// Sistema de audio en Linux: "" = automático (PipeWire nativo si está), "alsa" = por ALSA.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub audio_sistema: String,
     pub rec_bits: u16,
     pub bpm: f32,
     pub signature: (u32, u32),
@@ -143,6 +146,7 @@ impl Default for Project {
             input_device: String::new(),
             sample_rate: 0,
             buffer: 0,
+            audio_sistema: String::new(),
             rec_bits: 24,
             bpm: 120.0,
             signature: (4, 4),

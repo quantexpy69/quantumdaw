@@ -83,6 +83,8 @@ pub struct Borrador {
     pub midi: String,
     pub dispositivos: Vec<DeviceInfo>,
     pub puertos: Vec<String>,
+    /// Bloque que PipeWire impone a todos los programas (`clock.force-quantum`), si lo hay.
+    pub forzado: Option<u32>,
 }
 
 /// Carpeta de plugins revisada: (ruta, formato, cantidad encontrada; None si la carpeta no existe).
@@ -311,6 +313,20 @@ fn bufer_o(v: u32) -> String {
     }
 }
 
+/// Aviso: PipeWire fuerza bloques de `q` muestras para todos los programas, así que el búfer
+/// elegido (`pedido`) no se usa; con bloques más chicos que los forzados el audio se corta.
+fn aviso_bloque_forzado(ui: &mut egui::Ui, q: u32, pedido: u32) {
+    egui::Frame::new().fill(METER[1].gamma_multiply(0.12)).stroke(egui::Stroke::new(1.0, METER[1])).corner_radius(rr(6.0)).inner_margin(8.0).show(ui, |ui| {
+        ui.label(RichText::new(format!("⚠ {} {q} {}", tr("El sistema obliga a todos los programas a usar bloques de"), tr("muestras"))).strong().color(METER[1]));
+        let texto = if pedido < q {
+            tr("Con un búfer más chico el audio se corta (crujidos y saturación) y la latencia real sigue siendo la del sistema. Para tocar y grabar MIDI con poca latencia, baja el búfer del sistema en Ubuntu Studio Audio Configuration (o el control de audio del panel) a 256, o prueba en una terminal: pw-metadata -n settings 0 clock.force-quantum 256")
+        } else {
+            tr("La latencia real es la del sistema, no la elegida aquí. Puedes cambiarla en Ubuntu Studio Audio Configuration (o el control de audio del panel).")
+        };
+        ui.label(RichText::new(texto).size(12.0).color(TEXT()));
+    });
+}
+
 fn sistema_o(v: u32, unidad: &str) -> String {
     if v == 0 { tr("Predeterminado del sistema").to_string() } else { format!("{v} {unidad}") }
 }
@@ -323,7 +339,7 @@ impl App {
     pub fn aplicar_audio(&mut self, cfg: AudioConfig, bits: u16, midi: String) {
         self.config.midi_port = midi;
         let mut p = self.to_project();
-        (p.output_device, p.input_device, p.sample_rate, p.buffer, p.rec_bits) = (cfg.output, cfg.input, cfg.rate, cfg.buffer, bits);
+        (p.output_device, p.input_device, p.sample_rate, p.buffer, p.rec_bits, p.audio_sistema) = (cfg.output, cfg.input, cfg.rate, cfg.buffer, bits, cfg.sistema);
         let r = self.reload(self.dir.clone(), p);
         if r.is_err() || self.engine.input_error.is_none() {
             self.report("Motor de audio reiniciado", r);
@@ -332,7 +348,7 @@ impl App {
     }
 
     fn borrador<'a>(&self, w: &'a mut Welcome) -> &'a mut Borrador {
-        w.borrador.get_or_insert_with(|| Borrador { cfg: self.audio.clone(), bits: self.rec_bits, midi: self.config.midi_port.clone(), dispositivos: engine::audio_devices(), puertos: engine::midi_ports() })
+        w.borrador.get_or_insert_with(|| Borrador { cfg: self.audio.clone(), bits: self.rec_bits, midi: self.config.midi_port.clone(), dispositivos: engine::audio_devices(), puertos: engine::midi_ports(), forzado: engine::bloque_forzado() })
     }
 
     pub fn pagina_audio(&mut self, ui: &mut egui::Ui, w: &mut Welcome) {
@@ -363,7 +379,7 @@ impl App {
             });
             fila(ui, "", |ui| {
                 if boton(ui, "Actualizar dispositivos").clicked() {
-                    b.dispositivos = engine::audio_devices();
+                    (b.dispositivos, b.forzado) = (engine::audio_devices(), engine::bloque_forzado());
                 }
                 let mut ver = hdmi;
                 if ui.checkbox(&mut ver, tr("Mostrar salidas HDMI / DisplayPort")).changed() {
@@ -371,6 +387,15 @@ impl App {
                     self.config.save();
                 }
             });
+            if engine::PIPEWIRE_NATIVO {
+                fila(ui, "Sistema de audio", |ui| {
+                    let nombre = |s: &str| tr(if s == "alsa" { "ALSA (compatibilidad)" } else { "PipeWire nativo (recomendado)" });
+                    desplegable(ui, "pref-sistema", nombre(&b.cfg.sistema).to_string(), |ui| {
+                        ui.selectable_value(&mut b.cfg.sistema, String::new(), nombre(""));
+                        ui.selectable_value(&mut b.cfg.sistema, "alsa".into(), nombre("alsa"));
+                    });
+                });
+            }
             fila(ui, "Frecuencia de muestreo", |ui| {
                 desplegable(ui, "pref-frecuencia", sistema_o(b.cfg.rate, "Hz"), |ui| {
                     FRECUENCIAS.iter().for_each(|&f| _ = ui.selectable_value(&mut b.cfg.rate, f, sistema_o(f, "Hz")));
@@ -388,6 +413,11 @@ impl App {
                 dato(ui, "Latencia del búfer", &latencia);
             });
             nota(ui, "Los búferes grandes dan más tiempo al procesamiento; los pequeños responden más rápido al tocar y grabar.");
+            // Si PipeWire impone un tamaño de bloque a todos los programas, el elegido no se respeta.
+            let pedido = if b.cfg.buffer == 0 { engine::BUFFER_AUTOMATICO } else { b.cfg.buffer };
+            if let Some(q) = b.forzado.filter(|&q| pedido > 0 && q != pedido) {
+                aviso_bloque_forzado(ui, q, pedido);
+            }
             fila(ui, "Resolución de grabación", |ui| {
                 let texto = |b: u16| if b == 32 { "32 bits float".to_string() } else { format!("{b} bits") };
                 desplegable(ui, "pref-bits", texto(b.bits), |ui| {
@@ -416,8 +446,12 @@ impl App {
                     0 => tr("búfer del sistema").to_string(),
                     n => format!("{n} {} ({:.1} ms)", tr("muestras"), n as f64 / self.sr() * 1000.0),
                 };
-                ui.label(RichText::new(format!("{:.1} kHz  ·  {buf}", self.engine.sample_rate as f32 / 1000.0)).size(12.5).color(TEXT()));
+                ui.label(RichText::new(format!("{:.1} kHz  ·  {buf}  ·  {}", self.engine.sample_rate as f32 / 1000.0, self.engine.sistema)).size(12.5).color(TEXT()));
             });
+            let real = self.engine.bloque.load(Relaxed);
+            if real > 0 {
+                fila(ui, "Bloques del sistema", |ui| ui.label(RichText::new(format!("{real} {} ({:.1} ms)", tr("muestras"), real as f64 / self.sr() * 1000.0)).color(TEXT())));
+            }
             let salida = etiqueta_dispositivo(&self.devices, &self.audio.output);
             fila(ui, "Salida", |ui| ui.label(RichText::new(salida).color(TEXT())));
             let entrada = match (&self.engine.input_error, self.engine.in_channels) {

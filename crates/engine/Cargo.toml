@@ -19,3 +19,8 @@ symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "alac"] }
 # Plugins LV2 de terceros (lilv del sistema).
 [target.'cfg(target_os = "linux")'.dependencies]
 livi = "0.9.0"
+
+[features]
+# PipeWire nativo además de ALSA (ver `devices.rs`): pide la latencia elegida al servidor de audio
+# en vez de pasar por la emulación de ALSA. Necesita libpipewire-0.3-dev y libclang al compilar.
+pipewire = ["cpal/pipewire"]

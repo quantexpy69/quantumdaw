@@ -27,6 +27,8 @@ serde_json = "1.0.151"
 [features]
 # Incluye los plugins QUANTUM Pro (código propietario en la carpeta `pro/`, repositorio privado).
 pro = []
+# Audio por PipeWire nativo en Linux (necesita libpipewire-0.3-dev y libclang al compilar).
+pipewire = ["engine/pipewire"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.190"

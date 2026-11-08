@@ -908,7 +908,7 @@ impl App {
         let separadas_inicio = (config.separadas.iter().any(|s| s == "mixer-win"), config.separadas.iter().any(|s| s == "lib-win"));
         let cfg = audio_config(&p);
         let (engine, streams) = Engine::abrir_en_hilo(&cfg, None, LIMITE_AUDIO).map(|(e, h)| (e, Some(h))).inspect_err(|e| informes::registrar("ERROR", &format!("No se pudo abrir el audio ({}): {e:#}", describir_audio(&cfg))))?;
-        informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
+        informes::registrar("INFO", &format!("Audio: {} · {}", describir_audio(&cfg), engine.sistema));
         informes::contexto("Audio", describir_audio(&cfg));
         engine.clic_nivel.set(clic.0);
         engine.clic_acento.set(clic.1);
@@ -1318,7 +1318,7 @@ impl App {
                 return Err(e);
             }
         };
-        informes::registrar("INFO", &format!("Audio: {}", describir_audio(&cfg)));
+        informes::registrar("INFO", &format!("Audio: {} · {}", describir_audio(&cfg), self.engine.sistema));
         informes::contexto("Audio", describir_audio(&cfg));
         engine.clic_nivel.set(self.config.clic_nivel);
         engine.clic_acento.set(self.config.clic_acento);
@@ -2736,7 +2736,7 @@ impl App {
 }
 
 fn audio_config(p: &Project) -> AudioConfig {
-    AudioConfig { output: p.output_device.clone(), input: p.input_device.clone(), rate: p.sample_rate, buffer: p.buffer }
+    AudioConfig { output: p.output_device.clone(), input: p.input_device.clone(), rate: p.sample_rate, buffer: p.buffer, sistema: p.audio_sistema.clone() }
 }
 
 /// Configuración de audio legible para el registro y los informes.

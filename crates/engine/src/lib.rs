@@ -19,7 +19,7 @@ mod synth;
 pub mod keys;
 mod tempo;
 
-pub use devices::{DeviceInfo, MidiConnections, al_llegar_control, audio_devices, connect_midi, controles, llegadas_desde, midi_ports, registrar_llegada, tomar_controles};
+pub use devices::{DeviceInfo, MidiConnections, al_llegar_control, audio_devices, bloque_forzado, connect_midi, controles, llegadas_desde, midi_ports, registrar_llegada, tomar_controles};
 pub use dsp::{detect_bpm, find_onsets, find_peaks, find_silences, peak, pitch_shift, stretch};
 pub use fx::{BANDAS, Fx, FxKind, PUNTOS, Vivo, biquad, curves_banda, curves_response, db, eq_response, frecuencia_banda};
 pub use io::{decode, resample};
@@ -440,7 +440,13 @@ pub struct AudioConfig {
     pub input: String,
     pub rate: u32,
     pub buffer: u32,
+    /// Linux: "" = automático (PipeWire nativo si se compiló con él y está en marcha, si no ALSA);
+    /// "alsa" = siempre por ALSA (a través del plugin de PipeWire cuando lo hay).
+    pub sistema: String,
 }
+
+/// Se compiló con PipeWire nativo (característica `pipewire`).
+pub const PIPEWIRE_NATIVO: bool = cfg!(all(target_os = "linux", feature = "pipewire"));
 
 /// Entradas del bloque para el render: audio de la interfaz y eventos MIDI en vivo.
 #[derive(Clone, Copy)]
@@ -472,6 +478,10 @@ pub struct Engine {
     pub beats: AtomicU32,
     pub unit: AtomicU32,
     pub sample_rate: u32,
+    /// Sistema de audio en uso ("PipeWire", "ALSA", "WASAPI"…).
+    pub sistema: &'static str,
+    /// Frames del último bloque que pidió la salida (el sistema puede forzar bloques más grandes).
+    pub bloque: AtomicU32,
     pub in_channels: usize,
     pub input_error: Option<String>,
     /// Grabación: el hilo de audio copia la entrada a `rec_rx` (y el MIDI a `midi_rec_rx`) desde `rec_start`.
@@ -519,17 +529,20 @@ pub struct Engine {
 
 /// Windows y macOS: el dispositivo con ese id de cpal, o el predeterminado del sistema.
 #[cfg(not(target_os = "linux"))]
-fn device(input: bool, node: &str) -> Option<cpal::Device> {
+fn device(host: &cpal::Host, input: bool, node: &str) -> Option<cpal::Device> {
     use cpal::traits::HostTrait;
-    let host = cpal::default_host();
     node.parse().ok().and_then(|id| host.device_by_id(&id)).or_else(|| if input { host.default_input_device() } else { host.default_output_device() })
 }
 
-/// Linux: abre el dispositivo "pipewire" de ALSA apuntando al nodo pedido (o el dispositivo por defecto sin PipeWire).
+/// Linux: con PipeWire nativo, el nodo pedido directamente (o el predeterminado); si no, el
+/// dispositivo "pipewire" de ALSA apuntando a ese nodo (o el dispositivo por defecto sin PipeWire).
 #[cfg(target_os = "linux")]
-fn device(input: bool, node: &str) -> Option<cpal::Device> {
-    use cpal::traits::HostTrait;
-    let host = cpal::default_host();
+fn device(host: &cpal::Host, input: bool, node: &str) -> Option<cpal::Device> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    if host.id() != cpal::HostId::Alsa {
+        let elegido = (!node.is_empty()).then(|| host.devices().ok()?.find(|d| d.id().is_ok_and(|id| id.to_string().rsplit(':').next() == Some(node)) && if input { d.supports_input() } else { d.supports_output() })).flatten();
+        return elegido.or_else(|| if input { host.default_input_device() } else { host.default_output_device() });
+    }
     match "alsa:pipewire".parse().ok().and_then(|id| host.device_by_id(&id)) {
         Some(d) => {
             // SAFETY: se llama desde el hilo de la UI al (re)abrir el motor; el plugin ALSA de
@@ -545,6 +558,18 @@ fn device(input: bool, node: &str) -> Option<cpal::Device> {
         None if input => host.default_input_device(),
         None => host.default_output_device(),
     }
+}
+
+/// Sistema de audio: PipeWire nativo cuando se compiló con él, está en marcha y no se pidió ALSA.
+fn elegir_host(sistema: &str) -> cpal::Host {
+    #[cfg(target_os = "linux")]
+    if sistema == "alsa"
+        && let Ok(h) = cpal::host_from_id(cpal::HostId::Alsa)
+    {
+        return h;
+    }
+    let _ = sistema;
+    cpal::default_host()
 }
 
 /// Si el dispositivo guardado (por ejemplo una interfaz USB) no está conectado, se usa el del sistema
@@ -676,7 +701,9 @@ impl Engine {
     /// `buffer` 0: el tamaño que elija el sistema.
     fn abrir(cfg: &AudioConfig, buffer: u32) -> anyhow::Result<(Arc<Self>, Vec<cpal::Stream>)> {
         let cfg = &conectados(cfg);
-        let out_dev = device(false, &cfg.output).ok_or_else(|| anyhow::anyhow!("sin dispositivo de salida"))?;
+        let host = elegir_host(&cfg.sistema);
+        let sistema = host.id().name();
+        let out_dev = device(&host, false, &cfg.output).ok_or_else(|| anyhow::anyhow!("sin dispositivo de salida"))?;
         let mut config = out_dev.default_output_config()?.config();
         if cfg.rate > 0 {
             config.sample_rate = cfg.rate;
@@ -685,7 +712,7 @@ impl Engine {
             config.buffer_size = cpal::BufferSize::Fixed(buffer);
         }
         let mut streams = vec![];
-        let in_dev = if cfg.input == "-" { None } else { device(true, &cfg.input) };
+        let in_dev = if cfg.input == "-" { None } else { device(&host, true, &cfg.input) };
         let in_cfg = in_dev.as_ref().and_then(|d| d.default_input_config().ok()).map(|c| cpal::StreamConfig { channels: c.channels(), ..config });
         let mut in_ch = in_cfg.map_or(0, |c| c.channels as usize);
         let sr = config.sample_rate as usize;
@@ -727,6 +754,8 @@ impl Engine {
             beats: 4.into(),
             unit: 4.into(),
             sample_rate: config.sample_rate,
+            sistema,
+            bloque: AtomicU32::new(0),
             in_channels: in_ch,
             input_error,
             recording: false.into(),
@@ -755,7 +784,7 @@ impl Engine {
             secuencia: ArcSwapOption::empty(),
             secuencia_pos: 0.into(),
         });
-        let out_dev = device(false, &cfg.output).unwrap_or(out_dev);
+        let out_dev = device(&host, false, &cfg.output).unwrap_or(out_dev);
         let cb = callback(engine.clone(), config.channels as usize, Rings { in_rx, rec_tx, midi_rx, midi_rec_tx, scope_tx });
         match out_dev.build_output_stream(config, cb, |err| avisar(format!("error de audio: {err}")), None) {
             Ok(s) => {
@@ -1065,6 +1094,8 @@ fn callback(e: Arc<Engine>, ch: usize, mut r: Rings) -> impl FnMut(&mut [f32], &
             return;
         }
         let frames = data.len() / ch.max(1);
+        // Tamaño real de los bloques que pide el sistema (puede ser mayor que el elegido).
+        e.bloque.store(frames as u32, Relaxed);
         let mut done = 0;
         while done < frames {
             let playing = e.playing.load(Relaxed);

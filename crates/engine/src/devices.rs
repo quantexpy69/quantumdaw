@@ -77,6 +77,39 @@ pub fn audio_devices() -> Vec<DeviceInfo> {
     devices
 }
 
+/// Tamaño de bloque que PipeWire impone a todos los programas (`clock.force-quantum`), si lo hay.
+/// Lo fijan herramientas como Ubuntu Studio Audio Configuration; con él, el búfer elegido en QUANTUM
+/// no puede ser más chico.
+#[cfg(target_os = "linux")]
+pub fn bloque_forzado() -> Option<u32> {
+    let out = std::process::Command::new("pw-metadata").args(["-n", "settings"]).output().ok()?;
+    leer_forzado(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// `clock.force-quantum` de la salida de `pw-metadata -n settings` (0 = no forzado).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn leer_forzado(texto: &str) -> Option<u32> {
+    let linea = texto.lines().find(|l| l.contains("'clock.force-quantum'"))?;
+    let valor: u32 = linea.split("value:'").nth(1)?.split('\'').next()?.parse().ok()?;
+    (valor > 0).then_some(valor)
+}
+
+#[cfg(test)]
+mod pruebas {
+    #[test]
+    fn bloque_forzado_de_pipewire() {
+        let con = "Found \"settings\" metadata 32\nupdate: id:0 key:'clock.quantum' value:'1024' type:''\nupdate: id:0 key:'clock.force-quantum' value:'1024' type:''\n";
+        assert_eq!(super::leer_forzado(con), Some(1024));
+        assert_eq!(super::leer_forzado("update: id:0 key:'clock.force-quantum' value:'0' type:''"), None);
+        assert_eq!(super::leer_forzado("update: id:0 key:'clock.quantum' value:'256' type:''"), None);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn bloque_forzado() -> Option<u32> {
+    None
+}
+
 pub type MidiConnections = Vec<midir::MidiInputConnection<()>>;
 
 /// Puertos de entrada MIDI (teclados y controladores USB), sin el puerto "Midi Through".
