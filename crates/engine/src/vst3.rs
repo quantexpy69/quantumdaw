@@ -351,6 +351,55 @@ mod pruebas {
         println!("estado: {} bytes · ventana: {}", estado.len(), inst.tiene_ventana());
         assert!(inst.cargar_estado(&estado));
     }
+
+    /// Decent Sampler con su ventana abierta, audio en otro hilo y la ventana atendida como en la
+    /// aplicación (cada cuadro), guardando el estado cada pocos segundos. `QDAW_SEGUNDOS` alarga la prueba.
+    #[test]
+    #[ignore]
+    fn decent_sampler_con_ventana_y_audio() {
+        let Some(ds) = catalogo().iter().find(|i| i.nombre.contains("Decent")).cloned() else { return };
+        let inst = Arc::new(Instancia::nueva(&ds, 48_000).unwrap());
+        // QDAW_PRESET: un .dspreset que se carga como estado (el XML del preset, como lo guarda DS).
+        if let Ok(ruta) = std::env::var("QDAW_PRESET") {
+            let esc = |s: &str| s.replace('&', "&amp;").replace('"', "&quot;");
+            let xml = std::fs::read_to_string(&ruta).unwrap();
+            let xml = xml.trim_start_matches('\u{feff}');
+            let cuerpo = xml.find("<DecentSampler").map_or(xml, |i| &xml[i..]);
+            let xml = cuerpo.replacen("<DecentSampler", &format!("<DecentSampler _presetName=\"{0}\" _samplePath=\"{1}\"", esc(&ruta), esc(&std::path::Path::new(&ruta).parent().unwrap().to_string_lossy())), 1);
+            let mut blob = b"VC2!".to_vec();
+            blob.extend_from_slice(&(xml.len() as u32 + 1).to_le_bytes());
+            blob.extend_from_slice(xml.as_bytes());
+            blob.push(0);
+            println!("preset cargado: {}", inst.cargar_estado(&blob));
+        }
+        let mut ventana = PluginWindow::new(inst.plugin.clone());
+        ventana.open().unwrap();
+        let fin = std::time::Instant::now() + std::time::Duration::from_secs(std::env::var("QDAW_SEGUNDOS").ok().and_then(|s| s.parse().ok()).unwrap_or(20));
+        let audio = {
+            let inst = inst.clone();
+            std::thread::spawn(move || {
+                let mut buf = vec![[0f32; 2]; 256];
+                let mut k = 0u32;
+                while std::time::Instant::now() < fin {
+                    let ev = [(0usize, if k % 40 == 0 { [0x90, 48 + (k / 40 % 24) as u8, 100] } else { [0x80, 48 + ((k / 40 + 23) % 24) as u8, 0] })];
+                    inst.procesar(&mut buf, if k % 20 == 0 { &ev } else { &[] }, false);
+                    k += 1;
+                    std::thread::sleep(std::time::Duration::from_micros(5300));
+                }
+            })
+        };
+        let mut ultimo = std::time::Instant::now();
+        while std::time::Instant::now() < fin && servir_ventana(&ventana, &inst.plugin) {
+            servir_plugin(&inst);
+            if ultimo.elapsed().as_secs() >= 3 {
+                ultimo = std::time::Instant::now();
+                println!("estado: {} bytes", inst.estado().map_or(0, |e| e.len()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        audio.join().unwrap();
+        ventana.close();
+    }
 }
 
 
