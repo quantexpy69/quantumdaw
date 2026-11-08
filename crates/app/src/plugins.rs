@@ -9,7 +9,7 @@ use engine::{AtomicF32, SYNTH_PARAMS, eq_response};
 const SIGNATURE: &str = "QUANTUM";
 /// Parámetros de encendido/apagado: se muestran como un botón, no como perilla.
 const CONMUTADORES: [&str; 9] = ["Ping-pong", "Sincronía", "Escuchar lo quitado", "Escuchar eses", "Parar", "Mono", "Invertir izq.", "Invertir der.", "Cambiar canales"];
-const DISCRETE: [&str; 19] = ["Detección", "Escuchar eses", "Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División", "Escuchar lo quitado", "Forma", "Tipo", "Patrón", "Etapas", "Parar", "Mono", "Invertir izq.", "Invertir der."];
+const DISCRETE: [&str; 22] = ["Modelo", "Percusión", "Leslie", "Detección", "Escuchar eses", "Tonalidad", "Nota manual", "Escala", "Modo", "Onda", "Ping-pong", "Sincronía", "División", "Escuchar lo quitado", "Forma", "Tipo", "Patrón", "Etapas", "Parar", "Mono", "Invertir izq.", "Invertir der."];
 /// Ancho de cada dispositivo en la pestaña Dispositivos; Curves (visor y controles en fila) es ancho.
 const ANCHO_DISPOSITIVO: f32 = 380.0;
 const ANCHO_CURVES: f32 = 820.0;
@@ -150,6 +150,10 @@ pub(crate) fn value_text(kind: Option<FxKind>, name: &str, v: f32) -> String {
         "Ataque" | "Sostenido" | "Envolvente" | "Realimentación" => format!("{:+.0} %", v * 100.0),
         "Modo" => pick(&["Automático", "Manual"]),
         "Onda" => pick(&["Sierra", "Cuadrada", "Triángulo", "Seno"]),
+        "Modelo" if kind.is_none() => pick(&["Piano eléctrico", "Wurli", "Órgano"]),
+        "Percusión" => pick(&["No", "2.ª", "3.ª"]),
+        "Leslie" => pick(&["Apagado", "Lento", "Rápido"]),
+        n if n.ends_with('\'') => format!("{:.0}", v.round()),
         "Ping-pong" | "Sincronía" | "Escuchar lo quitado" | "Escuchar eses" => pick(&["No", "Sí"]),
         "Fase" => format!("{:.0}°", v * 360.0),
         "División" => pick(&["1/1", "1/2", "1/4", "1/8", "1/16", "1/8 ·"]),
@@ -694,6 +698,41 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
         }
         // Los plugins LV2 muestran su carátula (ver `lv2ui::visor`).
         Some(FxKind::Externo) => {}
+        // QUANTUM Keys, órgano (vista de 15 perillas: modelo, saturación, volumen, 9 drawbars…):
+        // los drawbars con sus colores de siempre (marrón, blanco y negro) y la velocidad del Leslie.
+        None if p.len() == engine::VISTA_ORGANO.len() => {
+            const COLORES: [Color32; 9] = [
+                Color32::from_rgb(122, 72, 44), Color32::from_rgb(122, 72, 44), Color32::from_rgb(232, 230, 222),
+                Color32::from_rgb(232, 230, 222), Color32::from_rgb(40, 40, 40), Color32::from_rgb(232, 230, 222),
+                Color32::from_rgb(40, 40, 40), Color32::from_rgb(40, 40, 40), Color32::from_rgb(232, 230, 222),
+            ];
+            let zona = Rect::from_min_max(pos2(r.left(), r.top() + 16.0), r.max);
+            let paso = zona.width() / 9.0;
+            for (h, c) in COLORES.iter().enumerate() {
+                let v = p[3 + h].round().clamp(0.0, 8.0) / 8.0;
+                let x = zona.left() + paso * (h as f32 + 0.5);
+                let ancho = (paso * 0.5).min(16.0);
+                let fondo = Rect::from_center_size(pos2(x, zona.center().y), vec2(ancho, zona.height()));
+                painter.rect_filled(fondo, rr(3.0), ELEVATED());
+                let barra = Rect::from_min_max(pos2(fondo.left(), fondo.top()), pos2(fondo.right(), fondo.top() + fondo.height() * v.max(0.04)));
+                painter.rect(barra, rr(3.0), *c, Stroke::new(1.0, color.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+            }
+            label(r.left_top(), Align2::LEFT_TOP, tr("Órgano").to_uppercase(), 11.0, color);
+            label(pos2(r.right(), r.top()), Align2::RIGHT_TOP, format!("Leslie · {}", value_text(None, "Leslie", p[14])), 11.0, color);
+        }
+        // QUANTUM Keys, piano eléctrico o Wurli (vista de 8): caída de la nota con el trémolo encima.
+        None if p.len() == engine::VISTA_PIANO.len() => {
+            let (decae, prof, vel) = (p[2].max(0.5), p[3], p[4]);
+            let pts = (0..=80)
+                .map(|i| {
+                    let t = i as f32 / 80.0 * 3.0;
+                    let env = (-6.9 * t / decae).exp() * (1.0 - prof * 0.5 * (1.0 + (std::f32::consts::TAU * vel * t).sin()));
+                    pos2(r.left() + i as f32 / 80.0 * r.width(), r.bottom() - env * (r.height() - 16.0))
+                })
+                .collect();
+            line(pts);
+            label(pos2(r.right(), r.top()), Align2::RIGHT_TOP, value_text(None, "Modelo", p[5]), 12.0, color);
+        }
         None => {
             // Envolvente ADSR del sintetizador.
             let total = p[5] + p[6] + 400.0 + p[8];
@@ -890,6 +929,12 @@ impl App {
                 }
                 ui.add_space(6.0);
                 });
+            } else if let Some(s) = t.synth.as_ref().filter(|s| s.keys.load(Relaxed)) {
+                if !en_fila {
+                    ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                }
+                let (params, defs) = crate::pianoroll::vista_keys(s);
+                plugin(ui, "Keys", None, params, defs, None, [0.0; 2], None, None, &mut act);
             } else if let Some(s) = &t.synth {
                 if !en_fila {
                     ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
@@ -967,6 +1012,40 @@ impl App {
                 self.s.tracks[i].fx.swap(j, j - 1);
             }
             None => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod pruebas_keys {
+    use super::*;
+
+    /// Dibuja el visor y las perillas de QUANTUM Keys (y del Synth) en una interfaz sin pantalla, con
+    /// cada modelo y con los valores en sus extremos: no debe fallar con ninguna combinación.
+    #[test]
+    fn visor_y_perillas_de_keys_sin_fallos() {
+        let ctx = egui::Context::default();
+        for modelo in [0.0, 1.0, 2.0] {
+            for extremo in [0.0f32, 0.5, 1.0] {
+                let s = engine::Synth::default();
+                s.keys.store(true, Relaxed);
+                for (k, a) in s.params.iter().enumerate().skip(engine::KEYS_BASE) {
+                    let (_, min, max, _) = engine::param_def(k).unwrap();
+                    a.set(min + (max - min) * extremo);
+                }
+                s.params[engine::KEYS_BASE + engine::keys::MODELO].set(modelo);
+                let mut salida = ctx.run_ui(Default::default(), |ui| {
+                    let (params, defs) = crate::pianoroll::vista_keys(&s);
+                    let valores: Vec<f32> = params.iter().map(|a| a.get()).collect();
+                    display(ui, None, &valores, [0.0; 2], ACCENT(), 48_000.0, 86.0, None);
+                    for (a, def) in params.iter().zip(defs) {
+                        param_knob(ui, None, *def, a);
+                    }
+                    let synth: Vec<f32> = s.params[..engine::KEYS_BASE].iter().map(|a| a.get()).collect();
+                    display(ui, None, &synth, [0.0; 2], ACCENT(), 48_000.0, 86.0, None);
+                });
+                salida.textures_delta.clear();
+            }
         }
     }
 }

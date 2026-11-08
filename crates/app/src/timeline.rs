@@ -1636,7 +1636,7 @@ impl App {
         let subtitulo = {
             let t = &self.s.tracks[i];
             let base = match t.kind {
-                TrackKind::Midi => instruments::find(&t.instrument).map_or_else(|| t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth").to_string(), |e| e.name.to_string()),
+                TrackKind::Midi => instruments::find(&t.instrument).map_or_else(|| pianoroll::nombre_synth(&t.instrument), |e| e.name.to_string()),
                 TrackKind::Click => tr("Metrónomo como audio").to_string(),
                 TrackKind::Video => t.video.as_ref().map_or(tr("sin video").to_string(), |v| format!("Video · {:.1} s", v.duration())),
                 _ => format!("{} {}", t.clips.len(), tr("regiones")),
@@ -1792,7 +1792,7 @@ impl App {
             if midi {
                 ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
                 let t = &self.s.tracks[i];
-                let nombre = if instruments::es_real(&t.instrument) { instruments::nombre(&t.instrument) } else { t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth").to_string() };
+                let nombre = if instruments::es_real(&t.instrument) { instruments::nombre(&t.instrument) } else { pianoroll::nombre_synth(&t.instrument) };
                 if ui.button(nombre).on_hover_text(tr("Abrir el instrumento")).clicked() {
                     instrumento = true;
                 }

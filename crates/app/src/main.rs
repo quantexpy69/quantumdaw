@@ -1156,13 +1156,9 @@ impl App {
                 }
             }
             if let Some(s) = &t.synth {
-                s.kit.store(ts.instrument == format!("synth:{}", pianoroll::CAJA_RITMOS), Relaxed);
-            }
-            if ts.synth.is_empty()
-                && let (Some(s), Some(name)) = (&t.synth, ts.instrument.strip_prefix("synth:"))
-                && let Some((_, v)) = pianoroll::PRESETS.iter().find(|p| p.0 == name)
-            {
-                s.params.iter().zip(v).for_each(|(a, v)| a.set(*v));
+                // Sin valores guardados (o guardados antes de QUANTUM Keys) se cargan los del preset.
+                let sin_valores = ts.synth.is_empty() || (ts.instrument.starts_with("keys:") && ts.synth.len() <= engine::KEYS_BASE);
+                pianoroll::preparar_synth(s, &ts.instrument, sin_valores);
             }
             if ts.kind == TrackKind::Video && !ts.video.is_empty() {
                 match video::open(&self.dir, &ts.video) {

@@ -20,6 +20,15 @@ pub const SYNTH_PARAMS: [(&str, f32, f32, f32); 10] = [
 ];
 const VOICES: usize = 16;
 
+/// Los parámetros de QUANTUM Keys van después de los del Synth en el mismo vector (así se guardan,
+/// se copian y se asignan a controles MIDI igual que los del Synth).
+pub const KEYS_BASE: usize = SYNTH_PARAMS.len();
+
+/// Definición del parámetro `k` del vector del Synth (Synth o Keys).
+pub fn param_def(k: usize) -> Option<(&'static str, f32, f32, f32)> {
+    SYNTH_PARAMS.get(k).or_else(|| crate::keys::KEYS_PARAMS.get(k.checked_sub(KEYS_BASE)?)).copied()
+}
+
 #[derive(Clone, Copy, Default)]
 struct Voice {
     key: u8,
@@ -55,13 +64,23 @@ pub struct Synth {
     pub params: Vec<AtomicF32>,
     /// Modo caja de ritmos: las notas disparan sonidos de batería sintetizados (mapa General MIDI).
     pub kit: std::sync::atomic::AtomicBool,
+    /// Modo QUANTUM Keys: piano eléctrico, Wurli u órgano (parámetros desde `KEYS_BASE`).
+    pub keys: std::sync::atomic::AtomicBool,
     state: Mutex<State>,
+    teclas: Mutex<crate::keys::Keys>,
     caja: Mutex<crate::caja::Caja>,
 }
 
 impl Default for Synth {
     fn default() -> Self {
-        Self { params: SYNTH_PARAMS.iter().map(|p| AtomicF32::new(p.3)).collect(), kit: Default::default(), state: Default::default(), caja: Default::default() }
+        Self {
+            params: SYNTH_PARAMS.iter().chain(crate::keys::KEYS_PARAMS.iter()).map(|p| AtomicF32::new(p.3)).collect(),
+            kit: Default::default(),
+            keys: Default::default(),
+            state: Default::default(),
+            teclas: Default::default(),
+            caja: Default::default(),
+        }
     }
 }
 
@@ -137,6 +156,14 @@ impl Synth {
     pub fn render(&self, out: &mut [[f32; 2]], events: &[(usize, MidiEvent)], sr: f32, offline: bool, pos: u64, playing: bool) {
         if self.kit.load(std::sync::atomic::Ordering::Relaxed) {
             self.render_kit(out, events, sr, offline);
+            return;
+        }
+        if self.keys.load(std::sync::atomic::Ordering::Relaxed) {
+            let Some(mut k) = (if offline { self.teclas.lock().ok() } else { self.teclas.try_lock().ok() }) else {
+                return;
+            };
+            let p: [f32; crate::keys::KEYS_PARAMS.len()] = std::array::from_fn(|i| self.params[KEYS_BASE + i].get());
+            k.render(out, events, sr, &p, pos, playing);
             return;
         }
         let Some(mut st) = (if offline { self.state.lock().ok() } else { self.state.try_lock().ok() }) else {

@@ -16,6 +16,54 @@ pub const PRESETS: [(&str, [f32; 10]); 8] = [
     ("Cuerdas", [0.0, 18.0, 2600.0, 0.15, 0.15, 300.0, 800.0, 0.85, 900.0, -10.0]),
     (CAJA_RITMOS, [3.0, 0.0, 16000.0, 0.0, 0.0, 1.0, 50.0, 1.0, 50.0, -6.0]),
 ];
+/// Presets de QUANTUM Keys: (nombre, parámetros en el orden de `KEYS_PARAMS`). En el proyecto el
+/// instrumento queda como "keys:<nombre>".
+#[rustfmt::skip]
+pub const KEYS_PRESETS: [(&str, [f32; 20]); 9] = [
+    //                       brillo campana caída trém vel  modelo sat  vol    16' 5⅓' 8'  4'  2⅔' 2'  1⅗' 1⅓' 1'   perc clic leslie
+    ("Piano eléctrico clásico", [0.45, 0.40, 4.5, 0.25, 4.5, 0.0, 0.10, -6.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 1.0]),
+    ("Rhodes con ladrido",      [0.90, 0.35, 4.0, 0.00, 4.5, 0.0, 0.45, -7.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 1.0]),
+    ("Suitcase con trémolo",    [0.50, 0.45, 5.0, 0.70, 5.5, 0.0, 0.10, -6.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 1.0]),
+    ("Wurli",                   [0.50, 0.30, 2.5, 0.00, 5.0, 1.0, 0.25, -6.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 1.0]),
+    ("Wurli con trémolo",       [0.60, 0.30, 2.5, 0.50, 5.5, 1.0, 0.30, -6.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 1.0]),
+    ("Órgano jazz",             [0.50, 0.40, 4.0, 0.25, 4.5, 2.0, 0.10, -6.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.4, 1.0]),
+    ("Órgano gospel",           [0.50, 0.40, 4.0, 0.25, 4.5, 2.0, 0.35, -8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.4, 2.0]),
+    ("Órgano rock",             [0.50, 0.40, 4.0, 0.25, 4.5, 2.0, 0.70, -8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 1.0]),
+    ("Órgano balada",           [0.50, 0.40, 4.0, 0.25, 4.5, 2.0, 0.00, -5.0, 0.0, 0.0, 8.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 1.0]),
+];
+
+/// Nombre del instrumento propio de una pista MIDI ("synth:<preset>" o "keys:<preset>").
+pub fn nombre_synth(instrumento: &str) -> String {
+    match (instrumento.strip_prefix("synth:"), instrumento.strip_prefix("keys:")) {
+        (Some(p), _) => p.to_string(),
+        (_, Some(p)) => format!("Keys · {p}"),
+        _ => "QUANTUM Synth".into(),
+    }
+}
+
+/// Aplica a un sintetizador el instrumento propio guardado ("synth:", "keys:" o la caja de ritmos).
+/// Con `con_preset`, carga además los valores del preset (si no, se conservan los guardados).
+pub fn preparar_synth(s: &engine::Synth, instrumento: &str, con_preset: bool) {
+    let keys = instrumento.strip_prefix("keys:");
+    s.keys.store(keys.is_some(), Relaxed);
+    s.kit.store(instrumento == format!("synth:{CAJA_RITMOS}"), Relaxed);
+    if !con_preset {
+        return;
+    }
+    if let Some(v) = keys.and_then(|n| KEYS_PRESETS.iter().find(|p| p.0 == n)).map(|p| p.1) {
+        s.params[engine::KEYS_BASE..].iter().zip(v).for_each(|(a, v)| a.set(v));
+    } else if let Some(v) = instrumento.strip_prefix("synth:").and_then(|n| PRESETS.iter().find(|p| p.0 == n)).map(|p| p.1) {
+        s.params.iter().zip(v).for_each(|(a, v)| a.set(v));
+    }
+}
+
+/// Perillas de QUANTUM Keys que corresponden al modelo elegido (piano eléctrico/Wurli u órgano).
+pub fn vista_keys(s: &engine::Synth) -> (&[engine::AtomicF32], &'static [(&'static str, f32, f32, f32)]) {
+    let organo = s.params[engine::KEYS_BASE + engine::keys::MODELO].get().round() >= 2.0;
+    let r = if organo { engine::VISTA_ORGANO } else { engine::VISTA_PIANO };
+    (&s.params[engine::KEYS_BASE + r.start..engine::KEYS_BASE + r.end], &engine::KEYS_PARAMS[r])
+}
+
 const BLACK: [bool; 12] = [false, true, false, true, false, false, true, false, true, false, true, false];
 
 /// Piezas de batería (General MIDI) de arriba abajo, como en los editores de batería.
@@ -215,6 +263,7 @@ impl App {
     pub fn instrument_combo(&mut self, ui: &mut egui::Ui, i: usize) {
         enum Pick {
             Preset(usize),
+            Keys(usize),
             Real(&'static str),
             Lv2(Arc<engine::lv2::Info>),
         }
@@ -224,6 +273,7 @@ impl App {
             (true, _) if t.sampler.is_some() => instruments::nombre(&t.instrument),
             (true, _) => format!("{} (preparando…)", instruments::nombre(&t.instrument)),
             (false, Some(p)) => format!("Synth · {p}"),
+            _ if t.instrument.starts_with("keys:") => nombre_synth(&t.instrument),
             _ => "QUANTUM Synth".into(),
         };
         let mut crear_kit = false;
@@ -272,6 +322,13 @@ impl App {
                 }
             }
             ui.separator();
+            ui.label(RichText::new(tr("QUANTUM KEYS · piano eléctrico y órgano")).size(10.0).color(TEXT_DIM()));
+            for (k, (name, _)) in KEYS_PRESETS.iter().enumerate() {
+                if ui.selectable_label(self.s.tracks[i].instrument == format!("keys:{name}"), tr(name)).clicked() {
+                    pick = Some(Pick::Keys(k));
+                }
+            }
+            ui.separator();
             ui.label(RichText::new(tr("QUANTUM SYNTH")).size(10.0).color(TEXT_DIM()));
             for (k, (name, _)) in PRESETS.iter().enumerate() {
                 if ui.selectable_label(self.s.tracks[i].instrument == format!("synth:{name}"), *name).clicked() {
@@ -289,13 +346,20 @@ impl App {
             Some(Pick::Real(id)) => self.set_instrument(i, id),
             Some(Pick::Lv2(p)) => self.set_instrumento_lv2(i, &p),
             Some(Pick::Preset(k)) => {
-                let (name, values) = PRESETS[k];
                 let t = &mut self.s.tracks[i];
+                t.instrument = format!("synth:{}", PRESETS[k].0);
                 if let Some(s) = &t.synth {
-                    s.params.iter().zip(values).for_each(|(a, v)| a.set(v));
-                    s.kit.store(name == CAJA_RITMOS, Relaxed);
+                    preparar_synth(s, &t.instrument, true);
                 }
-                (t.instrument, t.sampler, t.plugin, self.dirty) = (format!("synth:{name}"), None, None, true);
+                (t.sampler, t.plugin, self.dirty) = (None, None, true);
+            }
+            Some(Pick::Keys(k)) => {
+                let t = &mut self.s.tracks[i];
+                t.instrument = format!("keys:{}", KEYS_PRESETS[k].0);
+                if let Some(s) = &t.synth {
+                    preparar_synth(s, &t.instrument, true);
+                }
+                (t.sampler, t.plugin, self.dirty) = (None, None, true);
             }
             None => {}
         }
@@ -613,6 +677,17 @@ impl App {
                 if let Some(e) = e {
                     ui.label(RichText::new(format!("Muestras: {} · licencia {}", e.credit, e.license)).size(10.0).color(TEXT_DIM()));
                 }
+            } else if let Some(s) = t.synth.as_ref().filter(|s| s.keys.load(Relaxed)) {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("QUANTUM KEYS").size(10.0).strong().color(ACCENT()));
+                    ui.label(RichText::new(tr(t.instrument.strip_prefix("keys:").unwrap_or("Keys"))).size(16.0).strong());
+                });
+                let (params, defs) = vista_keys(s);
+                ui.horizontal_wrapped(|ui| {
+                    for (a, def) in params.iter().zip(defs) {
+                        plugins::param_knob(ui, None, *def, a);
+                    }
+                });
             } else if let Some(s) = &t.synth {
                 let preset = t.instrument.strip_prefix("synth:").unwrap_or("QUANTUM Synth");
                 ui.horizontal(|ui| {
@@ -1286,3 +1361,4 @@ impl App {
         Some(v)
     }
 }
+

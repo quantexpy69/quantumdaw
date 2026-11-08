@@ -152,6 +152,7 @@ impl App {
             let (_, v) = pianoroll::PRESETS.iter().find(|p| p.0 == pianoroll::CAJA_RITMOS).copied().unwrap_or(pianoroll::PRESETS[0]);
             s.params.iter().zip(v).for_each(|(a, v)| a.set(v));
             s.kit.store(true, Relaxed);
+            s.keys.store(false, Relaxed);
         }
         let (at, largo) = (self.pos(), self.bar_frames() * 2);
         self.s.tracks[i].clips.push(Clip::new(Source::Midi(Arc::new(vec![])), at, largo));

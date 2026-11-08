@@ -251,7 +251,7 @@ impl App {
         match ranura {
             Ranura::Efecto(f) => t.fx.get(f).and_then(|fx| Some((fx.params.get(k)?, *fx.defs().get(k)?))),
             Ranura::Plugin => t.plugin.as_ref().and_then(|fx| Some((fx.params.get(k)?, *fx.defs().get(k)?))),
-            Ranura::Synth => t.synth.as_ref().and_then(|s| Some((s.params.get(k)?, *engine::SYNTH_PARAMS.get(k)?))),
+            Ranura::Synth => t.synth.as_ref().and_then(|s| Some((s.params.get(k)?, engine::param_def(k)?))),
         }
     }
 

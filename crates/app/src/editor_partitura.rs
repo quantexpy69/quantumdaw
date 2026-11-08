@@ -361,6 +361,7 @@ impl App {
                 t.instrument = format!("synth:{}", pianoroll::CAJA_RITMOS);
                 if let Some(s) = &t.synth {
                     s.kit.store(true, Relaxed);
+                    s.keys.store(false, Relaxed);
                 }
             }
         }

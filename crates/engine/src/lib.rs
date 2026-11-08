@@ -16,6 +16,7 @@ pub mod fx_nuevos;
 mod io;
 mod sampler;
 mod synth;
+pub mod keys;
 mod tempo;
 
 pub use devices::{DeviceInfo, MidiConnections, al_llegar_control, audio_devices, connect_midi, controles, llegadas_desde, midi_ports, registrar_llegada, tomar_controles};
@@ -23,7 +24,8 @@ pub use dsp::{detect_bpm, find_onsets, find_peaks, find_silences, peak, pitch_sh
 pub use fx::{BANDAS, Fx, FxKind, PUNTOS, Vivo, biquad, curves_banda, curves_response, db, eq_response, frecuencia_banda};
 pub use io::{decode, resample};
 pub use sampler::Sampler;
-pub use synth::{SYNTH_PARAMS, Synth};
+pub use keys::{KEYS_PARAMS, VISTA_ORGANO, VISTA_PIANO};
+pub use synth::{KEYS_BASE, SYNTH_PARAMS, Synth, param_def};
 pub use tempo::{beat_len, beats_at, bpm_at, frame_at_beat};
 
 use arc_swap::{ArcSwap, ArcSwapOption};
