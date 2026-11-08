@@ -12,8 +12,11 @@ arc-swap = "1.9.2"
 cpal = { version = "0.18.2", features = ["realtime"] }
 midir = "0.11.0"
 rtrb = "0.4.0"
+roxmltree = "0.20.0"
 rustfft = "6.4.1"
 serde_json = "1.0.151"
+# Plugins VST3 de terceros (efectos e instrumentos, con su ventana).
+vst3-host = { version = "0.11.1", default-features = false }
 symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "alac"] }
 
 # Plugins LV2 de terceros (lilv del sistema).

@@ -769,6 +769,8 @@ impl App {
             Remove(usize),
             Up(usize),
             AddLv2(Arc<engine::lv2::Info>),
+            /// Abrir (true) o cerrar la ventana de un plugin VST3 (None: el instrumento de la pista).
+            VentanaVst3(Option<usize>, bool),
             MyPlugins,
             Licencias,
             Drums,
@@ -794,8 +796,17 @@ impl App {
                           fx: Option<&engine::Fx>,
                           act: &mut Option<Act>| {
                 let lv2 = fx.and_then(|f| f.lv2.as_ref());
-                let accent = lv2.map_or(kind_color(kind), |i| crate::lv2ui::color(i.categoria));
-                let firma = lv2.map_or(SIGNATURE.to_string(), |i| i.marca.to_uppercase());
+                let vst3 = fx.and_then(|f| f.vst3.as_ref());
+                let accent = match (lv2, vst3) {
+                    (Some(i), _) => crate::lv2ui::color(i.categoria),
+                    (_, Some(v)) => crate::lv2ui::color(v.info.categoria),
+                    _ => kind_color(kind),
+                };
+                let firma = match (lv2, vst3) {
+                    (Some(i), _) => i.marca.to_uppercase(),
+                    (_, Some(v)) => format!("VST3 · {}", v.info.marca.to_uppercase()),
+                    _ => SIGNATURE.to_string(),
+                };
                 let ancho = match (kind == Some(FxKind::Curves), en_fila) {
                     (true, true) => ANCHO_CURVES_FILA,
                     (true, false) => ANCHO_CURVES,
@@ -858,6 +869,26 @@ impl App {
                             display(ui, kind, &values, readout, accent, sr, alto_visor, Some(fx));
                         }
                         (Some(FxKind::Externo), _, _) if let Some(i) = lv2 => crate::lv2ui::visor(ui, i, alto_visor + 20.0),
+                        // VST3: sus controles están en su propia ventana.
+                        (Some(FxKind::Externo), Some(fx), _) if let Some(v) = vst3 => {
+                            let abierta = app.ventana_plugin_abierta(fx);
+                            ui.add_space(6.0);
+                            ui.label(RichText::new(tr(v.info.categoria.nombre())).size(11.0).color(accent));
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                // Abrir siempre abre una ventana nueva al frente (también si se perdió detrás de otras).
+                                let ancho = if abierta { ui.available_width() - 96.0 } else { ui.available_width() };
+                                let texto = if abierta { tr("Mostrar ventana del plugin") } else { tr("Abrir ventana del plugin") };
+                                let b = egui::Button::new(RichText::new(texto).strong().color(BG())).fill(accent).min_size(vec2(ancho, 30.0));
+                                if ui.add(b).on_hover_text(tr("Sus controles, sonidos y librerías están en la ventana del propio plugin")).clicked() {
+                                    *act = Some(Act::VentanaVst3(j, true));
+                                }
+                                if abierta && ui.add(egui::Button::new(tr("Cerrar")).min_size(vec2(88.0, 30.0))).clicked() {
+                                    *act = Some(Act::VentanaVst3(j, false));
+                                }
+                            });
+                            ui.label(RichText::new(v.info.ruta.display().to_string()).size(9.5).color(TEXT_DIM())).on_hover_text(v.info.ruta.display().to_string());
+                        }
                         _ => display(ui, kind, &values, readout, accent, sr, alto_visor, fx),
                     }
                     // Curves muestra solo los controles esenciales; el resto en «Avanzado».
@@ -998,6 +1029,16 @@ impl App {
         match act {
             Some(Act::Add(k)) => self.add_fx(i, k),
             Some(Act::AddLv2(info)) => self.add_fx_lv2(i, &info),
+            Some(Act::VentanaVst3(j, abrir)) => {
+                let t = &self.s.tracks[i];
+                if let Some(fx) = j.map_or(t.plugin.clone(), |j| t.fx.get(j).cloned()) {
+                    if abrir {
+                        self.abrir_ventana_plugin(&fx);
+                    } else {
+                        self.cerrar_ventana_plugin(&fx);
+                    }
+                }
+            }
             Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
             Some(Act::Sincronizar) => self.dirty = true,
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),

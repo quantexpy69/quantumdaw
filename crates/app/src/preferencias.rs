@@ -731,7 +731,7 @@ impl App {
         let carpetas = w.carpetas.get_or_insert_with(library::carpetas_plugins).clone();
         let mut reescanear = false;
         tarjeta(ui, "MIS CARPETAS", |ui| {
-            parrafo(ui, "Carpetas donde tienes plugins (LV2, VST3, CLAP) o instrumentos SFZ, en cualquier disco. Se buscan también en sus subcarpetas.");
+            parrafo(ui, "Carpetas donde tienes plugins (LV2, VST3, CLAP) o instrumentos SFZ y Decent Sampler (.dspreset), en cualquier disco. Se buscan también en sus subcarpetas.");
             ui.add_space(2.0);
             let mut quitar = None;
             for (k, dir) in self.config.carpetas_usuario.iter().enumerate() {
@@ -786,11 +786,7 @@ impl App {
             });
         });
         if reescanear {
-            let dirs = &self.config.carpetas_usuario;
-            self.plugins = library::scan_plugins(dirs);
-            engine::lv2::carpetas(dirs);
-            instruments::set_carpetas(dirs);
-            std::thread::spawn(engine::lv2::recargar);
+            self.reescanear_plugins();
             w.carpetas = None;
         }
         tarjeta(ui, "PLUGINS OCULTOS", |ui| {

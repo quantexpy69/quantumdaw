@@ -210,6 +210,9 @@ pub struct TrackState {
     /// Parámetros del instrumento LV2 (en el orden de sus controles).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub plugin_params: Vec<f32>,
+    /// Estado del instrumento VST3 (en base64), p. ej. la librería abierta en Decent Sampler.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub plugin_estado: String,
     /// Icono de la pista ("" = automático).
     pub icon: String,
     /// Pista de video: archivo (relativo al proyecto) y posición de inicio en segundos.
@@ -276,6 +279,9 @@ pub struct FxState {
     /// Sidechain (Curves): posición de la pista clave.
     #[serde(default)]
     pub sidechain: Option<usize>,
+    /// Estado de un plugin VST3 (en base64): lo que el plugin guarda de sí mismo.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub estado: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]

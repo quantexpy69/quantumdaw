@@ -1,6 +1,7 @@
 //! Sampler SFZ: reproduce instrumentos reales (guitarras, bajo, batería, cuerdas…) a partir de
 //! muestras. Soporta el subconjunto de SFZ que usan las bibliotecas libres: zonas por nota y
-//! velocidad, variaciones aleatorias, loops, afinación y release.
+//! velocidad, variaciones aleatorias, loops, afinación, ataque y release. También abre las librerías
+//! de Decent Sampler (`.dspreset`), traducidas a regiones SFZ (ver `dspreset.rs`).
 use crate::{AtomicF32, MidiEvent, decode};
 use std::{
     collections::HashMap,
@@ -9,6 +10,8 @@ use std::{
 };
 
 const VOICES: usize = 32;
+/// Capas que puede disparar una misma nota (regiones que coinciden en tecla, fuerza y azar).
+const CAPAS: usize = 8;
 
 /// Muestra en 16 bits (la mitad de memoria que f32; las bibliotecas pesan cientos de MB).
 type Pcm = Arc<Vec<[i16; 2]>>;
@@ -24,6 +27,8 @@ struct Zone {
     hirand: f32,
     looped: Option<(usize, usize)>,
     release: f32,
+    /// Ataque en segundos (0 = inmediato).
+    attack: f32,
     gain: f32,
     veltrack: f32,
     /// Panorama (-1 izquierda, 1 derecha).
@@ -99,67 +104,24 @@ fn note(v: &str) -> Option<f32> {
 }
 
 impl Sampler {
-    /// Carga un archivo .sfz y decodifica sus muestras a la frecuencia del motor.
+    /// Carga un instrumento .sfz o .dspreset (Decent Sampler) y decodifica sus muestras a la
+    /// frecuencia del motor.
     pub fn load(path: &Path, rate: u32) -> anyhow::Result<Self> {
-        let dir = path.parent().unwrap_or(Path::new("."));
         let text = std::fs::read_to_string(path)?;
-        let (mut global, mut group, mut control) = (HashMap::new(), HashMap::new(), HashMap::new());
-        let mut regions: Vec<HashMap<String, String>> = vec![];
-        let mut key_names = vec![];
-        let (mut current, mut header, mut comment) = (HashMap::new(), String::new(), String::new());
-        let mut flush = |header: &str, map: &mut HashMap<String, String>, global: &mut HashMap<String, String>, group: &mut HashMap<String, String>, control: &mut HashMap<String, String>| {
-            let map = std::mem::take(map);
-            match header {
-                "region" => {
-                    let mut r = global.clone();
-                    r.extend(group.clone());
-                    r.extend(map);
-                    r.extend(control.iter().filter(|(k, _)| *k == "default_path").map(|(k, v)| (k.clone(), v.clone())));
-                    regions.push(r);
-                }
-                "group" | "master" => *group = map,
-                "global" => *global = map,
-                "control" => *control = map,
-                _ => {}
-            }
+        let (regions, key_names) = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dspreset")) {
+            (crate::dspreset::regiones(&text)?, vec![])
+        } else {
+            leer_sfz(&text)
         };
-        for line in text.lines() {
-            let line = line.trim();
-            if let Some(c) = line.strip_prefix("//").filter(|c| !c.starts_with('+')) {
-                comment = c.trim().to_string();
-                continue;
-            }
-            let line = line.split("//").next().unwrap_or("");
-            let mut last: Option<String> = None;
-            for tok in line.split_whitespace() {
-                if let Some(h) = tok.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
-                    flush(&header, &mut current, &mut global, &mut group, &mut control);
-                    header = h.to_string();
-                    last = None;
-                    if h == "group" {
-                        group.clear();
-                    }
-                } else if let Some((k, v)) = tok.split_once('=') {
-                    current.insert(k.to_string(), v.to_string());
-                    if k == "key"
-                        && !comment.is_empty()
-                        && let Some(n) = note(v)
-                    {
-                        key_names.push((n as u8, std::mem::take(&mut comment)));
-                    }
-                    last = Some(k.to_string());
-                } else if let Some(k) = &last {
-                    // Valores con espacios (rutas de muestras).
-                    current.entry(k.clone()).and_modify(|v| *v = format!("{v} {tok}"));
-                }
-            }
-        }
-        flush(&header, &mut current, &mut global, &mut group, &mut control);
-        key_names.dedup_by_key(|k| k.0);
+        Self::con_regiones(path, &regions, key_names, rate)
+    }
 
+    fn con_regiones(path: &Path, regions: &[HashMap<String, String>], key_names: Vec<(u8, String)>, rate: u32) -> anyhow::Result<Self> {
+        let dir = path.parent().unwrap_or(Path::new("."));
         let mut cache: HashMap<String, Pcm> = HashMap::new();
+        let mut recortes: HashMap<(String, usize, usize), Pcm> = HashMap::new();
         let mut zones = vec![];
-        for r in &regions {
+        for r in regions {
             let Some(sample) = r.get("sample") else {
                 continue;
             };
@@ -167,7 +129,7 @@ impl Sampler {
                 continue;
             }
             let file = format!("{}{}", r.get("default_path").map_or("", |s| s.as_str()), sample).replace('\\', "/");
-            let data = match cache.get(&file) {
+            let entera = match cache.get(&file) {
                 Some(d) => d.clone(),
                 None => {
                     let frames = decode(&dir.join(&file), rate)?;
@@ -177,6 +139,14 @@ impl Sampler {
                 }
             };
             let num = |k: &str, d: f32| r.get(k).and_then(|v| v.parse::<f32>().ok()).unwrap_or(d);
+            // Inicio y fin de la muestra (offset/end): se usa solo ese tramo.
+            let inicio = (num("offset", 0.0).max(0.0) as usize).min(entera.len().saturating_sub(1));
+            let fin = r.get("end").and_then(|v| v.parse::<f32>().ok()).map_or(entera.len(), |e| (e.max(0.0) as usize + 1).min(entera.len())).max(inicio + 1);
+            let data = if inicio == 0 && fin == entera.len() {
+                entera
+            } else {
+                recortes.entry((file.clone(), inicio, fin)).or_insert_with(|| Arc::new(entera[inicio..fin.min(entera.len())].to_vec())).clone()
+            };
             let key = |k: &str| r.get(k).and_then(|v| note(v));
             let (lokey, hikey) = match key("key") {
                 Some(k) => (k, k),
@@ -184,7 +154,7 @@ impl Sampler {
             };
             let root = key("pitch_keycenter").or(key("key")).unwrap_or(60.0) - num("transpose", 0.0) - num("tune", 0.0) / 100.0;
             let looped = matches!(r.get("loop_mode").map(String::as_str), Some("loop_continuous" | "loop_sustain"))
-                .then(|| (num("loop_start", 0.0) as usize, num("loop_end", data.len() as f32 - 1.0) as usize))
+                .then(|| ((num("loop_start", 0.0) as usize).saturating_sub(inicio), (num("loop_end", (inicio + data.len()) as f32 - 1.0) as usize).saturating_sub(inicio)))
                 .filter(|(a, b)| a < b && *b < data.len());
             zones.push(Zone {
                 data,
@@ -197,6 +167,7 @@ impl Sampler {
                 hirand: num("hirand", 1.0),
                 looped,
                 release: num("ampeg_release", 0.05).clamp(0.01, 10.0),
+                attack: num("ampeg_attack", 0.0).clamp(0.0, 10.0),
                 gain: 10f32.powf(num("volume", 0.0) / 20.0),
                 veltrack: num("amp_veltrack", 100.0) / 100.0,
                 pan: (num("pan", 0.0) / 100.0).clamp(-1.0, 1.0),
@@ -211,7 +182,68 @@ impl Sampler {
         let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
         Ok(Self { name, gain: AtomicF32::new(1.0), key_names, zones, state: Mutex::new(State { rng: 0x9E37_79B9, ..Default::default() }) })
     }
+}
 
+/// Regiones de un archivo SFZ (con lo heredado de `<global>`, `<group>`/`<master>` y `<control>`)
+/// y los nombres de las teclas que trae en comentarios.
+fn leer_sfz(text: &str) -> (Vec<HashMap<String, String>>, Vec<(u8, String)>) {
+    let (mut global, mut group, mut control) = (HashMap::new(), HashMap::new(), HashMap::new());
+    let mut regions: Vec<HashMap<String, String>> = vec![];
+    let mut key_names = vec![];
+    let (mut current, mut header, mut comment) = (HashMap::new(), String::new(), String::new());
+    let mut flush = |header: &str, map: &mut HashMap<String, String>, global: &mut HashMap<String, String>, group: &mut HashMap<String, String>, control: &mut HashMap<String, String>| {
+        let map = std::mem::take(map);
+        match header {
+            "region" => {
+                let mut r = global.clone();
+                r.extend(group.clone());
+                r.extend(map);
+                r.extend(control.iter().filter(|(k, _)| *k == "default_path").map(|(k, v)| (k.clone(), v.clone())));
+                regions.push(r);
+            }
+            "group" | "master" => *group = map,
+            "global" => *global = map,
+            "control" => *control = map,
+            _ => {}
+        }
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(c) = line.strip_prefix("//").filter(|c| !c.starts_with('+')) {
+            comment = c.trim().to_string();
+            continue;
+        }
+        let line = line.split("//").next().unwrap_or("");
+        let mut last: Option<String> = None;
+        for tok in line.split_whitespace() {
+            if let Some(h) = tok.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+                flush(&header, &mut current, &mut global, &mut group, &mut control);
+                header = h.to_string();
+                last = None;
+                if h == "group" {
+                    group.clear();
+                }
+            } else if let Some((k, v)) = tok.split_once('=') {
+                current.insert(k.to_string(), v.to_string());
+                if k == "key"
+                    && !comment.is_empty()
+                    && let Some(n) = note(v)
+                {
+                    key_names.push((n as u8, std::mem::take(&mut comment)));
+                }
+                last = Some(k.to_string());
+            } else if let Some(k) = &last {
+                // Valores con espacios (rutas de muestras).
+                current.entry(k.clone()).and_modify(|v| *v = format!("{v} {tok}"));
+            }
+        }
+    }
+    flush(&header, &mut current, &mut global, &mut group, &mut control);
+    key_names.dedup_by_key(|k| k.0);
+    (regions, key_names)
+}
+
+impl Sampler {
     /// Voces sonando ahora (para el contador de la interfaz).
     pub fn voces_activas(&self) -> usize {
         self.state.try_lock().map_or(0, |st| st.voices.iter().filter(|v| v.active).count())
@@ -300,44 +332,56 @@ impl Sampler {
                 st.rng ^= st.rng >> 17;
                 st.rng ^= st.rng << 5;
                 let r = st.rng as f32 / u32::MAX as f32;
-                let zone = self
-                    .zones
-                    .iter()
-                    .position(|z| (z.lokey..=z.hikey).contains(&e[1]) && (z.lovel..=z.hivel).contains(&vel) && r >= z.lorand && r < z.hirand.max(z.lorand + 1e-6))
-                    .or_else(|| self.zones.iter().position(|z| (z.lokey..=z.hikey).contains(&e[1])));
-                let Some(zone) = zone else { return };
-                let z = &self.zones[zone];
-                // Grupo de corte: el hi-hat cerrado apaga al abierto (con un fundido muy corto).
-                if z.group > 0 {
-                    let rapido = (-1.0 / (0.004 * sr)).exp();
-                    for v in st.voices.iter_mut().filter(|v| v.active && self.zones[v.zone].off_by == z.group) {
-                        (v.releasing, v.rel) = (true, rapido);
+                // Todas las regiones que coinciden suenan juntas (capas, como en SFZ); si ninguna
+                // coincide en fuerza o azar, la primera de esa tecla.
+                let coincide = |z: &Zone| (z.lokey..=z.hikey).contains(&e[1]) && (z.lovel..=z.hivel).contains(&vel) && r >= z.lorand && r < z.hirand.max(z.lorand + 1e-6);
+                let mut capas = [0usize; CAPAS];
+                let mut n = 0;
+                for (k, z) in self.zones.iter().enumerate() {
+                    if n < CAPAS && coincide(z) {
+                        (capas[n], n) = (k, n + 1);
                     }
                 }
-                let slot = (0..VOICES).find(|&i| !st.voices[i].active).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| st.voices[i].age).unwrap_or(0));
-                let vel_gain = z.curva.as_ref().map_or_else(|| (1.0 - z.veltrack) + z.veltrack * (vel as f32 / 127.0).powi(2), |c| c[vel as usize]);
+                if n == 0 {
+                    let Some(k) = self.zones.iter().position(|z| (z.lokey..=z.hikey).contains(&e[1])) else { return };
+                    (capas[0], n) = (k, 1);
+                }
                 let nota_gain = st.cc_gain.take().map_or(1.0, crate::ganancia_nota);
-                let ataque = st.cc_attack.take().map_or(0.0, crate::ataque_ms);
-                st.voices[slot] = Voice {
-                    zone,
-                    key: e[1],
-                    active: true,
-                    releasing: false,
-                    pos: 0.0,
-                    step: 2f64.powf((e[1] as f64 - z.root as f64) / 12.0),
-                    gain: z.gain * vel_gain * nota_gain,
-                    env: if ataque > 0.0 { 0.0 } else { 1.0 },
-                    att: if ataque > 0.0 { 1.0 - (-1.0 / (ataque * 0.001 * sr)).exp() } else { 1.0 },
-                    attacking: ataque > 0.0,
-                    // Liberación como en SFZ: `ampeg_release` es lo que tarda en apagarse (-60 dB), no la
-                    // constante de tiempo (así la cola era siete veces más larga y sonaba a reverb).
-                    rel: (-6.9 / (z.release * sr)).exp(),
-                    age: st.clock,
-                    // Caída: -40 dB al cabo de `decay` segundos.
-                    dec: if z.decay > 0.0 { (-4.6 / (z.decay * sr)).exp() } else { 1.0 },
-                    lr: [(1.0 - z.pan).min(1.0), (1.0 + z.pan).min(1.0)],
-                    pedal: false,
-                };
+                let ataque_nota = st.cc_attack.take().map_or(0.0, crate::ataque_ms);
+                for &zone in &capas[..n] {
+                    let z = &self.zones[zone];
+                    // Grupo de corte: el hi-hat cerrado apaga al abierto (con un fundido muy corto).
+                    if z.group > 0 {
+                        let rapido = (-1.0 / (0.004 * sr)).exp();
+                        for v in st.voices.iter_mut().filter(|v| v.active && self.zones[v.zone].off_by == z.group) {
+                            (v.releasing, v.rel) = (true, rapido);
+                        }
+                    }
+                    let slot = (0..VOICES).find(|&i| !st.voices[i].active).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| st.voices[i].age).unwrap_or(0));
+                    let vel_gain = z.curva.as_ref().map_or_else(|| (1.0 - z.veltrack) + z.veltrack * (vel as f32 / 127.0).powi(2), |c| c[vel as usize]);
+                    // Ataque: el de la nota (controlador 73) o, si no trae, el de la región.
+                    let ataque = if ataque_nota > 0.0 { ataque_nota } else { z.attack * 1000.0 };
+                    st.voices[slot] = Voice {
+                        zone,
+                        key: e[1],
+                        active: true,
+                        releasing: false,
+                        pos: 0.0,
+                        step: 2f64.powf((e[1] as f64 - z.root as f64) / 12.0),
+                        gain: z.gain * vel_gain * nota_gain,
+                        env: if ataque > 0.0 { 0.0 } else { 1.0 },
+                        att: if ataque > 0.0 { 1.0 - (-1.0 / (ataque * 0.001 * sr)).exp() } else { 1.0 },
+                        attacking: ataque > 0.0,
+                        // Liberación como en SFZ: `ampeg_release` es lo que tarda en apagarse (-60 dB), no la
+                        // constante de tiempo (así la cola era siete veces más larga y sonaba a reverb).
+                        rel: (-6.9 / (z.release * sr)).exp(),
+                        age: st.clock,
+                        // Caída: -40 dB al cabo de `decay` segundos.
+                        dec: if z.decay > 0.0 { (-4.6 / (z.decay * sr)).exp() } else { 1.0 },
+                        lr: [(1.0 - z.pan).min(1.0), (1.0 + z.pan).min(1.0)],
+                        pedal: false,
+                    };
+                }
             }
             (0x80 | 0x90, _) => st
                 .voices
@@ -429,6 +473,37 @@ mod pruebas_bateria {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Un preset de Decent Sampler con dos grupos que se superponen (capas, uno a cada lado), uno
+    /// apagado, ataque lento y la muestra recortada: suenan las dos capas, crece despacio y el grupo
+    /// apagado no suena.
+    #[test]
+    fn preset_de_decent_sampler_con_capas_y_ataque() {
+        let dir = std::env::temp_dir().join(format!("qdaw-dspreset-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("Samples")).unwrap();
+        wav(&dir.join("Samples/a.wav"), 48_000);
+        std::fs::write(
+            dir.join("p.dspreset"),
+            r#"<DecentSampler><groups attack="0.3" release="0.1">
+                <group pan="-100"><sample path="Samples/a.wav" rootNote="60" loNote="48" hiNote="72" start="1000"/></group>
+                <group pan="100"><sample path="Samples/a.wav" rootNote="60" loNote="48" hiNote="72"/></group>
+                <group enabled="false" pan="0"><sample path="Samples/a.wav" rootNote="60" loNote="0" hiNote="127"/></group>
+            </groups></DecentSampler>"#,
+        )
+        .unwrap();
+        let s = Sampler::load(&dir.join("p.dspreset"), 48_000).unwrap();
+        assert_eq!(s.zones.len(), 2, "sin el grupo apagado");
+        assert_eq!(s.zones[0].data.len(), 48_000 - 1000, "recortada desde start");
+        let mut out = vec![[0f32; 2]; 24_000];
+        s.render(&mut out, &[(0, [0x90, 60, 127])], 48_000.0, true, 0, true);
+        let pico = |a: usize, b: usize, c: usize| out[a..b].iter().fold(0f32, |m, x| m.max(x[c].abs()));
+        assert!(pico(14_000, 24_000, 0) > 0.1 && pico(14_000, 24_000, 1) > 0.1, "suenan las dos capas");
+        assert!(pico(0, 480, 0) < pico(14_000, 24_000, 0) * 0.3, "ataque lento");
+        // Fuera de su rango de teclas no suena (el grupo apagado lo cubría todo).
+        let mut out = vec![[0f32; 2]; 4800];
+        s.render(&mut out, &[(0, [0x90, 100, 127])], 48_000.0, true, 24_000, true);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn multisalida_por_pieza() {
         let dir = std::env::temp_dir().join(format!("qdaw-salidas-{}", std::process::id()));
@@ -449,3 +524,5 @@ mod pruebas_bateria {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+

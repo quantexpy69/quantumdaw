@@ -137,6 +137,20 @@ fn config_dir() -> PathBuf {
 /// Datos (instrumentos descargados): ~/.local/share/quantum-daw (Linux), Application Support (macOS),
 /// %LOCALAPPDATA%\Quantum DAW (Windows).
 /// Parámetros que se guardan de un efecto: los de un plugin Pro sin licencia vuelven a los de fábrica.
+/// Estado de un plugin VST3 para el proyecto (base64; vacío si no es VST3).
+fn estado_vst3(f: &Fx) -> String {
+    use base64::Engine as _;
+    f.vst3.as_ref().and_then(|v| v.estado()).map(|b| base64::engine::general_purpose::STANDARD.encode(b)).unwrap_or_default()
+}
+
+/// Restaura en un plugin VST3 el estado guardado en el proyecto.
+fn restaurar_vst3(f: &Fx, estado: &str) {
+    use base64::Engine as _;
+    if let (Some(v), Ok(datos)) = (&f.vst3, base64::engine::general_purpose::STANDARD.decode(estado)) {
+        v.cargar_estado(&datos);
+    }
+}
+
 fn params_guardables(f: &Fx) -> Vec<f32> {
     if engine::pro::licenciado(f.kind) { f.params.iter().map(|p| p.get()).collect() } else { f.defs().iter().map(|d| d.3).collect() }
 }
@@ -773,6 +787,8 @@ struct App {
     loading: Vec<(u64, SamplerLoad)>,
     downloads: HashMap<&'static str, Arc<std::sync::Mutex<String>>>,
     pending_inst: Vec<(u64, &'static str)>,
+    /// Ventanas abiertas de plugins VST3 (se atienden en cada cuadro).
+    ventanas_plugin: Vec<(Arc<engine::vst3::Instancia>, engine::vst3::PluginWindow)>,
     /// Alcance del estirado manual: 0 región, 1 pista completa, 2 grupo.
     stretch_scope: u8,
     /// Última pista seleccionada (para Shift+clic por rango).
@@ -881,6 +897,8 @@ impl App {
     fn new(dir: PathBuf, config: Config, ctx: &egui::Context) -> anyhow::Result<Self> {
         // El catálogo de plugins LV2 tarda un momento: se arma en segundo plano.
         engine::lv2::carpetas(&config.carpetas_usuario);
+        engine::vst3::carpetas(&config.carpetas_usuario);
+        std::thread::spawn(engine::vst3::catalogo);
         instruments::set_carpetas(&config.carpetas_usuario);
         std::thread::spawn(engine::lv2::catalogo);
         let plugins = library::scan_plugins(&config.carpetas_usuario);
@@ -977,6 +995,7 @@ impl App {
             loading: vec![],
             downloads: HashMap::new(),
             pending_inst: vec![],
+            ventanas_plugin: vec![],
             stretch_scope: 0,
             last_track: None,
             alto_dispositivos: 0.0,
@@ -1092,6 +1111,7 @@ impl App {
                 let fx = Fx::desde_clave(&f.kind, e.sample_rate)?;
                 fx.params.iter().zip(&f.params).for_each(|(a, v)| a.set(*v));
                 fx.bypass.store(f.bypass, Relaxed);
+                restaurar_vst3(&fx, &f.estado);
                 Some(Arc::new(fx))
             })
             .collect();
@@ -1141,6 +1161,7 @@ impl App {
                     };
                     fx.params.iter().zip(&f.params).for_each(|(a, v)| a.set(*v));
                     fx.bypass.store(f.bypass, Relaxed);
+                    restaurar_vst3(&fx, &f.estado);
                     Some(Arc::new(fx))
                 })
                 .collect();
@@ -1148,6 +1169,13 @@ impl App {
                 s.params.iter().zip(&ts.synth).for_each(|(a, v)| a.set(*v));
             }
             (t.instrument, t.icon) = (ts.instrument.clone(), ts.icon.clone());
+            if ts.instrument.starts_with("vst3:") {
+                t.plugin = Fx::desde_clave(&ts.instrument, e.sample_rate).map(Arc::new);
+                match &t.plugin {
+                    Some(p) => restaurar_vst3(p, &ts.plugin_estado),
+                    None => missing.push(format!("{} (plugin VST3 {})", ts.name, ts.instrument.trim_start_matches("vst3:"))),
+                }
+            }
             if let Some(uri) = ts.instrument.strip_prefix("lv2:") {
                 t.plugin = engine::lv2::info(uri).and_then(|i| Fx::lv2(&i, e.sample_rate)).map(Arc::new);
                 match &t.plugin {
@@ -1248,11 +1276,12 @@ impl App {
             ts.fx = t
                 .fx
                 .iter()
-                .map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)) })
+                .map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: index(f.sidechain.load(Relaxed)), estado: estado_vst3(f) })
                 .collect();
             ts.synth = t.synth.as_ref().map(|s| s.params.iter().map(|p| p.get()).collect()).unwrap_or_default();
             (ts.instrument, ts.icon) = (t.instrument.clone(), t.icon.clone());
             ts.plugin_params = t.plugin.as_ref().map(|p| p.params.iter().map(|a| a.get()).collect()).unwrap_or_default();
+            ts.plugin_estado = t.plugin.as_deref().map(estado_vst3).unwrap_or_default();
             if let Some(v) = &t.video {
                 (ts.video, ts.video_start) = (v.file.clone(), t.video_start as f64 / sr);
             }
@@ -1280,7 +1309,7 @@ impl App {
             chords: self.s.chords.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             sections: self.s.sections.iter().map(|(a, b, n)| (*a as f64 / sr, *b as f64 / sr, n.clone())).collect(),
             partitura: (self.partitura_app.doc != project::partitura::Partitura::default()).then(|| self.partitura_app.doc.clone()),
-            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: None }).collect(),
+            master_fx: self.master_fx.iter().map(|f| FxState { kind: f.clave(), params: params_guardables(f), bypass: f.bypass.load(Relaxed), sidechain: None, estado: estado_vst3(f) }).collect(),
             controles_midi: self.controles_del_proyecto(),
             ..Default::default()
         }
@@ -1474,6 +1503,109 @@ impl App {
             }
             None => self.status = format!("{} {}", tr("No se pudo abrir el plugin"), info.nombre),
         }
+    }
+
+    /// Añade un plugin VST3 como efecto de la pista y lo muestra en Dispositivos.
+    fn add_fx_vst3(&mut self, i: usize, info: &Arc<engine::vst3::Info>) {
+        match Fx::vst3(info, self.engine.sample_rate) {
+            Ok(fx) => {
+                self.edit();
+                self.s.tracks[i].fx.push(Arc::new(fx));
+                self.abrir_efectos(i);
+                self.status = format!("{} {} {}", info.nombre, tr("añadido a"), self.s.tracks[i].name);
+            }
+            Err(e) => self.status = format!("{} {}: {e}", tr("No se pudo abrir el plugin"), info.nombre),
+        }
+    }
+
+    /// Pone un instrumento VST3 en la pista MIDI `i` y abre su ventana (allí se eligen sonidos y
+    /// librerías, como en Decent Sampler).
+    fn set_instrumento_vst3(&mut self, i: usize, info: &Arc<engine::vst3::Info>) {
+        let fx = match Fx::vst3(info, self.engine.sample_rate) {
+            Ok(fx) => Arc::new(fx),
+            Err(e) => {
+                self.status = format!("{} {}: {e}", tr("No se pudo abrir el plugin"), info.nombre);
+                return;
+            }
+        };
+        self.edit();
+        let t = &mut self.s.tracks[i];
+        (t.instrument, t.sampler, t.plugin) = (info.clave(), None, Some(fx.clone()));
+        let id = t.id;
+        self.pending_inst.retain(|p| p.0 != id);
+        self.status = format!("{} {} «{}»", info.nombre, tr("suena en"), self.s.tracks[i].name);
+        self.abrir_efectos(i);
+        self.abrir_ventana_plugin(&fx);
+    }
+
+    /// Abre la ventana propia de un plugin VST3. Si ya tenía una (aunque se haya perdido detrás de
+    /// otras o el gestor de ventanas la haya cerrado sin avisar), la cierra y abre una nueva al frente.
+    pub fn abrir_ventana_plugin(&mut self, fx: &Arc<Fx>) {
+        let Some(v) = fx.vst3.clone() else { return };
+        self.cerrar_ventana_plugin(fx);
+        let mut ventana = engine::vst3::PluginWindow::new(v.plugin.clone());
+        match ventana.open() {
+            Ok(()) => {
+                informes::registrar("INFO", &format!("Ventana del plugin abierta: {}", v.info.nombre));
+                self.ventanas_plugin.push((v, ventana));
+            }
+            Err(e) => {
+                informes::registrar("ERROR", &format!("No se pudo abrir la ventana de {}: {e}", v.info.nombre));
+                self.status = format!("{} {}: {e}", tr("No se pudo abrir la ventana de"), v.info.nombre);
+            }
+        }
+    }
+
+    /// ¿Tiene abierta su ventana este plugin?
+    pub fn ventana_plugin_abierta(&self, fx: &Fx) -> bool {
+        fx.vst3.as_ref().is_some_and(|v| self.ventanas_plugin.iter().any(|(i, _)| Arc::ptr_eq(i, v)))
+    }
+
+    /// Cierra la ventana de un plugin VST3.
+    pub fn cerrar_ventana_plugin(&mut self, fx: &Fx) {
+        if let Some(v) = &fx.vst3 {
+            self.ventanas_plugin.retain_mut(|(i, w)| {
+                let es = Arc::ptr_eq(i, v);
+                if es {
+                    w.close();
+                }
+                !es
+            });
+        }
+    }
+
+    /// Atiende las ventanas de plugins abiertas (cada cuadro): sus eventos y temporizadores, y quita
+    /// las que el usuario cerró o cuyo plugin ya no está en ninguna pista.
+    fn servir_ventanas_plugin(&mut self, ctx: &egui::Context) {
+        // Todos los VST3 (con o sin ventana): reinicios pedidos por el plugin y sus temporizadores.
+        let mut hay = false;
+        for f in self.s.tracks.iter().flat_map(|t| t.plugin.iter().chain(&t.fx)).chain(&self.master_fx) {
+            if let Some(v) = &f.vst3 {
+                engine::vst3::servir_plugin(v);
+                hay = true;
+            }
+        }
+        if hay {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
+        if self.ventanas_plugin.is_empty() {
+            return;
+        }
+        let en_uso = |v: &Arc<engine::vst3::Instancia>, s: &Self| {
+            s.s.tracks.iter().any(|t| t.plugin.iter().chain(&t.fx).any(|f| f.vst3.as_ref().is_some_and(|x| Arc::ptr_eq(x, v)))) || s.master_fx.iter().any(|f| f.vst3.as_ref().is_some_and(|x| Arc::ptr_eq(x, v)))
+        };
+        let quedan: Vec<bool> = self.ventanas_plugin.iter().map(|(v, w)| en_uso(v, self) && engine::vst3::servir_ventana(w, &v.plugin)).collect();
+        let mut k = 0;
+        self.ventanas_plugin.retain_mut(|(_, w)| {
+            let sigue = quedan[k];
+            k += 1;
+            if !sigue {
+                w.close();
+            }
+            sigue
+        });
+        // Los plugins dibujan con sus temporizadores: la interfaz sigue atendiéndolos ~60 veces por segundo.
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
 
     /// Pone un instrumento LV2 en la pista MIDI `i` (reemplaza al sintetizador o al instrumento real).
@@ -2210,14 +2342,16 @@ impl App {
         p.in_gain.set(t.params.in_gain.get());
         t.params = Arc::new(p);
         let sr = self.engine.sample_rate;
-        t.fx =
-            t.fx.iter()
-                .map(|f| {
-                    let n = Fx::new(f.kind, sr);
-                    n.params.iter().zip(&f.params).for_each(|(a, b)| a.set(b.get()));
-                    Arc::new(n)
-                })
-                .collect();
+        // Cada copia abre su propio efecto (los plugins LV2 y VST3 por su clave, con el mismo estado).
+        let copiar = |f: &Arc<Fx>| {
+            let n = Fx::desde_clave(&f.clave(), sr).unwrap_or_else(|| Fx::new(f.kind, sr));
+            n.params.iter().zip(&f.params).for_each(|(a, b)| a.set(b.get()));
+            n.bypass.store(f.bypass.load(Relaxed), Relaxed);
+            restaurar_vst3(&n, &estado_vst3(f));
+            Arc::new(n)
+        };
+        t.fx = t.fx.iter().map(copiar).collect();
+        t.plugin = t.plugin.as_ref().map(copiar);
         t.synth = t.synth.as_ref().map(|s| {
             let n = Synth::default();
             n.params.iter().zip(&s.params).for_each(|(a, b)| a.set(b.get()));
@@ -2845,6 +2979,7 @@ impl eframe::App for App {
         self.update_meters();
         self.poll_instruments();
         self.poll_video();
+        self.servir_ventanas_plugin(&ctx);
         // El resto de la app (rejilla del piano roll, cuantizar…) usa el tempo bajo el cursor.
         self.engine.bpm.set(engine::bpm_at(&self.s.tempo, self.pos() as f64));
         if !self.pending_inst.is_empty() || !self.loading.is_empty() {

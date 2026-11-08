@@ -235,8 +235,28 @@ pub fn vista_previa(ui: &mut egui::Ui, i: &Info) {
 }
 
 impl App {
+    /// Vuelve a buscar los plugins instalados (LV2, VST3 y CLAP) y las librerías de las carpetas
+    /// propias: tras instalar un plugin o cambiar las carpetas.
+    pub(crate) fn reescanear_plugins(&mut self) {
+        let dirs = self.config.carpetas_usuario.clone();
+        self.plugins = crate::library::scan_plugins(&dirs);
+        lv2::carpetas(&dirs);
+        engine::vst3::carpetas(&dirs);
+        crate::instruments::set_carpetas(&dirs);
+        std::thread::spawn(|| {
+            engine::vst3::recargar();
+            lv2::recargar();
+        });
+        self.status = tr("Buscando plugins de nuevo…").into();
+    }
+
     /// Sección «Plugins» de la biblioteca: recomendados en tarjetas y el resto por marca.
     pub(crate) fn plugins_section(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui.button(tr("↻ Volver a buscar plugins")).on_hover_text(tr("Después de instalar un plugin (LV2, VST3) o una librería")).clicked() {
+                self.reescanear_plugins();
+            }
+        });
         let Some(catalogo) = lv2::listo() else {
             ui.horizontal(|ui| {
                 ui.spinner();
@@ -246,14 +266,27 @@ impl App {
             return;
         };
         let (efectos, instrumentos) = (catalogo.iter().filter(|i| !i.instrumento).count(), catalogo.iter().filter(|i| i.instrumento).count());
-        let otros: Vec<_> = self.plugins.iter().filter(|p| p.1 != "LV2").cloned().collect();
+        let otros: Vec<_> = self.plugins.iter().filter(|p| p.1 == "CLAP").cloned().collect();
+        let vst3 = engine::vst3::catalogo();
         let mut nombres = vec![tr("Recomendados").to_string(), format!("{} {efectos}", tr("Efectos")), format!("{} {instrumentos}", tr("Instrumentos"))];
-        if !otros.is_empty() {
-            nombres.push(format!("VST3 / CLAP {}", otros.len()));
+        if !vst3.is_empty() || !otros.is_empty() {
+            nombres.push(format!("VST3 {}", vst3.len()));
         }
         self.chips(ui, &nombres);
         if self.lib_filtro == 3 {
-            otros_formatos(ui, &otros);
+            for (titulo, instr) in [("INSTRUMENTOS", true), ("EFECTOS", false)] {
+                let lista: Vec<_> = vst3.iter().filter(|v| v.instrumento == instr).cloned().collect();
+                if !lista.is_empty() {
+                    grupo(ui, titulo, lista.len());
+                    self.filas_vst3(ui, &lista);
+                }
+            }
+            if vst3.is_empty() {
+                ui.label(RichText::new(tr("No se encontraron plugins VST3. Se buscan en ~/.vst3, /usr/lib/vst3 y en tus carpetas de Preferencias → Plugins.")).size(11.0).color(TEXT_DIM()));
+            }
+            if !otros.is_empty() {
+                otros_formatos(ui, &otros);
+            }
             return;
         }
         if catalogo.is_empty() {
@@ -363,6 +396,54 @@ impl App {
         }
     }
 
+    /// Filas de plugins VST3: clic para usarlo, arrastrar a una pista.
+    pub(crate) fn filas_vst3(&mut self, ui: &mut egui::Ui, lista: &[Arc<engine::vst3::Info>]) {
+        for info in lista {
+            let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
+            let p = ui.painter();
+            if resp.hovered() {
+                p.rect_filled(r, rr(6.0), ELEVATED());
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let pill = Rect::from_min_size(r.left_top() + vec2(6.0, 11.0), vec2(42.0, 18.0));
+            p.rect_filled(pill, rr(6.0), color(info.categoria).gamma_multiply(0.85));
+            p.text(pill.center(), Align2::CENTER_CENTER, "VST3", FontId::proportional(10.0), BG());
+            let x = pill.right() + 10.0;
+            p.text(pos2(x, r.top() + 13.0), Align2::LEFT_CENTER, recortar(p, &info.nombre, 13.0, r.right() - x - 8.0), FontId::proportional(13.0), TEXT());
+            let detalle = if info.marca.is_empty() { tr(info.categoria.nombre()).to_string() } else { format!("{} · {}", info.marca, tr(info.categoria.nombre())) };
+            p.text(pos2(x, r.top() + 29.0), Align2::LEFT_CENTER, recortar(p, &detalle, 10.5, r.right() - x - 8.0), FontId::proportional(10.5), color(info.categoria));
+            resp.dnd_set_drag_payload(crate::library::LibItem::Vst3(info.clone()));
+            let ayuda = if info.instrumento { "Clic: tocar en la pista MIDI elegida (o en una nueva) · arrastrar: sobre una pista MIDI" } else { "Clic: añadir a la pista elegida · arrastrar: a una pista o canal" };
+            if resp.on_hover_text(format!("{}\n{}", info.ruta.display(), tr(ayuda))).clicked() {
+                self.clic_vst3(info);
+            }
+        }
+    }
+
+    /// Clic en un VST3: un instrumento va a la pista MIDI elegida (o a una nueva con su nombre) y un
+    /// efecto a la pista elegida (o a una de audio nueva).
+    pub(crate) fn clic_vst3(&mut self, info: &Arc<engine::vst3::Info>) {
+        if info.instrumento {
+            let i = match self.s.tracks.iter().position(|t| t.selected && t.midi()) {
+                Some(i) => i,
+                None => {
+                    self.add_track(info.nombre.clone(), TrackKind::Midi);
+                    self.s.tracks.len() - 1
+                }
+            };
+            self.set_instrumento_vst3(i, info);
+        } else {
+            let i = match self.pista_destino_fx() {
+                Some(i) => i,
+                None => {
+                    self.add_track(tr("Audio").to_string(), TrackKind::AudioStereo);
+                    self.s.tracks.len() - 1
+                }
+            };
+            self.add_fx_vst3(i, info);
+        }
+    }
+
     /// Submenú con los efectos LV2 recomendados (para «+ efecto»); devuelve el elegido.
     pub(crate) fn menu_efectos_lv2(ui: &mut egui::Ui) -> Option<Arc<Info>> {
         let mut elegido = None;
@@ -382,10 +463,10 @@ impl App {
     }
 }
 
-/// Plugins VST3 y CLAP encontrados: se listan, pero todavía no se pueden cargar en las pistas.
+/// Plugins CLAP encontrados: se listan, pero todavía no se pueden cargar en las pistas.
 pub fn otros_formatos(ui: &mut egui::Ui, lista: &[(String, &'static str, PathBuf)]) {
-    grupo(ui, "VST3 / CLAP", lista.len());
-    ui.label(RichText::new(tr("Encontrados en tu equipo. Cargarlos en las pistas llega en la próxima versión; por ahora usa sus versiones LV2 si las tienen.")).size(11.0).color(TEXT_DIM()));
+    grupo(ui, "CLAP", lista.len());
+    ui.label(RichText::new(tr("Encontrados en tu equipo. Los CLAP todavía no se cargan en las pistas; usa su versión VST3 o LV2 si la tienen.")).size(11.0).color(TEXT_DIM()));
     for (nombre, formato, ruta) in lista {
         let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
         let p = ui.painter();

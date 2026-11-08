@@ -389,6 +389,9 @@ pub struct Fx {
     pub medidores: Vec<AtomicF32>,
     /// Plugin LV2 (tipo `Externo`): nombre, parámetros y su instancia en `State`.
     pub lv2: Option<Arc<crate::lv2::Info>>,
+    /// Plugin VST3 (tipo `Externo`): se procesa fuera de `State` porque la ventana del plugin lo
+    /// usa desde la interfaz.
+    pub vst3: Option<Arc<crate::vst3::Instancia>>,
     /// Historial reciente para los visores en vivo.
     pub vivo: Vivo,
     state: Mutex<State>,
@@ -475,7 +478,7 @@ impl Fx {
         let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
         let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
         let medidores = if kind.pro().is_some() { (0..crate::pro::MEDIDORES).map(|_| AtomicF32::new(-120.0)).collect() } else { vec![] };
-        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, lv2: None, vivo: Vivo::default(), state: Mutex::new(st) }
+        Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, lv2: None, vst3: None, vivo: Vivo::default(), state: Mutex::new(st) }
     }
 
     /// Plugin LV2 como efecto o instrumento (None si no se puede abrir).
@@ -488,13 +491,28 @@ impl Fx {
         Some(fx)
     }
 
-    /// Lo que se guarda en el proyecto: el nombre del efecto o «lv2:<uri>».
+    /// Plugin VST3 como efecto o instrumento.
+    pub fn vst3(info: &Arc<crate::vst3::Info>, sample_rate: u32) -> anyhow::Result<Self> {
+        let inst = crate::vst3::Instancia::nueva(info, sample_rate)?;
+        let mut fx = Self::new(FxKind::Externo, sample_rate);
+        fx.params = vec![];
+        fx.vst3 = Some(Arc::new(inst));
+        Ok(fx)
+    }
+
+    /// Lo que se guarda en el proyecto: el nombre del efecto, «lv2:<uri>» o «vst3:<ruta>#<clase>».
     pub fn clave(&self) -> String {
+        if let Some(v) = &self.vst3 {
+            return v.info.clave();
+        }
         self.lv2.as_ref().map_or_else(|| self.kind.name().to_string(), |i| format!("lv2:{}", i.uri))
     }
 
     /// Crea el efecto guardado con `clave` (None si el plugin ya no está instalado).
     pub fn desde_clave(clave: &str, sample_rate: u32) -> Option<Self> {
+        if clave.starts_with("vst3:") {
+            return Self::vst3(&crate::vst3::info(clave)?, sample_rate).ok();
+        }
         match clave.strip_prefix("lv2:") {
             Some(uri) => Self::lv2(&crate::lv2::info(uri)?, sample_rate),
             None => Some(Self::new(FxKind::from_name(clave)?, sample_rate)),
@@ -502,7 +520,15 @@ impl Fx {
     }
 
     pub fn nombre(&self) -> &str {
+        if let Some(v) = &self.vst3 {
+            return v.info.nombre.as_str();
+        }
         self.lv2.as_ref().map_or(self.kind.name(), |i| i.nombre.as_str())
+    }
+
+    /// ¿Es un instrumento de terceros (LV2 o VST3)?
+    pub fn es_instrumento(&self) -> bool {
+        self.vst3.as_ref().map_or_else(|| self.lv2.as_ref().is_some_and(|i| i.instrumento), |v| v.info.instrumento)
     }
 
     /// (nombre, mínimo, máximo, valor por defecto) de cada parámetro.
@@ -513,6 +539,10 @@ impl Fx {
     /// Instrumento LV2: toca los eventos MIDI del bloque y suma su sonido a `buf`.
     pub fn tocar(&self, buf: &mut [[f32; 2]], eventos: &[(usize, crate::MidiEvent)], offline: bool) {
         if self.bypass.load(Relaxed) {
+            return;
+        }
+        if let Some(v) = &self.vst3 {
+            v.procesar(buf, eventos, offline);
             return;
         }
         let st = if offline { self.state.lock().ok() } else { self.state.try_lock().ok() };
@@ -552,6 +582,10 @@ impl Fx {
     }
 
     fn process_interno(&self, buf: &mut [[f32; 2]], sr: f32, bpm: f32, offline: bool, clave: Option<&[[f32; 2]]>) {
+        if let Some(v) = &self.vst3 {
+            v.procesar(buf, &[], offline);
+            return;
+        }
         let Some(mut st) = (if offline { self.state.lock().ok() } else { self.state.try_lock().ok() }) else {
             return;
         };

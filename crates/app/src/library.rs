@@ -10,6 +10,8 @@ pub enum LibItem {
     Fx(FxKind),
     /// Plugin LV2: efecto o instrumento según el plugin.
     Plugin(Arc<engine::lv2::Info>),
+    /// Plugin VST3: efecto o instrumento según el plugin.
+    Vst3(Arc<engine::vst3::Info>),
     File(PathBuf),
     Instrument(&'static str),
     /// QUANTUM Drummer: sobre una pista MIDI le pone el kit y abre el plugin (en vacío crea la pista).
@@ -171,9 +173,10 @@ fn places(project: &Path) -> Vec<(String, PathBuf)> {
     v
 }
 
-/// Contenido de una carpeta: subcarpetas y archivos de audio/video (sin ocultos), ordenados.
+/// Contenido de una carpeta: subcarpetas y archivos de audio/video e instrumentos SFZ/Decent Sampler
+/// (sin ocultos), ordenados.
 fn list_dir(dir: &Path) -> Vec<PathBuf> {
-    let media = |p: &Path| p.extension().is_some_and(|e| AUDIO_EXT.contains(&e.to_string_lossy().to_lowercase().as_str())) || video::is_video(p);
+    let media = |p: &Path| p.extension().is_some_and(|e| AUDIO_EXT.contains(&e.to_string_lossy().to_lowercase().as_str())) || video::is_video(p) || instruments::es_archivo_instrumento(p);
     let mut v: Vec<PathBuf> = fs::read_dir(dir).map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default();
     v.retain(|p| !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) && (p.is_dir() || media(p)));
     v.sort_by_key(|p| (!p.is_dir(), p.file_name().map(|n| n.to_string_lossy().to_lowercase())));
@@ -356,14 +359,15 @@ impl App {
         let b = self.lib_buscar.trim().to_lowercase();
         let fx: Vec<FxKind> = FX_CATEGORIES.iter().flat_map(|c| c.1.iter().copied()).filter(|k| visible(*k)).filter(|k| tr(k.name()).to_lowercase().contains(&b) || tr(describe(*k)).to_lowercase().contains(&b) || tr(plugins::summary(*k)).to_lowercase().contains(&b)).collect();
         let inst: Vec<&'static instruments::Entry> = instruments::CATALOG.iter().filter(|e| e.name.to_lowercase().contains(&b) || e.family.to_lowercase().contains(&b) || tr(e.family).to_lowercase().contains(&b)).collect();
-        let otros: Vec<_> = self.plugins.iter().filter(|p| p.1 != "LV2" && p.0.to_lowercase().contains(&b)).cloned().collect();
+        let otros: Vec<_> = self.plugins.iter().filter(|p| p.1 == "CLAP" && p.0.to_lowercase().contains(&b)).cloned().collect();
         let plug: Vec<Arc<engine::lv2::Info>> = engine::lv2::listo()
             .unwrap_or_default()
             .iter()
             .filter(|i| i.nombre.to_lowercase().contains(&b) || i.marca.to_lowercase().contains(&b) || tr(i.categoria.nombre()).to_lowercase().contains(&b))
             .cloned()
             .collect();
-        if fx.is_empty() && inst.is_empty() && plug.is_empty() && otros.is_empty() {
+        let vst3: Vec<Arc<engine::vst3::Info>> = engine::vst3::catalogo().iter().filter(|i| i.nombre.to_lowercase().contains(&b) || i.marca.to_lowercase().contains(&b) || tr(i.categoria.nombre()).to_lowercase().contains(&b)).cloned().collect();
+        if fx.is_empty() && inst.is_empty() && plug.is_empty() && otros.is_empty() && vst3.is_empty() {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| ui.label(RichText::new(tr("Nada coincide con la búsqueda.")).color(TEXT_DIM())));
             return;
@@ -379,6 +383,10 @@ impl App {
         if !plug.is_empty() {
             grupo(ui, "PLUGINS", plug.len());
             self.plugins_por_marca(ui, &plug);
+        }
+        if !vst3.is_empty() {
+            grupo(ui, "VST3", vst3.len());
+            self.filas_vst3(ui, &vst3);
         }
         if !otros.is_empty() {
             crate::lv2ui::otros_formatos(ui, &otros);
@@ -444,7 +452,18 @@ impl App {
             file_icon(p, r.left_center() + vec2(30.0, 0.0), is_dir, if is_dir { METER[1] } else { ACCENT() });
             title(p, r.left_center() + vec2(44.0, 0.0), label, 12.5, TEXT());
         });
-        if !is_dir {
+        let instrumento = !is_dir && instruments::es_archivo_instrumento(path);
+        if instrumento {
+            // Instrumento SFZ o Decent Sampler: se arrastra a una pista MIDI o se usa con doble clic.
+            resp.dnd_set_drag_payload(LibItem::File(path.to_path_buf()));
+            resp.context_menu(|ui| {
+                widgets::menu_style(ui);
+                if ui.button(tr("Usar como instrumento (pista MIDI seleccionada o nueva)")).clicked() {
+                    self.usar_archivo_instrumento(path);
+                    ui.close();
+                }
+            });
+        } else if !is_dir {
             resp.dnd_set_drag_payload(LibItem::File(path.to_path_buf()));
             resp.context_menu(|ui| {
                 widgets::menu_style(ui);
@@ -470,7 +489,9 @@ impl App {
                 }
             });
         }
-        if resp.double_clicked() && !is_dir {
+        if resp.double_clicked() && instrumento {
+            self.usar_archivo_instrumento(path);
+        } else if resp.double_clicked() && !is_dir {
             let at = self.pos();
             if video::is_video(path) {
                 self.import_video(path.to_path_buf(), at);
@@ -482,7 +503,7 @@ impl App {
                 if !self.tree_open.remove(path) {
                     self.tree_open.insert(path.to_path_buf());
                 }
-            } else if !video::is_video(path) {
+            } else if !video::is_video(path) && !instrumento {
                 self.preview_load(path.to_path_buf());
             }
         }
@@ -791,13 +812,13 @@ impl App {
             let libs = instruments::librerias();
             grupo(ui, "MIS LIBRERÍAS", libs.len());
             if libs.is_empty() {
-                ui.label(RichText::new(tr("Agrega carpetas con instrumentos SFZ en Preferencias → Plugins.")).size(11.0).color(TEXT_DIM()));
+                ui.label(RichText::new(tr("Agrega carpetas con instrumentos SFZ o Decent Sampler en Preferencias → Plugins.")).size(11.0).color(TEXT_DIM()));
             }
             for (id, nombre, carpeta) in libs {
                 let r = row(ui, 40.0, 0.0, false, |p, r| {
                     p.text(pos2(r.left() + 12.0, r.top() + 13.0), Align2::LEFT_CENTER, recortar(p, &nombre, 12.5, r.width() - 70.0), FontId::proportional(12.5), TEXT());
                     p.text(pos2(r.left() + 12.0, r.top() + 29.0), Align2::LEFT_CENTER, recortar(p, &carpeta, 10.5, r.width() - 70.0), FontId::proportional(10.5), TEXT_DIM());
-                    p.text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "SFZ", FontId::proportional(10.5), METER[0]);
+                    p.text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, instruments::formato(&id), FontId::proportional(10.5), METER[0]);
                 });
                 let Some(sid) = instruments::id_estatico(&id) else { continue };
                 r.dnd_set_drag_payload(LibItem::Instrument(sid));
@@ -951,14 +972,40 @@ impl App {
                 Some(i) => self.add_fx_lv2(i, info),
                 None => self.status = tr("Suelta el efecto sobre una pista o un canal").into(),
             },
+            LibItem::Vst3(info) if info.instrumento => match track.filter(|&i| self.s.tracks[i].midi()) {
+                Some(i) => self.set_instrumento_vst3(i, info),
+                None => self.status = tr("Suelta el instrumento sobre una pista MIDI").into(),
+            },
+            LibItem::Vst3(info) => match track.filter(|&i| self.admite_efectos(i)) {
+                Some(i) => self.add_fx_vst3(i, info),
+                None => self.status = tr("Suelta el efecto sobre una pista o un canal").into(),
+            },
             LibItem::Drummer => self.soltar_drummer(track),
             LibItem::Patron(i, j) => self.soltar_patron(*i, *j, track, at),
             LibItem::File(path) if video::is_video(path) => self.import_video(path.clone(), at),
+            // Un .sfz o .dspreset sobre una pista MIDI: pasa a ser su instrumento.
+            LibItem::File(path) if instruments::es_archivo_instrumento(path) => match (track.filter(|&i| self.s.tracks[i].midi()), instruments::id_estatico(&format!("sfz:{}", path.display()))) {
+                (Some(i), Some(id)) => self.set_instrument(i, id),
+                _ => self.status = tr("Suelta el instrumento sobre una pista MIDI").into(),
+            },
             LibItem::File(path) => {
                 let r = self.import_one(path, at, track);
                 self.report(format!("Importado: {}", path.display()), r);
             }
         }
+    }
+
+    /// Usa un .sfz o .dspreset como instrumento de la pista MIDI seleccionada (o de una nueva).
+    fn usar_archivo_instrumento(&mut self, path: &Path) {
+        let Some(id) = instruments::id_estatico(&format!("sfz:{}", path.display())) else { return };
+        let i = match self.s.tracks.iter().position(|t| t.selected && t.midi()) {
+            Some(i) => i,
+            None => {
+                self.add_track(instruments::nombre(id), TrackKind::Midi);
+                self.s.tracks.len() - 1
+            }
+        };
+        self.set_instrument(i, id);
     }
 
     /// Copia un patrón donde se suelta: en esa pista si es MIDI, si no en la suya.

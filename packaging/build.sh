@@ -21,7 +21,7 @@ fi
 
 # ---------- Dentro de AlmaLinux 8 (glibc 2.28) ----------
 CACHE=${CACHE:-/cache}
-dnf -y -q install gcc gcc-c++ make diffutils alsa-lib-devel pkgconf-pkg-config curl git file xz findutils python39 python39-pip >/dev/null
+dnf -y -q install gcc gcc-c++ make diffutils alsa-lib-devel libxcb-devel pkgconf-pkg-config curl git file xz findutils python39 python39-pip >/dev/null
 # lilv (plugins LV2): AlmaLinux 8 no lo trae (ni EPEL); se compila estático una vez y queda en la caché.
 pip3.9 install -q --user meson ninja
 PATH="$HOME/.local/bin:$PATH" packaging/linux/lilv.sh "$CACHE/lilv"

@@ -17,6 +17,8 @@ mod io;
 mod sampler;
 mod synth;
 pub mod keys;
+mod dspreset;
+pub mod vst3;
 mod tempo;
 
 pub use devices::{DeviceInfo, MidiConnections, al_llegar_control, audio_devices, bloque_forzado, connect_midi, controles, llegadas_desde, midi_ports, registrar_llegada, tomar_controles};

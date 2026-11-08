@@ -34,6 +34,11 @@ pub const KEYS_PRESETS: [(&str, [f32; 20]); 9] = [
 
 /// Nombre del instrumento propio de una pista MIDI ("synth:<preset>" o "keys:<preset>").
 pub fn nombre_synth(instrumento: &str) -> String {
+    // Plugin VST3: el nombre del bundle («vst3:<ruta>#<clase>»).
+    if let Some(r) = instrumento.strip_prefix("vst3:") {
+        let ruta = r.rsplit_once('#').map_or(r, |x| x.0);
+        return std::path::Path::new(ruta).file_stem().map_or_else(|| "VST3".into(), |n| n.to_string_lossy().to_string());
+    }
     match (instrumento.strip_prefix("synth:"), instrumento.strip_prefix("keys:")) {
         (Some(p), _) => p.to_string(),
         (_, Some(p)) => format!("Keys · {p}"),
@@ -266,6 +271,7 @@ impl App {
             Keys(usize),
             Real(&'static str),
             Lv2(Arc<engine::lv2::Info>),
+            Vst3(Arc<engine::vst3::Info>),
         }
         let t = &self.s.tracks[i];
         let current = match (instruments::es_real(&t.instrument), t.instrument.strip_prefix("synth:")) {
@@ -310,6 +316,18 @@ impl App {
             if ui.button(tr("+ Crear kit desde una carpeta…")).clicked() {
                 crear_kit = true;
             }
+            let vst3: Vec<Arc<engine::vst3::Info>> = engine::vst3::catalogo().iter().filter(|p| p.instrumento).cloned().collect();
+            if !vst3.is_empty() {
+                ui.separator();
+                ui.label(RichText::new(tr("PLUGINS VST3")).size(10.0).color(TEXT_DIM()));
+                for p in vst3 {
+                    let actual = self.s.tracks[i].instrument == p.clave();
+                    let texto = if p.marca.is_empty() { p.nombre.clone() } else { format!("{} · {}", p.nombre, p.marca) };
+                    if ui.selectable_label(actual, texto).on_hover_text(p.ruta.display().to_string()).clicked() {
+                        pick = Some(Pick::Vst3(p));
+                    }
+                }
+            }
             let plugins: Vec<Arc<engine::lv2::Info>> = engine::lv2::listo().unwrap_or_default().iter().filter(|p| p.instrumento).cloned().collect();
             if !plugins.is_empty() {
                 ui.separator();
@@ -345,6 +363,7 @@ impl App {
         match pick {
             Some(Pick::Real(id)) => self.set_instrument(i, id),
             Some(Pick::Lv2(p)) => self.set_instrumento_lv2(i, &p),
+            Some(Pick::Vst3(p)) => self.set_instrumento_vst3(i, &p),
             Some(Pick::Preset(k)) => {
                 let t = &mut self.s.tracks[i];
                 t.instrument = format!("synth:{}", PRESETS[k].0);

@@ -143,7 +143,19 @@ pub fn es_real(id: &str) -> bool {
     find(id).is_some() || es_kit(id) || es_sfz(id)
 }
 
-/// Librería SFZ de las carpetas propias: «sfz:<ruta del archivo>» (se usa donde está, sin copiarla).
+/// ¿Es un archivo de instrumento que abre el sampler (.sfz o .dspreset de Decent Sampler)? Se ignoran
+/// los archivos «._…» que deja macOS al copiar.
+pub fn es_archivo_instrumento(p: &Path) -> bool {
+    !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._")) && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("sfz") || e.eq_ignore_ascii_case("dspreset"))
+}
+
+/// Formato de una librería propia, para mostrarlo: «DS» (Decent Sampler) o «SFZ».
+pub fn formato(id: &str) -> &'static str {
+    if id.to_ascii_lowercase().ends_with(".dspreset") { "DS" } else { "SFZ" }
+}
+
+/// Librería propia (SFZ o Decent Sampler) de las carpetas propias: «sfz:<ruta del archivo>» (se usa
+/// donde está, sin copiarla).
 pub fn es_sfz(id: &str) -> bool {
     id.starts_with("sfz:")
 }
@@ -158,7 +170,19 @@ pub fn set_carpetas(dirs: &[PathBuf]) {
     }
 }
 
-/// Librerías SFZ propias: (id, nombre, carpeta que la contiene). Se buscan una vez y se recuerdan.
+/// Carpetas donde Decent Sampler guarda las librerías que se descargan desde su tienda: se buscan
+/// siempre, sin tener que agregarlas en Preferencias.
+fn carpetas_decent_sampler() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).unwrap_or_default();
+    let mut v = vec![home.join(".config/DecentSampler/Sample Libraries"), home.join("Library/Application Support/DecentSampler/Sample Libraries")];
+    if let Some(a) = std::env::var_os("APPDATA") {
+        v.push(PathBuf::from(a).join("DecentSampler").join("Sample Libraries"));
+    }
+    v.into_iter().filter(|d| d.is_dir()).collect()
+}
+
+/// Librerías propias (SFZ y Decent Sampler): (id, nombre, carpeta que la contiene). Se buscan una vez
+/// y se recuerdan.
 pub fn librerias() -> Vec<(String, String, String)> {
     fn buscar(d: &Path, nivel: usize, v: &mut Vec<PathBuf>) {
         let mut hijos: Vec<PathBuf> = fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()).collect();
@@ -167,9 +191,10 @@ pub fn librerias() -> Vec<(String, String, String)> {
             if v.len() >= 2000 {
                 return;
             }
-            if p.is_dir() && nivel < 5 && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
+            let oculta = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.') || n == "__MACOSX");
+            if p.is_dir() && nivel < 5 && !oculta {
                 buscar(&p, nivel + 1, v);
-            } else if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("sfz")) {
+            } else if es_archivo_instrumento(&p) {
                 v.push(p);
             }
         }
@@ -178,7 +203,13 @@ pub fn librerias() -> Vec<(String, String, String)> {
     cache
         .get_or_insert_with(|| {
             let mut v = vec![];
-            for d in CARPETAS.lock().map(|c| c.clone()).unwrap_or_default() {
+            let mut dirs = CARPETAS.lock().map(|c| c.clone()).unwrap_or_default();
+            for d in carpetas_decent_sampler() {
+                if !dirs.contains(&d) {
+                    dirs.push(d);
+                }
+            }
+            for d in dirs {
                 buscar(&d, 0, &mut v);
             }
             v.iter()
@@ -625,10 +656,19 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("quantum-sfz-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("Pianos/Mi Piano")).unwrap();
         std::fs::write(dir.join("Pianos/Mi Piano/Gran_Piano.sfz"), "<region> sample=a.wav").unwrap();
+        // Decent Sampler, con la basura que deja macOS al comprimir (no debe aparecer).
+        std::fs::create_dir_all(dir.join("Violines/__MACOSX")).unwrap();
+        std::fs::write(dir.join("Violines/Fragile.dspreset"), "<DecentSampler/>").unwrap();
+        std::fs::write(dir.join("Violines/._Fragile.dspreset"), "").unwrap();
+        std::fs::write(dir.join("Violines/__MACOSX/Fragile.dspreset"), "").unwrap();
         super::set_carpetas(std::slice::from_ref(&dir));
-        let libs = super::librerias();
+        // Solo las de la carpeta de prueba (en el equipo puede haber librerías de Decent Sampler).
+        let libs: Vec<_> = super::librerias().into_iter().filter(|l| l.0.contains(&dir.display().to_string())).collect();
         std::fs::remove_dir_all(&dir).unwrap();
-        assert_eq!(libs.len(), 1);
+        assert_eq!(libs.len(), 2, "{libs:?}");
+        let (ds, nombre_ds, _) = &libs[1];
+        assert_eq!((nombre_ds.as_str(), super::formato(ds), super::formato(&libs[0].0)), ("Fragile", "DS", "SFZ"));
+        assert!(super::es_real(ds) && super::sfz_path(ds).unwrap().ends_with("Fragile.dspreset"));
         let (id, nombre, carpeta) = &libs[0];
         assert!(super::es_sfz(id) && super::es_real(id));
         assert_eq!((nombre.as_str(), carpeta.as_str()), ("Gran Piano", "Mi Piano"));

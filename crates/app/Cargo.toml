@@ -7,6 +7,7 @@ authors = ["Ivan Cheaib <ivanchepy@gmail.com>"]
 repository = "https://github.com/quantexpy69/quantumdaw"
 
 [dependencies]
+base64 = "0.22.1"
 anyhow = "1.0.104"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 cpal = "0.18.2"
@@ -44,7 +45,7 @@ copyright = "2026, Ivan Cheaib"
 extended-description = "Estación de audio digital moderna: pistas de audio y MIDI, mixer con automatización, plugins propios, editor de audio, piano roll con instrumentos reales gratuitos y video."
 section = "sound"
 priority = "optional"
-depends = "libasound2 | libasound2t64, libc6 (>= 2.28)"
+depends = "libasound2 | libasound2t64, libc6 (>= 2.28), libxcb1"
 recommends = "ffmpeg, p7zip-full, curl, xz-utils"
 suggests = "pipewire-bin"
 assets = [
@@ -86,6 +87,7 @@ auto-req = "no"
 [package.metadata.generate-rpm.requires]
 glibc = ">= 2.28"
 alsa-lib = "*"
+libxcb = "*"
 [package.metadata.generate-rpm.recommends]
 ffmpeg = "*"
 p7zip = "*"
