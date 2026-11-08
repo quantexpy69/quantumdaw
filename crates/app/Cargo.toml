@@ -31,7 +31,8 @@ pro = []
 # Audio por PipeWire nativo en Linux (necesita libpipewire-0.3-dev y libclang al compilar).
 pipewire = ["engine/pipewire"]
 
-[target.'cfg(target_os = "linux")'.dependencies]
+# Linux y macOS: registro de cierres por señales (informes.rs) y utilidades del sistema.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2.190"
 
 [build-dependencies]
