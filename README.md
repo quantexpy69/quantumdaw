@@ -5,7 +5,7 @@ motor de audio en tiempo real sin bloqueos y herramientas profesionales de graba
 
 Desarrollo: **Ivan Cheaib — QUANTUM DAW** · [www.quantumdaw.com](https://www.quantumdaw.com) · [www.quantex.com.py](https://www.quantex.com.py)
 
-Versión actual: **0.59.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
+Versión actual: **0.60.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en español, inglés y portugués.
 
 ---
 
@@ -58,6 +58,10 @@ Versión actual: **0.59.0** · Linux (Fedora, PipeWire/ALSA) · Interfaz en espa
 
 ### Instrumentos y MIDI
 - Piano roll con teclado musical en el PC, entrada desde controladores MIDI y **QUANTUM Synth**.
+- **QUANTUM Keys**: piano eléctrico (tipo Rhodes y Wurli) y órgano de ruedas fónicas con 9 drawbars, percusión,
+  clic de tecla y Leslie; sin muestras, con 9 presets.
+- **Plugins VST3** en las pistas (efectos e instrumentos, p. ej. Decent Sampler) con su propia ventana y su estado
+  guardado en el proyecto; **librerías de Decent Sampler** (`.dspreset`) y **SFZ** con el sampler propio, sin plugin.
 - **MIDI Learn**: las perillas, botones y pedales del teclado controlador mueven faders, panoramas y controles de
   plugins; rueda de tono, modulación y pedal de sustain en los instrumentos.
 - Carril de control bajo el piano roll con barras verticales por nota: **velocidad**, **ganancia** (dB) y
@@ -214,7 +218,7 @@ Todos los atajos se cambian en **Herramientas → Atajos de teclado y ratón**.
 
 ## Hoja de ruta
 
-Carga de plugins VST3/CLAP en las pistas · compensación de latencia · Flex Time / Flex Pitch ·
+Carga de plugins CLAP en las pistas · compensación de latencia · Flex Time / Flex Pitch ·
 pista de acordes · Mastering Assistant · separación de stems · Spatial Audio.
 
 ---
