@@ -32,9 +32,12 @@ cargo update -w --quiet
 cargo build -p quantum-daw --quiet
 if ($LASTEXITCODE -ne 0) { throw "No compila: revisa los errores antes de publicar" }
 
-git add -A
-git commit -q -F $Notas
-git tag "v$Version"
-git push origin main
-git push origin "v$Version"
+# git escribe avisos por stderr (por ejemplo los de fin de línea) y PowerShell 5 los tomaría como
+# errores: se ejecuta sin cortar y se mira el código de salida.
+function Git { $ErrorActionPreference = 'Continue'; & git @args 2>&1 | Where-Object { "$_" -notmatch 'LF will be replaced' } | ForEach-Object { "$_" }; if ($LASTEXITCODE -ne 0) { throw "git $args falló" } }
+Git add -A
+Git commit -q -F $Notas
+Git tag "v$Version"
+Git push -q origin main
+Git push -q origin "v$Version"
 Write-Host "Publicada v$Version. Sigue la compilación en https://github.com/quantexpy69/quantumdaw/actions"
