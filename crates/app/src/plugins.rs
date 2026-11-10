@@ -778,6 +778,12 @@ impl App {
             AddLv2(Arc<engine::lv2::Info>),
             /// Abrir (true) o cerrar la ventana de un plugin VST3 (None: el instrumento de la pista).
             VentanaVst3(Option<usize>, bool),
+            /// Quitar el instrumento de la pista (true: también el Synth, queda sin instrumento).
+            QuitarInstrumento(bool),
+            /// Volver a usar el QUANTUM Synth en una pista que quedó sin instrumento.
+            UsarSynth,
+            /// Un VST3 que está como efecto pasa a ser el instrumento de la pista MIDI.
+            ComoInstrumento(usize),
             MyPlugins,
             Licencias,
             Drums,
@@ -790,6 +796,7 @@ impl App {
         let alto_fila = if en_fila { self.alto_dispositivos.min((ui.available_height() - 4.0).max(0.0)) } else { 0.0 };
         let mut cuerpo = |app: &Self, ui: &mut egui::Ui| {
             let t = &app.s.tracks[i];
+            let es_midi = t.midi();
             // Pistas que pueden ser clave del sidechain de Curves (todas menos esta).
             let pistas: Vec<(u64, String)> = app.s.tracks.iter().filter(|x| x.id != t.id).map(|x| (x.id, x.name.clone())).collect();
             let plugin = |ui: &mut egui::Ui,
@@ -838,6 +845,16 @@ impl App {
                             }
                             if widgets::boton_cabecera(ui, widgets::draw_subir, j > 0).on_hover_text(tr("Subir en la cadena")).clicked() {
                                 accion_cabecera = Some(Act::Up(j));
+                            }
+                        });
+                    } else if es_midi {
+                        // Instrumento de la pista: el mismo botón de quitar que los efectos. Un
+                        // instrumento propio vuelve al Synth; el Synth deja la pista sin instrumento.
+                        let synth = t.plugin.is_none();
+                        let ayuda = if synth { tr("Quitar el Synth (la pista queda sin instrumento)") } else { tr("Quitar el instrumento (vuelve el Synth)") };
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if widgets::boton_cabecera(ui, widgets::draw_quitar, true).on_hover_text(ayuda).clicked() {
+                                accion_cabecera = Some(Act::QuitarInstrumento(synth));
                             }
                         });
                     }
@@ -900,6 +917,12 @@ impl App {
                                 }
                             });
                             ui.label(RichText::new(v.info.ruta.display().to_string()).size(9.5).color(TEXT_DIM())).on_hover_text(v.info.ruta.display().to_string());
+                            // Como efecto de una pista MIDI no recibe las notas: puede pasar a ser su instrumento.
+                            if let (Some(j), true) = (j, es_midi)
+                                && ui.button(tr("Usar como instrumento de la pista")).on_hover_text(tr("Recibe las notas MIDI de la pista y deja de sonar el Synth")).clicked()
+                            {
+                                *act = Some(Act::ComoInstrumento(j));
+                            }
                         }
                         _ => display(ui, kind, &values, readout, accent, sr, alto_visor, fx),
                     }
@@ -936,7 +959,16 @@ impl App {
                 }
                 ui.add_space(6.0);
             };
-            if let Some(p) = &t.plugin {
+            if es_midi && t.instrument == crate::SIN_INSTRUMENTO {
+                if !en_fila {
+                    ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
+                }
+                ui.label(RichText::new(tr("Sin instrumento: arrastra uno desde la Biblioteca (Instrumentos o Plugins) o vuelve al Synth.")).size(11.5).color(TEXT_DIM()));
+                if ui.button(tr("Usar QUANTUM Synth")).clicked() {
+                    act = Some(Act::UsarSynth);
+                }
+                ui.add_space(6.0);
+            } else if let Some(p) = &t.plugin {
                 // Instrumento LV2: su carátula y sus controles, como un efecto más.
                 if !en_fila {
                     ui.label(RichText::new(tr("INSTRUMENTO")).size(10.0).color(TEXT_DIM()));
@@ -950,16 +982,17 @@ impl App {
                 }
                 let e = instruments::find(&t.instrument);
                 let nombre = if instruments::es_kit(&t.instrument) { instruments::nombre(&t.instrument) } else { e.map_or(s.name.clone(), |e| e.name.to_string()) };
-                let mut abrir_drums = false;
+                let (mut abrir_drums, mut quitar) = (false, false);
                 let cabecera = |ui: &mut egui::Ui| {
                     ui.label(RichText::new(&nombre).size(13.5).strong().color(TEXT()));
                     ui.label(RichText::new(tr("INSTRUMENTO")).size(9.0).strong().color(ACCENT()));
-                    if bateria {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        quitar = widgets::boton_cabecera(ui, widgets::draw_quitar, true).on_hover_text(tr("Quitar el instrumento (vuelve el Synth)")).clicked();
+                        if bateria {
                             let b = egui::Button::new(RichText::new(tr("Abrir Q Drums")).strong().color(BG())).fill(Color32::from_rgb(0xFF, 0x6B, 0x3D));
                             abrir_drums = ui.add(b).on_hover_text(tr("Ritmos, kit y piezas de la batería")).clicked();
-                        });
-                    }
+                        }
+                    });
                 };
                 let (_, natural) = widgets::dispositivo(ui, ACCENT(), alto_fila, cabecera, |ui| {
                     ui.set_width(ui.available_width());
@@ -974,6 +1007,9 @@ impl App {
                 alto_max.set(alto_max.get().max(natural));
                 if abrir_drums {
                     act = Some(Act::Drums);
+                }
+                if quitar {
+                    act = Some(Act::QuitarInstrumento(false));
                 }
                 ui.add_space(6.0);
                 });
@@ -1056,6 +1092,23 @@ impl App {
                     }
                 }
             }
+            Some(Act::QuitarInstrumento(synth)) => {
+                // Su ventana se cierra con el instrumento.
+                if let Some(p) = self.s.tracks[i].plugin.clone() {
+                    self.cerrar_ventana_plugin(&p);
+                }
+                if synth {
+                    self.quitar_synth(i);
+                } else {
+                    self.quitar_instrumento(i);
+                }
+            }
+            Some(Act::UsarSynth) => {
+                self.edit();
+                self.s.tracks[i].instrument.clear();
+                self.dirty = true;
+            }
+            Some(Act::ComoInstrumento(j)) => self.efecto_a_instrumento(i, j),
             Some(Act::Detectar(j)) => self.status = self.curves_detectar(i, j),
             Some(Act::Sincronizar) => self.dirty = true,
             Some(Act::MyPlugins) => (self.show_lib, self.lib_tab) = (true, library::PLUGINS_TAB),

@@ -2,6 +2,11 @@
 resolver = "3"
 members = ["crates/*"]
 
+# vst3-host con un arreglo propio (ver vendor/vst3-host/QUANTUM.md): abre las ventanas de los
+# plugins que no dan su tamaño antes de colocarlas, como Kontakt.
+[patch.crates-io]
+vst3-host = { path = "vendor/vst3-host" }
+
 [profile.dev]
 opt-level = 1
 

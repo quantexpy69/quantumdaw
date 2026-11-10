@@ -153,6 +153,16 @@ fn restaurar_vst3(f: &Fx, estado: &str) {
     }
 }
 
+/// Plugins VST3 abiertos que se reutilizan al recargar el proyecto con otro audio: (pista, ranura
+/// (None = instrumento), clave, plugin). La pista `usize::MAX` es el master.
+type ReusoVst3 = Vec<(usize, Option<usize>, String, Arc<Fx>)>;
+
+/// Toma de `reuso` el plugin de esa pista y ranura si es el mismo y sigue valiendo (misma frecuencia).
+fn tomar_reuso(reuso: &mut ReusoVst3, pista: usize, ranura: Option<usize>, clave: &str, sr: u32) -> Option<Arc<Fx>> {
+    let k = reuso.iter().position(|r| r.0 == pista && r.1 == ranura && r.2 == clave && r.3.vst3.as_ref().is_some_and(|v| v.frecuencia() == sr))?;
+    Some(reuso.swap_remove(k).3)
+}
+
 fn params_guardables(f: &Fx) -> Vec<f32> {
     if engine::pro::licenciado(f.kind) { f.params.iter().map(|p| p.get()).collect() } else { f.defs().iter().map(|d| d.3).collect() }
 }
@@ -194,6 +204,9 @@ fn user_name() -> String {
     }
     user
 }
+
+/// Instrumento de una pista MIDI a la que se le quitó también el Synth: no suena nada.
+pub const SIN_INSTRUMENTO: &str = "ninguno";
 
 /// Carpeta (todavía sin crear) para una canción nueva sin guardar: «Mi canción», «Mi canción 2»…
 fn cancion_sin_guardar() -> PathBuf {
@@ -867,6 +880,8 @@ struct App {
     avisar_al_dia: bool,
     /// Nombre y artista de la canción cuando se abrió su menú (para guardarlos solos al cerrarlo).
     titulo_al_abrir: Option<(String, String)>,
+    /// VST3 abiertos para reutilizar en la próxima recarga (al cambiar solo el audio).
+    reusar_vst3: ReusoVst3,
     /// Exportación en curso (en segundo plano, con su ventana de progreso).
     exportando: Option<exportar::EnCurso>,
     drag: Option<timeline::Drag>,
@@ -1073,6 +1088,7 @@ impl App {
             carpeta_exportacion: None,
             avisar_al_dia: false,
             titulo_al_abrir: None,
+            reusar_vst3: Vec::new(),
             exportando: None,
             drag: None,
             ctx_region: None,
@@ -1177,11 +1193,19 @@ impl App {
 
     fn apply_project(&mut self, p: Project) {
         let (e, sr) = (self.engine.clone(), self.sr());
+        // Al cambiar solo el audio (buffer, dispositivo) los VST3 abiertos se reutilizan: Kontakt y
+        // otros tardan en abrir y en recargar sus sonidos, y su ventana sigue abierta.
+        let mut reuso = std::mem::take(&mut self.reusar_vst3);
         self.partitura_app.doc = p.partitura.clone().unwrap_or_default();
         self.master_fx = p
             .master_fx
             .iter()
-            .filter_map(|f| {
+            .enumerate()
+            .filter_map(|(j, f)| {
+                if let Some(fx) = tomar_reuso(&mut reuso, usize::MAX, Some(j), &f.kind, e.sample_rate) {
+                    fx.bypass.store(f.bypass, Relaxed);
+                    return Some(fx);
+                }
                 let fx = Fx::desde_clave(&f.kind, e.sample_rate)?;
                 fx.params.iter().zip(&f.params).for_each(|(a, v)| a.set(*v));
                 fx.bypass.store(f.bypass, Relaxed);
@@ -1202,7 +1226,7 @@ impl App {
         let f = |s: f64| (s * sr) as u64;
         let frames = |v: &[(f64, f32)]| v.iter().map(|&(t, x)| (f(t), x)).collect();
         let mut tracks = vec![];
-        for ts in &p.tracks {
+        for (idx, ts) in p.tracks.iter().enumerate() {
             let mut t = Track::new(ts.name.clone(), ts.kind, rgb(ts.color));
             let pr = &t.params;
             pr.gain.set(ts.gain);
@@ -1228,7 +1252,12 @@ impl App {
             t.fx = ts
                 .fx
                 .iter()
-                .filter_map(|f| {
+                .enumerate()
+                .filter_map(|(j, f)| {
+                    if let Some(fx) = tomar_reuso(&mut reuso, idx, Some(j), &f.kind, e.sample_rate) {
+                        fx.bypass.store(f.bypass, Relaxed);
+                        return Some(fx);
+                    }
                     let Some(fx) = Fx::desde_clave(&f.kind, e.sample_rate) else {
                         missing.push(format!("{} ({})", ts.name, f.kind));
                         return None;
@@ -1244,10 +1273,14 @@ impl App {
             }
             (t.instrument, t.icon) = (ts.instrument.clone(), ts.icon.clone());
             if ts.instrument.starts_with("vst3:") {
-                t.plugin = Fx::desde_clave(&ts.instrument, e.sample_rate).map(Arc::new);
-                match &t.plugin {
-                    Some(p) => restaurar_vst3(p, &ts.plugin_estado),
-                    None => missing.push(format!("{} (plugin VST3 {})", ts.name, ts.instrument.trim_start_matches("vst3:"))),
+                if let Some(fx) = tomar_reuso(&mut reuso, idx, None, &ts.instrument, e.sample_rate) {
+                    t.plugin = Some(fx);
+                } else {
+                    t.plugin = Fx::desde_clave(&ts.instrument, e.sample_rate).map(Arc::new);
+                    match &t.plugin {
+                        Some(p) => restaurar_vst3(p, &ts.plugin_estado),
+                        None => missing.push(format!("{} (plugin VST3 {})", ts.name, ts.instrument.trim_start_matches("vst3:"))),
+                    }
                 }
             }
             if let Some(uri) = ts.instrument.strip_prefix("lv2:") {
@@ -1581,7 +1614,15 @@ impl App {
 
     /// Añade un plugin VST3 como efecto de la pista y lo muestra en Dispositivos.
     fn add_fx_vst3(&mut self, i: usize, info: &Arc<engine::vst3::Info>) {
+        // Un instrumento (Kontakt, Decent Sampler…) en una pista MIDI va como instrumento: como
+        // efecto no recibiría las notas.
+        if info.instrumento && self.s.tracks[i].midi() {
+            self.set_instrumento_vst3(i, info);
+            return;
+        }
         match Fx::vst3(info, self.engine.sample_rate) {
+            // Al abrirlo resultó ser un instrumento (su categoría real): en una pista MIDI, instrumento.
+            Ok(fx) if self.s.tracks[i].midi() && fx.vst3.as_ref().is_some_and(|v| v.info.instrumento) => self.poner_instrumento_vst3(i, Arc::new(fx)),
             Ok(fx) => {
                 self.edit();
                 self.s.tracks[i].fx.push(Arc::new(fx));
@@ -1595,19 +1636,22 @@ impl App {
     /// Pone un instrumento VST3 en la pista MIDI `i` y abre su ventana (allí se eligen sonidos y
     /// librerías, como en Decent Sampler).
     fn set_instrumento_vst3(&mut self, i: usize, info: &Arc<engine::vst3::Info>) {
-        let fx = match Fx::vst3(info, self.engine.sample_rate) {
-            Ok(fx) => Arc::new(fx),
-            Err(e) => {
-                self.status = format!("{} {}: {e}", tr("No se pudo abrir el plugin"), info.nombre);
-                return;
-            }
-        };
+        match Fx::vst3(info, self.engine.sample_rate) {
+            Ok(fx) => self.poner_instrumento_vst3(i, Arc::new(fx)),
+            Err(e) => self.status = format!("{} {}: {e}", tr("No se pudo abrir el plugin"), info.nombre),
+        }
+    }
+
+    /// Pone un VST3 ya abierto como instrumento de la pista `i` y abre su ventana.
+    fn poner_instrumento_vst3(&mut self, i: usize, fx: Arc<Fx>) {
+        let Some(v) = fx.vst3.clone() else { return };
         self.edit();
         let t = &mut self.s.tracks[i];
-        (t.instrument, t.sampler, t.plugin) = (info.clave(), None, Some(fx.clone()));
+        (t.instrument, t.sampler, t.plugin) = (v.info.clave(), None, Some(fx.clone()));
         let id = t.id;
         self.pending_inst.retain(|p| p.0 != id);
-        self.status = format!("{} {} «{}»", info.nombre, tr("suena en"), self.s.tracks[i].name);
+        self.status = format!("{} {} «{}»", v.info.nombre, tr("suena en"), self.s.tracks[i].name);
+        self.dirty = true;
         self.abrir_efectos(i);
         self.abrir_ventana_plugin(&fx);
     }
@@ -1660,6 +1704,7 @@ impl App {
             }
         }
         if hay {
+            engine::vst3::atender_temporizadores();
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
         if self.ventanas_plugin.is_empty() {
@@ -1707,6 +1752,29 @@ impl App {
         } else {
             (self.show_mixer, self.bottom_tab) = (true, 6);
         }
+    }
+
+    /// Quita también el QUANTUM Synth: la pista MIDI queda sin instrumento (no suena hasta ponerle
+    /// uno). Se guarda en el proyecto con el instrumento `SIN_INSTRUMENTO`.
+    fn quitar_synth(&mut self, i: usize) {
+        self.quitar_instrumento(i);
+        self.s.tracks[i].instrument = SIN_INSTRUMENTO.into();
+        self.status = format!("«{}» {}", self.s.tracks[i].name, tr("quedó sin instrumento"));
+    }
+
+    /// Un plugin VST3 que está como efecto en una pista MIDI pasa a ser su instrumento (recibe el
+    /// MIDI de la pista y deja de sonar el Synth).
+    fn efecto_a_instrumento(&mut self, i: usize, j: usize) {
+        let Some(fx) = self.s.tracks[i].fx.get(j).cloned() else { return };
+        let Some(v) = fx.vst3.clone() else { return };
+        self.edit();
+        let t = &mut self.s.tracks[i];
+        t.fx.remove(j);
+        (t.instrument, t.sampler, t.plugin) = (v.info.clave(), None, Some(fx));
+        let id = t.id;
+        self.pending_inst.retain(|p| p.0 != id);
+        self.status = format!("{} {} «{}»", v.info.nombre, tr("suena en"), self.s.tracks[i].name);
+        self.dirty = true;
     }
 
     /// Quita el instrumento propio de una pista MIDI: vuelve a sonar el QUANTUM Synth.
@@ -1929,7 +1997,7 @@ impl App {
                 },
                 fx: if proxy.is_some() { vec![] } else { t.fx.clone() },
                 // Con un instrumento real (batería, piano…) no suena el sintetizador, ni mientras se carga.
-                synth: if congelada || instruments::es_real(&t.instrument) || t.plugin.is_some() { None } else { t.synth.clone() },
+                synth: if congelada || instruments::es_real(&t.instrument) || t.plugin.is_some() || t.instrument == SIN_INSTRUMENTO { None } else { t.synth.clone() },
                 sampler: if congelada { None } else { t.sampler.clone() },
                 plugin: if congelada { None } else { t.plugin.clone() },
                 input: (audio_in && l < ich).then_some((l, r)),

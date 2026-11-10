@@ -121,7 +121,7 @@ fn leer_bundle(ruta: &Path) -> Vec<Info> {
         // Sin datos: por el nombre (se adivina si es instrumento).
         _ => {
             let n = base.to_lowercase();
-            let instrumento = ["synth", "sampler", "piano", "drum", "organ", "instrument"].iter().any(|k| n.contains(k));
+            let instrumento = INSTRUMENTOS_CONOCIDOS.iter().any(|k| n.contains(k));
             vec![Info { ruta: ruta.to_path_buf(), clase: String::new(), nombre: base.clone(), marca: String::new(), instrumento, categoria: categoria("", &base) }]
         }
     }
@@ -169,6 +169,14 @@ pub fn info(clave: &str) -> Option<Arc<Info>> {
     ruta.exists().then(|| leer_bundle(ruta).into_iter().find(|i| i.clase == clase).map(Arc::new)).flatten()
 }
 
+/// Palabras de nombres de instrumentos, para los VST3 sin moduleinfo.json (un solo archivo .vst3,
+/// habitual en Windows). Al abrirlos se confirma con su categoría real (ver `Instancia::nueva`).
+const INSTRUMENTOS_CONOCIDOS: [&str; 40] = [
+    "synth", "sampler", "piano", "drum", "organ", "instrument", "kontakt", "komplete", "battery", "massive", "fm8", "reaktor", "omnisphere", "keyscape", "trilian",
+    "serum", "vital", "pigments", "analog lab", "diva", "repro", "zebra", "hive", "sylenth", "nexus", "spire", "halion", "groove agent", "superior drummer", "ezdrummer",
+    "ezkeys", "addictive", "spitfire", "labs", "sampletank", "pianoteq", "dexed", "surge", "phase plant", "sforzando",
+];
+
 /// Un plugin abierto.
 pub struct Instancia {
     pub info: Arc<Info>,
@@ -178,7 +186,28 @@ pub struct Instancia {
     avisado: std::sync::atomic::AtomicBool,
     /// Bloques que salieron sin el plugin porque estaba ocupado (la ventana lo tenía).
     pub perdidos: std::sync::atomic::AtomicU32,
+    /// Eventos MIDI de bloques que salieron sin el plugin: van al principio del siguiente bloque
+    /// (perder un note on deja la tecla muda; perder un note off deja la nota colgada).
+    pendientes: Mutex<Pendientes>,
     sample_rate: f32,
+}
+
+/// Eventos MIDI guardados sin pedir memoria (se usa en el hilo de audio).
+struct Pendientes {
+    items: [MidiEvent; 256],
+    len: usize,
+}
+
+impl Default for Pendientes {
+    fn default() -> Self {
+        Self { items: [[0; 3]; 256], len: 0 }
+    }
+}
+
+/// Controles propios de las notas de QUANTUM (ganancia y ataque por nota, para sus instrumentos):
+/// no se envían a los plugins, que los tomarían por otros (el CC73 es «tiempo de ataque»).
+fn cc_propio(e: &MidiEvent) -> bool {
+    e[0] & 0xF0 == 0xB0 && (e[1] == crate::CC_GANANCIA || e[1] == crate::CC_ATAQUE)
 }
 
 /// Toma un mutex esperando como mucho hasta `limite` (en tiempo real no se bloquea sin fin: si no se
@@ -212,11 +241,24 @@ impl Instancia {
         let mut host = Vst3Host::builder().sample_rate(sample_rate as f64).block_size(BLOQUE).with_process_isolation(false).build()?;
         let mut plugin = if info.clase.is_empty() { host.load_plugin(&info.ruta)? } else { host.load_plugin_class(&info.ruta, &info.clase)? };
         plugin.start_processing()?;
+        // Ya abierto, el plugin dice qué es: su categoría real («Instrument|Sampler») y si tiene
+        // entrada de audio y de MIDI. Los que no traen moduleinfo.json (Kontakt en Windows, un solo
+        // archivo .vst3) se catalogan por el nombre y pueden haberse tomado por efectos.
+        let datos = plugin.info().clone();
+        let por_categoria = datos.category.to_lowercase().contains("instrument");
+        let es_instrumento = info.instrumento || por_categoria || (datos.audio_inputs == 0 && datos.has_midi_input);
+        // Con la categoría real, también se corrige el tipo que se adivinó por el nombre.
+        let info = if es_instrumento == info.instrumento && !por_categoria {
+            info.clone()
+        } else {
+            let cat = if por_categoria { categoria(&datos.category, &info.nombre) } else { info.categoria };
+            Arc::new(Info { ruta: info.ruta.clone(), clase: info.clase.clone(), nombre: info.nombre.clone(), marca: info.marca.clone(), instrumento: es_instrumento, categoria: cat })
+        };
         let salidas = plugin.output_channel_count().max(2);
         let entradas = if info.instrumento { 0 } else { 2 };
         let mut bufs = AudioBuffers::new(entradas, salidas, BLOQUE, sample_rate as f64);
         bufs.clear();
-        Ok(Self { info: info.clone(), plugin: Arc::new(Mutex::new(plugin)), bufs: Mutex::new(bufs), avisado: Default::default(), perdidos: Default::default(), sample_rate: sample_rate as f32 })
+        Ok(Self { info, plugin: Arc::new(Mutex::new(plugin)), bufs: Mutex::new(bufs), avisado: Default::default(), perdidos: Default::default(), pendientes: Default::default(), sample_rate: sample_rate as f32 })
     }
 
     /// Procesa un bloque: los eventos MIDI en su posición y el audio de `buf`. Los efectos
@@ -236,9 +278,29 @@ impl Instancia {
         };
         let (Some(mut plugin), Some(mut b)) = (plugin, bufs) else {
             self.perdidos.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            // Las notas de este bloque no se pierden: esperan al siguiente.
+            if let Ok(mut p) = self.pendientes.try_lock() {
+                for &(_, e) in eventos.iter().filter(|(_, e)| !cc_propio(e)) {
+                    if p.len < p.items.len() {
+                        let k = p.len;
+                        p.items[k] = e;
+                        p.len += 1;
+                    }
+                }
+            }
             return;
         };
-        for &(at, e) in eventos {
+        if let Ok(mut p) = self.pendientes.try_lock()
+            && p.len > 0
+        {
+            for e in &p.items[..p.len] {
+                if let Some(ev) = Vst3Midi::from_midi_bytes(e) {
+                    let _ = plugin.send_midi_event_at(ev, 0);
+                }
+            }
+            p.len = 0;
+        }
+        for &(at, e) in eventos.iter().filter(|(_, e)| !cc_propio(e)) {
             if let Some(ev) = Vst3Midi::from_midi_bytes(&e) {
                 let _ = plugin.send_midi_event_at(ev, at.min(n - 1) as i32);
             }
@@ -272,6 +334,11 @@ impl Instancia {
         !datos.is_empty() && self.plugin.lock().is_ok_and(|mut p| p.load_state(datos).is_ok())
     }
 
+    /// Frecuencia de muestreo con la que se abrió.
+    pub fn frecuencia(&self) -> u32 {
+        self.sample_rate as u32
+    }
+
     pub fn tiene_ventana(&self) -> bool {
         self.plugin.lock().is_ok_and(|p| p.has_editor())
     }
@@ -297,6 +364,49 @@ pub fn servir_plugin(inst: &Instancia) {
     }
 }
 
+/// Windows: entrega los temporizadores (`WM_TIMER`) pendientes del hilo de la interfaz. Llamar en
+/// cada cuadro mientras haya plugins VST3, sin tener el plugin tomado.
+///
+/// Windows solo saca un `WM_TIMER` de la cola cuando no queda ningún otro mensaje ni repintado
+/// pendiente, y la interfaz de QUANTUM pide repintar seguido: los temporizadores no llegaban nunca.
+/// Los plugins hechos con Qt (Kontakt 8 y otros de Native Instruments) procesan sus eventos con un
+/// temporizador cuando corren dentro de otro programa, así que se quedaban congelados: no
+/// respondían a los clics ni terminaban de cargar. Pedirlos con el filtro `WM_TIMER` los saca
+/// aunque haya repintados pendientes.
+pub fn atender_temporizadores() {
+    #[cfg(windows)]
+    {
+        #[repr(C)]
+        struct Msg {
+            hwnd: isize,
+            message: u32,
+            wparam: usize,
+            lparam: isize,
+            time: u32,
+            x: i32,
+            y: i32,
+            private: u32,
+        }
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn PeekMessageW(m: *mut Msg, h: isize, min: u32, max: u32, quitar: u32) -> i32;
+            fn DispatchMessageW(m: *const Msg) -> isize;
+        }
+        const WM_TIMER: u32 = 0x0113;
+        const PM_REMOVE: u32 = 1;
+        let mut m = Msg { hwnd: 0, message: 0, wparam: 0, lparam: 0, time: 0, x: 0, y: 0, private: 0 };
+        // Con tope: un temporizador que vence en cada vuelta no debe dejar la interfaz atrapada aquí.
+        for _ in 0..64 {
+            // SAFETY: `m` es un MSG válido (mismo diseño que el de Win32) y vive durante la llamada.
+            if unsafe { PeekMessageW(&mut m, 0, WM_TIMER, WM_TIMER, PM_REMOVE) } == 0 {
+                break;
+            }
+            // SAFETY: el mensaje lo acaba de entregar Windows para una ventana de este hilo.
+            unsafe { DispatchMessageW(&m) };
+        }
+    }
+}
+
 /// Atiende una ventana de plugin abierta (llamar en cada cuadro de la interfaz): eventos de la
 /// ventana y temporizadores del plugin (Linux), sin esperar si el audio tiene el plugin.
 /// Devuelve `false` cuando el usuario la cerró.
@@ -314,6 +424,18 @@ pub fn servir_ventana(ventana: &PluginWindow, plugin: &Mutex<Plugin>) -> bool {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Los CC de ganancia y ataque por nota son de QUANTUM; los del teclado (rueda, expresión,
+    /// pedal) siguen yendo al plugin.
+    #[test]
+    fn controles_propios_no_van_al_plugin() {
+        assert!(cc_propio(&[0xB0, crate::CC_GANANCIA, 90]));
+        assert!(cc_propio(&[0xB3, crate::CC_ATAQUE, 10]));
+        assert!(!cc_propio(&[0xB0, 1, 127]));
+        assert!(!cc_propio(&[0xB0, 11, 100]));
+        assert!(!cc_propio(&[0xB0, 64, 127]));
+        assert!(!cc_propio(&[0x90, crate::CC_GANANCIA, 100]));
+    }
 
     #[test]
     fn categorias_y_clave() {
@@ -400,7 +522,76 @@ mod pruebas {
         audio.join().unwrap();
         ventana.close();
     }
+
+    /// Kontakt (o el VST3 de `QDAW_VST3`) con su ventana, audio en otro hilo y un bucle de mensajes
+    /// Win32 puro, sin la interfaz de QUANTUM, durante 40 s: para comparar su interfaz fuera de la
+    /// aplicación. `QDAW_ESTADO`: archivo con un estado guardado del plugin para cargarlo antes.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn ventana_con_bucle_win32() {
+        #[repr(C)]
+        struct Msg { h: isize, m: u32, w: usize, l: isize, t: u32, x: i32, y: i32, p: u32 }
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn PeekMessageW(m: *mut Msg, h: isize, a: u32, b: u32, r: u32) -> i32;
+            fn TranslateMessage(m: *const Msg) -> i32;
+            fn DispatchMessageW(m: *const Msg) -> isize;
+        }
+        let nombre = std::env::var("QDAW_VST3").unwrap_or_else(|_| "Kontakt".into());
+        let Some(i) = catalogo().iter().find(|i| i.nombre.contains(&nombre)).cloned() else { return };
+        let inst = Arc::new(Instancia::nueva(&i, 48_000).unwrap());
+        if let Ok(ruta) = std::env::var("QDAW_ESTADO") {
+            println!("estado cargado: {}", inst.cargar_estado(&std::fs::read(ruta).unwrap()));
+        }
+        let mut ventana = PluginWindow::new(inst.plugin.clone());
+        ventana.open().unwrap();
+        let fin = std::time::Instant::now() + std::time::Duration::from_secs(std::env::var("QDAW_SEGUNDOS").ok().and_then(|s| s.parse().ok()).unwrap_or(40));
+        let audio = {
+            let inst = inst.clone();
+            std::thread::spawn(move || {
+                // QDAW_NOTAS: cada 2 s una nota (Do central) de 1 s, y el pico que dio el plugin.
+                // QDAW_CC1=<valor>: antes de cada nota, el control 1 (rueda de modulación).
+                let notas = std::env::var_os("QDAW_NOTAS").is_some();
+                let cc1: Option<u8> = std::env::var("QDAW_CC1").ok().and_then(|v| v.parse().ok());
+                let mut buf = vec![[0f32; 2]; 512];
+                let (mut k, mut pico) = (0u32, 0f32);
+                while std::time::Instant::now() < fin {
+                    buf.iter_mut().for_each(|s| *s = [0.0; 2]);
+                    let mut ev: Vec<(usize, MidiEvent)> = vec![];
+                    if notas && k % 188 == 0 {
+                        if let Some(v) = cc1 {
+                            ev.push((0, [0xB0, 1, v]));
+                        }
+                        ev.push((0, [0x90, 60, 100]));
+                    }
+                    if notas && k % 188 == 94 {
+                        ev.push((0, [0x80, 60, 0]));
+                    }
+                    inst.procesar(&mut buf, &ev, false);
+                    pico = buf.iter().fold(pico, |m, s| m.max(s[0].abs()).max(s[1].abs()));
+                    if notas && k % 188 == 187 {
+                        println!("nota {}: pico {pico:.4}", k / 188);
+                        pico = 0.0;
+                    }
+                    k += 1;
+                    std::thread::sleep(std::time::Duration::from_micros(10_600));
+                }
+            })
+        };
+        while std::time::Instant::now() < fin && servir_ventana(&ventana, &inst.plugin) {
+            let mut m = Msg { h: 0, m: 0, w: 0, l: 0, t: 0, x: 0, y: 0, p: 0 };
+            // SAFETY: `m` tiene el diseño de MSG y los mensajes son de ventanas de este hilo.
+            unsafe {
+                while PeekMessageW(&mut m, 0, 0, 0, 1) != 0 {
+                    TranslateMessage(&m);
+                    DispatchMessageW(&m);
+                }
+            }
+            servir_plugin(&inst);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        audio.join().unwrap();
+        ventana.close();
+    }
 }
-
-
-

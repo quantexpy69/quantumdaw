@@ -340,7 +340,25 @@ impl App {
         self.config.midi_port = midi;
         let mut p = self.to_project();
         (p.output_device, p.input_device, p.sample_rate, p.buffer, p.rec_bits, p.audio_sistema) = (cfg.output, cfg.input, cfg.rate, cfg.buffer, bits, cfg.sistema);
+        // Los VST3 abiertos se reutilizan si la frecuencia no cambia (cambiar el buffer o el
+        // dispositivo): no se vuelven a abrir ni a cargar sus sonidos, y su ventana sigue abierta.
+        let ranuras = |pista: usize, fx: &[Arc<engine::Fx>]| fx.iter().enumerate().filter(|f| f.1.vst3.is_some()).map(move |(j, f)| (pista, Some(j), f.clave(), f.clone())).collect::<Vec<_>>();
+        self.reusar_vst3 = ranuras(usize::MAX, &self.master_fx);
+        for (i, t) in self.s.tracks.iter().enumerate() {
+            self.reusar_vst3.extend(ranuras(i, &t.fx));
+            if let Some(pl) = t.plugin.as_ref().filter(|pl| pl.vst3.is_some()) {
+                self.reusar_vst3.push((i, None, t.instrument.clone(), pl.clone()));
+            }
+        }
         let r = self.reload(self.dir.clone(), p);
+        // Los que ya no están en ninguna pista (cambió la frecuencia y se abrieron de nuevo) se
+        // cierran con sus ventanas. Si el audio nuevo no abrió, las pistas siguen con los mismos.
+        for (_, _, _, fx) in std::mem::take(&mut self.reusar_vst3) {
+            let en_uso = self.master_fx.iter().chain(self.s.tracks.iter().flat_map(|t| t.plugin.iter().chain(&t.fx))).any(|f| Arc::ptr_eq(f, &fx));
+            if !en_uso {
+                self.cerrar_ventana_plugin(&fx);
+            }
+        }
         if r.is_err() || self.engine.input_error.is_none() {
             self.report("Motor de audio reiniciado", r);
         }

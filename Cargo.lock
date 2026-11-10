@@ -1327,7 +1327,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine"
-version = "0.62.0"
+version = "0.62.4"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3424,7 +3424,7 @@ checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
 name = "project"
-version = "0.62.0"
+version = "0.62.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3444,7 +3444,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "quantum-daw"
-version = "0.62.0"
+version = "0.62.4"
 dependencies = [
  "anyhow",
  "base64",
@@ -4672,8 +4672,6 @@ dependencies = [
 [[package]]
 name = "vst3-host"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e87482a285f626fb5f77e172c7d61727c83face514abd558be64f795fad0d7e7"
 dependencies = [
  "core-foundation 0.10.1",
  "crossbeam-queue",
