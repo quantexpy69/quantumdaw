@@ -163,16 +163,32 @@ impl App {
         anyhow::ensure!(!stems.is_empty(), "no hay pistas ni grupos marcados para exportar");
         self.stop();
         let ext = e.formato.ext();
+        // El diálogo abre en la última carpeta usada para exportar; si no hay, en Rendered/ del proyecto.
+        // La ruta tiene que ser absoluta y con separadores de Windows o el diálogo la ignora.
+        let carpeta_inicial = {
+            let render = absoluta(&self.dir.join(RENDER_DIR));
+            let _ = fs::create_dir_all(&render);
+            self.carpeta_exportacion.clone().filter(|d| d.is_dir()).unwrap_or(render)
+        };
         let trabajos: Vec<(PathBuf, Option<Vec<Arc<Params>>>)> = if e.origen == MEZCLA {
             let nombre = safe(&self.dir.file_name().unwrap_or_default().to_string_lossy());
-            let _ = fs::create_dir_all(self.dir.join(RENDER_DIR));
-            let dialogo = rfd::FileDialog::new().set_directory(self.dir.join(RENDER_DIR)).set_file_name(format!("{nombre}.{ext}"));
+            // Filtro del formato elegido: el tipo del diálogo coincide con lo que se escribe.
+            let dialogo = rfd::FileDialog::new()
+                .set_title(tr("Exportar"))
+                .add_filter(e.formato.label(), &[ext])
+                .set_directory(&carpeta_inicial)
+                .set_file_name(format!("{nombre}.{ext}"));
             let ruta = dialogo.save_file().ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
+            // Si se escribió el nombre sin extensión (o con otra), se fuerza la del formato elegido.
+            let ruta = con_extension(ruta, ext);
+            if let Some(dir) = ruta.parent() {
+                self.carpeta_exportacion = Some(dir.to_path_buf());
+            }
             vec![(ruta, None)]
         } else {
-            let _ = fs::create_dir_all(self.dir.join(RENDER_DIR));
-            let dir = rfd::FileDialog::new().set_title(tr("Carpeta para los stems")).set_directory(self.dir.join(RENDER_DIR)).pick_folder();
+            let dir = rfd::FileDialog::new().set_title(tr("Carpeta para los stems")).set_directory(&carpeta_inicial).pick_folder();
             let dir = dir.ok_or_else(|| anyhow::anyhow!("exportación cancelada"))?;
+            self.carpeta_exportacion = Some(dir.clone());
             let mut usados = std::collections::HashSet::new();
             stems
                 .into_iter()
@@ -260,6 +276,30 @@ pub struct EnCurso {
     total: usize,
     hecho: Arc<AtomicUsize>,
     nombre: String,
+}
+
+/// Ruta absoluta sin el prefijo `\\?\` de Windows (el diálogo de archivos no lo acepta).
+fn absoluta(p: &Path) -> PathBuf {
+    let p = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    let s = p.to_string_lossy();
+    match s.strip_prefix(r"\\?\") {
+        Some(resto) => PathBuf::from(resto),
+        None => p,
+    }
+}
+
+/// Asegura que el archivo termine en `.ext`: cambia otra extensión de audio conocida o la añade.
+pub(crate) fn con_extension(ruta: PathBuf, ext: &str) -> PathBuf {
+    let actual = ruta.extension().map(|e| e.to_string_lossy().to_lowercase());
+    match actual.as_deref() {
+        Some(a) if a == ext => ruta,
+        Some("wav" | "flac" | "mp3" | "ogg" | "aif" | "aiff" | "m4a") => ruta.with_extension(ext),
+        _ => {
+            let mut s = ruta.into_os_string();
+            s.push(format!(".{ext}"));
+            PathBuf::from(s)
+        }
+    }
 }
 
 fn trabajos_nombre(total: usize, dir: &Path) -> String {

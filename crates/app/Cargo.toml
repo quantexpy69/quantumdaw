@@ -1,6 +1,6 @@
 [package]
 name = "quantum-daw"
-version = "0.60.1"
+version = "0.61.0"
 edition = "2024"
 license = "BUSL-1.1"
 authors = ["Ivan Cheaib <ivanchepy@gmail.com>"]
@@ -15,8 +15,8 @@ eframe = { version = "0.36.2", default-features = false, features = ["accesskit"
 egui_extras = { version = "0.36.2", features = ["svg"] }
 ed25519-dalek = "2.2.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
-engine = { version = "0.60.1", path = "../engine" }
-project = { version = "0.60.1", path = "../project" }
+engine = { version = "0.61.0", path = "../engine" }
+project = { version = "0.61.0", path = "../project" }
 resvg = { version = "0.45.1", default-features = false }
 rfd = "0.17.2"
 miniz_oxide = "0.8.9"
@@ -24,6 +24,7 @@ roxmltree = "0.20.0"
 rustfft = "6.4.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+sha2 = "0.10.9"
 
 [features]
 # Incluye los plugins QUANTUM Pro (código propietario en la carpeta `pro/`, repositorio privado).

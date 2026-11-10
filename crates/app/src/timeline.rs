@@ -534,6 +534,11 @@ impl App {
             } else {
                 match zone_at(&self.s, p) {
                     Some((i, j, _)) if body_r.secondary_clicked() => {
+                        // Fuera de la selección de tiempo, el menú actúa sobre esta región (si no,
+                        // «Eliminar» borraría el rango razor en lugar de la región elegida).
+                        if !in_razor(self.time_sel, self.razor_lanes, p) {
+                            (self.time_sel, self.razor_lanes) = (None, None);
+                        }
                         if !self.s.tracks[i].clips[j].selected {
                             self.deselect_clips();
                             self.s.tracks[i].clips[j].selected = true;
@@ -545,8 +550,18 @@ impl App {
                     Some((i, j, _)) if self.tool == Tool::Blade && body_r.clicked() => {
                         self.edit();
                         let c = self.s.tracks[i].clips.remove(j);
-                        self.s.tracks[i].clips.extend([c.trim(0, at), c.trim(at, u64::MAX)].into_iter().flatten());
-                        self.status = "Región dividida".into();
+                        // Las dos partes quedan sin seleccionar y en su orden: así lo que se elija
+                        // después (clic derecho, o clic con la herramienta Selección) es lo que se borra.
+                        self.deselect_clips();
+                        (self.time_sel, self.razor_lanes, self.ctx_region) = (None, None, None);
+                        let partes = [c.trim(0, at), c.trim(at, u64::MAX)].into_iter().flatten().map(|mut c| {
+                            c.selected = false;
+                            c
+                        });
+                        self.s.tracks[i].clips.extend(partes);
+                        self.fundir_solapes([i]);
+                        self.dirty = true;
+                        self.status = tr("Región dividida: elige una parte (V = Selección, o clic derecho) y pulsa Suprimir").into();
                     }
                     Some((i, j, _)) if body_r.double_clicked() && self.s.tracks[i].midi() => self.open_roll(i, j),
                     Some((i, _, _)) if body_r.double_clicked() && self.s.tracks[i].kind == TrackKind::Video => self.open_video(i),
@@ -573,7 +588,9 @@ impl App {
                             }
                         } else if body_r.clicked() && (mods.command || mods.shift) {
                             self.s.tracks[i].clips[j].selected = !selected;
-                        } else if !selected {
+                        } else if !selected || body_r.clicked() {
+                            // Un clic simple deja seleccionada solo esta región (aunque ya lo estuviera);
+                            // arrastrar una ya seleccionada mueve toda la selección.
                             if !mods.command && !mods.shift {
                                 self.deselect_clips();
                             }
@@ -713,10 +730,16 @@ impl App {
                 Drag::TomaBorde(i, k, j, _, orig) => self.borde_de_toma_soltado(i, k, j, &orig),
                 // Las tomas siguen a las regiones movidas que salen de ellas.
                 Drag::Clips(orig, _, _) => {
+                    let mut pistas: Vec<usize> = orig.iter().map(|o| o.0).collect();
                     for (i, j, antes) in orig {
                         self.toma_sigue_a_region(i, j, antes);
                     }
+                    // Al soltar: la región que queda después va encima y los solapes llevan crossfade.
+                    pistas.sort_unstable();
+                    pistas.dedup();
+                    self.fundir_solapes(pistas);
                 }
+                Drag::Edge(i, ..) => self.fundir_solapes([i]),
                 Drag::Swipe(i, k, a, b) if a != b => {
                     self.edit();
                     self.comp_take(i, a.min(b), a.max(b), k);

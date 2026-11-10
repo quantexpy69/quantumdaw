@@ -345,6 +345,9 @@ impl App {
                 if item(ui, tr("Abrir carpeta de registros"), "") {
                     informes::abrir_carpeta(&informes::carpeta());
                 }
+                if item(ui, tr("Buscar actualizaciones…"), "") {
+                    self.buscar_actualizaciones();
+                }
             });
             // Vistas en la misma fila que el menú (como las barras de las consolas de estudio).
             ui.add_space(18.0);
@@ -898,6 +901,8 @@ impl App {
             }
         }
         self.ventana_progreso(ctx);
+        self.aviso_actualizacion(ctx);
+        self.resultado_busqueda();
         enum Act {
             NewTrack(String, TrackKind, u32, Option<Color32>),
             Settings(AudioConfig, u16, String),

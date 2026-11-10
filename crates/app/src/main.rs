@@ -2,6 +2,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod acordes;
+mod actualizar;
 mod analyzer;
 mod audioedit;
 mod chrome;
@@ -255,6 +256,8 @@ struct Config {
     /// Autoguardado desactivado y cada cuántos minutos se hace (0 = cada minuto).
     autoguardado_off: bool,
     autoguardado_min: u32,
+    /// Versión cuyo aviso de actualización se pidió no volver a mostrar («Omitir esta versión»).
+    omitir_version: String,
 }
 
 impl Config {
@@ -283,6 +286,7 @@ fn main() -> eframe::Result {
         _ => {}
     }
     informes::iniciar();
+    actualizar::limpiar();
     let config = Config::load();
     let welcome = std::env::args().nth(1).is_none() && !config.hide_welcome;
     let dir = std::env::args().nth(1).map(|a| project::carpeta_de(Path::new(&a))).or_else(|| config.recent.iter().find(|d| project::existe(d)).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));
@@ -334,6 +338,51 @@ fn rgb(c: [u8; 3]) -> Color32 {
 fn rgb3(c: Color32) -> [u8; 3] {
     [c.r(), c.g(), c.b()]
 }
+/// Regiones de una pista que se solapan: la que empieza después va encima (se dibuja y se elige con
+/// el ratón antes) y en el solape la de abajo baja mientras la de encima sube (crossfade de igual
+/// potencia). Si una región queda entera dentro de otra anterior, la de abajo se parte alrededor
+/// para que la de encima suene sola, con fundidos cortos de `xf` frames en los cortes.
+fn fundir_solapes(clips: &mut Vec<Clip>, xf: u64) {
+    let audio = |c: &Clip| c.buf().is_some();
+    clips.sort_by_key(|c| c.start);
+    // 1) Región contenida dentro de una anterior: la de abajo se parte.
+    let mut vueltas = 0;
+    'buscar: while vueltas < 10_000 {
+        vueltas += 1;
+        for k in 0..clips.len() {
+            if !audio(&clips[k]) {
+                continue;
+            }
+            let (s, e) = (clips[k].start, clips[k].end());
+            if let Some(a) = (0..k).rev().find(|&a| audio(&clips[a]) && clips[a].start < s && clips[a].end() > e) {
+                let abajo = clips.remove(a);
+                let x = xf.min((e - s) / 2);
+                clips.extend([abajo.trim(0, s + x), abajo.trim(e.saturating_sub(x), u64::MAX)].into_iter().flatten());
+                clips.sort_by_key(|c| c.start);
+                continue 'buscar;
+            }
+        }
+        break;
+    }
+    // 2) Crossfade en cada solape: fundido de salida en la de abajo y de entrada en la de encima.
+    for k in 1..clips.len() {
+        if !audio(&clips[k]) {
+            continue;
+        }
+        let (antes, resto) = clips.split_at_mut(k);
+        let encima = &mut resto[0];
+        let mut solape = 0;
+        for abajo in antes.iter_mut().filter(|a| audio(a) && a.start < encima.start && a.end() > encima.start && a.end() <= encima.end()) {
+            let n = abajo.end() - encima.start;
+            abajo.fade_out = n.min(abajo.len - abajo.fade_in.min(abajo.len));
+            solape = solape.max(n);
+        }
+        if solape > 0 {
+            encima.fade_in = solape.min(encima.len - encima.fade_out.min(encima.len));
+        }
+    }
+}
+
 fn safe(name: &str) -> String {
     name.replace(|c: char| !c.is_alphanumeric() && c != '-', "_")
 }
@@ -797,6 +846,10 @@ struct App {
     alto_dispositivos: f32,
     /// Últimas opciones de exportación.
     exportacion: Option<exportar::Exportacion>,
+    /// Última carpeta elegida al exportar (el diálogo vuelve a abrir ahí).
+    carpeta_exportacion: Option<PathBuf>,
+    /// Búsqueda de actualizaciones pedida desde el menú: decir también si no hay ninguna.
+    avisar_al_dia: bool,
     /// Exportación en curso (en segundo plano, con su ventana de progreso).
     exportando: Option<exportar::EnCurso>,
     drag: Option<timeline::Drag>,
@@ -1000,6 +1053,8 @@ impl App {
             last_track: None,
             alto_dispositivos: 0.0,
             exportacion: None,
+            carpeta_exportacion: None,
+            avisar_al_dia: false,
             exportando: None,
             drag: None,
             ctx_region: None,
@@ -2017,6 +2072,10 @@ impl App {
                 t.clips.push(c);
             }
         }
+        let mut pistas: Vec<usize> = self.clipboard.iter().map(|c| c.0).collect();
+        pistas.sort_unstable();
+        pistas.dedup();
+        self.fundir_solapes(pistas);
         self.engine.pos.store(end, Relaxed);
     }
 
@@ -2035,10 +2094,14 @@ impl App {
             .map(|(i, t)| (i, t.vol_auto.iter().filter(|p| p.0 >= a && p.0 < b).copied().collect(), t.pan_auto.iter().filter(|p| p.0 >= a && p.0 < b).copied().collect()))
             .collect();
         let taken = self.extract(true);
+        let mut pistas: Vec<usize> = taken.iter().map(|c| c.0).collect();
         for (i, mut c) in taken {
             c.start = shift(c.start);
             self.s.tracks[i].clips.push(c);
         }
+        pistas.sort_unstable();
+        pistas.dedup();
+        self.fundir_solapes(pistas);
         for (i, vol, pan) in autos {
             let t = &mut self.s.tracks[i];
             for (dst, pts) in [(&mut t.vol_auto, vol), (&mut t.pan_auto, pan)] {
@@ -2069,6 +2132,21 @@ impl App {
             let track_on = !any_track || t.selected;
             let parts = t.clips.iter().flat_map(|c| if (any_clip && c.selected) || (!any_clip && track_on) { [c.trim(0, at), c.trim(at, u64::MAX)] } else { [Some(c.clone()), None] });
             t.clips = parts.flatten().collect();
+        }
+        // Tras cortar no queda nada seleccionado: así un clic elige solo la parte que se quiere borrar
+        // (antes las dos mitades quedaban seleccionadas y Suprimir borraba de más).
+        self.deselect_clips();
+        self.status = tr("Región dividida: haz clic en la parte que quieras eliminar").into();
+    }
+
+    /// Ordena las regiones de las pistas `pistas` por inicio (la que empieza después queda encima) y
+    /// aplica un crossfade automático donde dos regiones de audio se solapan.
+    fn fundir_solapes(&mut self, pistas: impl IntoIterator<Item = usize>) {
+        let xf = self.xfade().max(64);
+        for i in pistas {
+            if let Some(t) = self.s.tracks.get_mut(i) {
+                fundir_solapes(&mut t.clips, xf);
+            }
         }
     }
 
@@ -3088,6 +3166,42 @@ fn limitar_fps() {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn region(start: u64, len: u64) -> Clip {
+        let buf = AudioBuf::new(Default::default(), vec![[0.5; 2]; 100_000]);
+        Clip { start, len, ..Clip::audio(buf, start) }
+    }
+
+    /// Solape parcial: la que empieza después va encima y el solape lleva crossfade en ambas.
+    #[test]
+    fn crossfade_en_solape() {
+        let mut v = vec![region(1000, 1000), region(0, 1500)];
+        fundir_solapes(&mut v, 10);
+        assert_eq!(v.iter().map(|c| c.start).collect::<Vec<_>>(), [0, 1000]);
+        assert_eq!(v[0].fade_out, 500);
+        assert_eq!(v[1].fade_in, 500);
+    }
+
+    /// Región dentro de otra: la de abajo se parte y solo queda debajo en los fundidos cortos.
+    #[test]
+    fn region_contenida_parte_la_de_abajo() {
+        let mut v = vec![region(0, 10_000), region(4000, 2000)];
+        fundir_solapes(&mut v, 10);
+        let tramos: Vec<_> = v.iter().map(|c| (c.start, c.end())).collect();
+        assert_eq!(tramos, [(0, 4010), (4000, 6000), (5990, 10_000)]);
+        assert_eq!((v[0].fade_out, v[1].fade_in, v[1].fade_out, v[2].fade_in), (10, 10, 10, 10));
+    }
+
+    #[test]
+    fn extension_del_formato() {
+        let p = |s: &str| PathBuf::from(s);
+        assert_eq!(exportar::con_extension(p("C:/x/tema"), "mp3"), p("C:/x/tema.mp3"));
+        assert_eq!(exportar::con_extension(p("C:/x/tema.wav"), "flac"), p("C:/x/tema.flac"));
+        assert_eq!(exportar::con_extension(p("C:/x/v1.2"), "ogg"), p("C:/x/v1.2.ogg"));
+        assert_eq!(exportar::con_extension(p("C:/x/tema.MP3"), "mp3"), p("C:/x/tema.MP3"));
+    }
+
     /// Cada formato de exportación debe poder volver a decodificarse con la duración correcta.
     #[test]
     fn export_roundtrip() {
