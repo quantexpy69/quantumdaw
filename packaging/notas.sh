@@ -26,9 +26,7 @@ cat <<EOF
 | Debian, Ubuntu, Linux Mint, Pop!_OS, elementary… | [quantum-daw-amd64.deb]($URL/quantum-daw-amd64.deb) | \`sudo apt install ./quantum-daw-amd64.deb\` |
 | Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux | [quantum-daw-x86_64.rpm]($URL/quantum-daw-x86_64.rpm) | \`sudo dnf install ./quantum-daw-x86_64.rpm\` |
 | openSUSE | [quantum-daw-x86_64.rpm]($URL/quantum-daw-x86_64.rpm) | \`sudo zypper install ./quantum-daw-x86_64.rpm\` |
-| Arch Linux, Manjaro, EndeavourOS | [PKGBUILD]($URL/PKGBUILD) | \`makepkg -si\` en la carpeta del PKGBUILD |
 | Cualquier distribución (portable) | [quantum-daw-x86_64.AppImage]($URL/quantum-daw-x86_64.AppImage) | \`chmod +x quantum-daw-x86_64.AppImage && ./quantum-daw-x86_64.AppImage\` |
-| Cualquier distribución (sin sudo) | [quantum-daw-linux-x86_64.tar.gz]($URL/quantum-daw-linux-x86_64.tar.gz) | descomprime y ejecuta \`./instalar.sh\` |
 
 Linux: x86_64 con glibc 2.28 o posterior (Debian 10+, Ubuntu 20.04+, RHEL/Rocky/Alma 8+, Fedora, Arch).
 Opcional: \`ffmpeg\` para importar video, \`7z\` y \`curl\` para los instrumentos descargables.

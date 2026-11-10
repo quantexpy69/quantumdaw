@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Compila Quantum DAW contra glibc 2.28 (AlmaLinux 8) y crea en dist/ los paquetes de Linux:
-#   quantum-daw-linux-x86_64.tar.gz  portable (cualquier distribución, con instalar.sh)
 #   quantum-daw-amd64.deb            Debian, Ubuntu, Linux Mint, Pop!_OS…
 #   quantum-daw-x86_64.rpm           Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux, openSUSE
-#   quantum-daw-x86_64.AppImage      universal, sin instalar
-#   PKGBUILD                         Arch Linux, Manjaro, EndeavourOS (makepkg -si)
+#   quantum-daw-x86_64.AppImage      universal, sin instalar (también Arch y el resto)
 #   SHA256SUMS                       sumas de verificación
 # Uso en tu equipo (con podman o docker): packaging/build.sh
 # Dentro del contenedor o en GitHub Actions: packaging/build.sh --dentro
@@ -41,18 +39,6 @@ BIN="$CARGO_TARGET_DIR/release/quantum-daw"
 "$BIN" --version
 rm -rf dist && mkdir -p dist
 
-# Portable .tar.gz con su instalador.
-PKG="dist/quantum-daw-$VERSION"
-mkdir -p "$PKG"
-cp "$BIN" packaging/linux/instalar.sh packaging/linux/quantum-daw.desktop packaging/linux/com.quantumdaw.QuantumDAW.metainfo.xml LICENSE README.md "$PKG/"
-cp assets/quantumlogo.svg "$PKG/quantum-daw.svg"
-mkdir -p "$PKG/iconos"
-for t in 16:icon_16x16 32:icon_32x32 64:icon_32x32@2x 128:icon_128x128 256:icon_256x256 512:icon_512x512; do
-  cp "assets/macos/QuantumDAW.iconset/${t#*:}.png" "$PKG/iconos/${t%%:*}.png"
-done
-tar -C dist -czf dist/quantum-daw-linux-x86_64.tar.gz "quantum-daw-$VERSION"
-rm -rf "$PKG"
-
 # .deb y .rpm.
 cargo deb -p quantum-daw --no-build --no-strip -o dist/quantum-daw-amd64.deb
 cargo generate-rpm -p crates/app --target-dir "$CARGO_TARGET_DIR" -o dist/quantum-daw-x86_64.rpm
@@ -73,9 +59,5 @@ TOOL="$CACHE/appimagetool-x86_64.AppImage"
 [ -x "$TOOL" ] || { curl -sSfL -o "$TOOL" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage && chmod +x "$TOOL"; }
 APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$TOOL" -n "$APPDIR" dist/quantum-daw-x86_64.AppImage >/dev/null
 
-# PKGBUILD de Arch que instala el .tar.gz de esta versión.
-SUM=$(sha256sum dist/quantum-daw-linux-x86_64.tar.gz | cut -d' ' -f1)
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHA256@/$SUM/" packaging/arch/PKGBUILD.in > dist/PKGBUILD
-
-(cd dist && sha256sum quantum-daw-* PKGBUILD > SHA256SUMS)
+(cd dist && sha256sum quantum-daw-* > SHA256SUMS)
 ls -lh dist

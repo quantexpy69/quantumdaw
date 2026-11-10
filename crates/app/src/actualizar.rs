@@ -1,6 +1,6 @@
 //! Actualizaciones desde la app: al arrancar se mira el último release de GitHub y, si hay una
 //! versión nueva, se ofrece instalarla. Se descarga el paquete del sistema (instalador o .zip en
-//! Windows, .dmg en macOS, AppImage / .tar.gz / .deb / .rpm en Linux), se comprueba con SHA256SUMS y
+//! Windows, .dmg en macOS, AppImage / .deb / .rpm en Linux), se comprueba con SHA256SUMS y
 //! se instala al cerrar QUANTUM, que se vuelve a abrir solo con la versión nueva.
 //!
 //! `QUANTUM_REPO` cambia el repositorio (dueño/nombre) para probar con otro.
@@ -104,6 +104,7 @@ fn nombre_paquete(i: Instalacion) -> &'static str {
         Instalacion::WinPortable => "quantum-daw-windows-x64.zip",
         Instalacion::Mac => "quantum-daw-macos-universal.dmg",
         Instalacion::AppImage => "quantum-daw-x86_64.AppImage",
+        // Ya no se publica: las copias instaladas desde el .tar.gz antiguo solo ven el enlace a la página.
         Instalacion::LinuxPortable => "quantum-daw-linux-x86_64.tar.gz",
         Instalacion::Deb => "quantum-daw-amd64.deb",
         Instalacion::Rpm => "quantum-daw-x86_64.rpm",

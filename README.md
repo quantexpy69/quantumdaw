@@ -164,9 +164,7 @@ Funciona en cualquier distribución x86_64 con glibc 2.28 o posterior.
 | Debian, Ubuntu, Linux Mint, Pop!_OS… | `quantum-daw-amd64.deb` | `sudo apt install ./quantum-daw-amd64.deb` |
 | Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux | `quantum-daw-x86_64.rpm` | `sudo dnf install ./quantum-daw-x86_64.rpm` |
 | openSUSE | `quantum-daw-x86_64.rpm` | `sudo zypper install ./quantum-daw-x86_64.rpm` |
-| Arch Linux, Manjaro, EndeavourOS | `PKGBUILD` | `makepkg -si` |
-| Cualquiera (portable) | `quantum-daw-x86_64.AppImage` | `chmod +x` y ejecutar |
-| Cualquiera (sin sudo) | `quantum-daw-linux-x86_64.tar.gz` | descomprimir y `./instalar.sh` |
+| Cualquiera, incluida Arch (portable) | `quantum-daw-x86_64.AppImage` | `chmod +x` y ejecutar |
 
 Opcional: `ffmpeg` (importar video), `7z` y `curl` (instrumentos descargables).
 
@@ -178,7 +176,7 @@ cd quantumdaw
 ./install.sh   # instala Rust en .toolchain/ si hace falta y te indica las cabeceras de ALSA de tu distribución
 ```
 
-Para crear todos los paquetes (.deb, .rpm, AppImage, .tar.gz y PKGBUILD) con podman o docker:
+Para crear los paquetes de Linux (.deb, .rpm y AppImage) con podman o docker:
 `packaging/build.sh` (compila dentro de AlmaLinux 8 para que funcionen en todas las distribuciones).
 Al subir una etiqueta `vX.Y.Z`, GitHub Actions publica el release con sus notas y todos los paquetes.
 

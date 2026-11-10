@@ -21,7 +21,6 @@ probar docker.io/rockylinux/rockylinux:8 "dnf -y -q --setopt=install_weak_deps=F
 probar docker.io/library/almalinux:9 "dnf -y -q --setopt=install_weak_deps=False install /dist/quantum-daw-x86_64.rpm && $CHECK"
 probar quay.io/centos/centos:stream9 "dnf -y -q --setopt=install_weak_deps=False install /dist/quantum-daw-x86_64.rpm && $CHECK"
 probar docker.io/library/fedora:latest "dnf -y -q --setopt=install_weak_deps=False install /dist/quantum-daw-x86_64.rpm && $CHECK"
-probar docker.io/library/archlinux:latest "pacman -Sy --noconfirm --needed alsa-lib >/dev/null && cd /tmp && tar xzf /dist/quantum-daw-linux-x86_64.tar.gz && cd quantum-daw-* && ./instalar.sh --sistema >/dev/null && quantum-daw --version && grep -q '^pkgname=quantum-daw-bin' /dist/PKGBUILD"
 probar docker.io/library/ubuntu:22.04 "apt-get -qq update && apt-get -qq install -y libasound2 >/dev/null && cd /tmp && cp /dist/quantum-daw-x86_64.AppImage . && ./quantum-daw-x86_64.AppImage --appimage-extract >/dev/null && squashfs-root/AppRun --version"
 echo "Resultado: $ok correctas, $mal con errores"
 [ "$mal" -eq 0 ]
