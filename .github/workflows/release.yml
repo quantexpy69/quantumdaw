@@ -25,9 +25,14 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     container: almalinux:8
+    # Si algo se cuelga (por ejemplo un mirror de AlmaLinux muy lento) falla en vez de esperar 6 horas.
+    timeout-minutes: 40
     steps:
       - name: Herramientas básicas
-        run: dnf -y -q install git tar openssh-clients
+        run: |
+          # El mirror más rápido y descargas en paralelo: con los mirrors lentos este paso llegó a 28 min.
+          printf 'fastestmirror=True\nmax_parallel_downloads=10\ninstall_weak_deps=False\n' >> /etc/dnf/dnf.conf
+          dnf -y -q install git tar openssh-clients
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
