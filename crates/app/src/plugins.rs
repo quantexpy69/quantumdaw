@@ -34,6 +34,7 @@ fn columna(ui: &mut egui::Ui, en_fila: bool, ancho: f32, add: impl FnOnce(&mut e
 pub fn kind_color(kind: Option<FxKind>) -> Color32 {
     match kind {
         Some(FxKind::Eq) => Color32::from_rgb(0x2E, 0xD8, 0xC3),
+        Some(FxKind::EqPro) => Color32::from_rgb(0xF2, 0xB8, 0x3C),
         Some(FxKind::Compressor) => Color32::from_rgb(0xFF, 0xB0, 0x20),
         Some(FxKind::Delay) => Color32::from_rgb(0x5B, 0x9C, 0xFF),
         Some(FxKind::Reverb) => Color32::from_rgb(0xB0, 0x8C, 0xF2),
@@ -68,6 +69,7 @@ pub fn kind_color(kind: Option<FxKind>) -> Color32 {
 pub fn summary(k: FxKind) -> &'static str {
     match k {
         FxKind::Eq => "Ecualizador de 3 bandas con frecuencias ajustables: realza o atenúa graves, medios y agudos.",
+        FxKind::EqPro => "EQ paramétrico de 8 bandas con curva interactiva y analizador en vivo: campanas, estantes, cortes de 12 a 48 dB/oct, notch y paso banda, con filtros que suenan igual que los analógicos hasta 20 kHz.",
         FxKind::Compressor => "Controla la dinámica bajando los picos sobre el umbral. Ataque, release, rodilla suave y mezcla paralela.",
         FxKind::Delay => "Repeticiones con feedback, ping-pong estéreo, filtros en las repeticiones y sincronía al tempo.",
         FxKind::Reverb => "Simula un espacio: tamaño, amortiguación, pre-delay, corte de graves y anchura estéreo.",
@@ -436,6 +438,11 @@ fn display(ui: &mut egui::Ui, kind: Option<FxKind>, p: &[f32], readout: [f32; 2]
                 painter.vline(x, r.y_range(), Stroke::new(1.0, PANEL()));
                 label(pos2(x + 3.0, r.bottom()), Align2::LEFT_BOTTOM, text.into(), 9.0, TEXT_DIM());
             }
+        }
+        // Vista previa del QUANTUM EQ (en la biblioteca): su curva total.
+        Some(FxKind::EqPro) => {
+            curve(&|t| 0.5 + engine::eq_pro::respuesta(p, 20.0 * 1000f32.powf(t), sr) / 48.0);
+            label(pos2(r.right(), r.top()), Align2::RIGHT_TOP, tr("8 bandas con analizador en el plugin").into(), 10.0, TEXT_DIM());
         }
         // Vista previa de Curves (en la biblioteca): curva del EQ; el visor completo está en la ventana del plugin.
         Some(FxKind::Curves) => {
@@ -807,7 +814,7 @@ impl App {
                     (_, Some(v)) => format!("VST3 · {}", v.info.marca.to_uppercase()),
                     _ => SIGNATURE.to_string(),
                 };
-                let ancho = match (kind == Some(FxKind::Curves), en_fila) {
+                let ancho = match (matches!(kind, Some(FxKind::Curves | FxKind::EqPro)), en_fila) {
                     (true, true) => ANCHO_CURVES_FILA,
                     (true, false) => ANCHO_CURVES,
                     _ => ANCHO_DISPOSITIVO,
@@ -858,6 +865,11 @@ impl App {
                             }
                             curves::visor(ui, fx, sr, accent, if en_fila { 130.0 } else { 240.0 });
                         }
+                        // QUANTUM EQ: escala, analizador y salida; visor interactivo con sus nodos.
+                        (Some(FxKind::EqPro), Some(fx), _) => {
+                            crate::ecualizador::barra(ui, fx);
+                            crate::ecualizador::visor(ui, fx, sr, accent, if en_fila { 150.0 } else { 270.0 });
+                        }
                         // Compresor y puerta: también pueden escuchar a otra pista (sidechain).
                         (Some(k @ (FxKind::Compressor | FxKind::Gate)), Some(fx), Some(_)) => {
                             let mut sincronizar = false;
@@ -894,6 +906,11 @@ impl App {
                     // Curves muestra solo los controles esenciales; el resto en «Avanzado».
                     let todos = match (kind, fx) {
                         (Some(FxKind::Curves), Some(fx)) => curves::controles(ui, fx, accent, en_fila),
+                        // QUANTUM EQ: los controles de la banda elegida en vez de 50 perillas.
+                        (Some(FxKind::EqPro), Some(fx)) => {
+                            crate::ecualizador::panel_banda(ui, fx, accent);
+                            false
+                        }
                         (Some(k), Some(_)) if k.pro().is_some() => false,
                         _ => true,
                     };

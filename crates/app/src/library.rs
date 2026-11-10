@@ -33,7 +33,7 @@ const FX_CATEGORIES: [(&str, &[FxKind]); 10] = [
     ("QUANTUM Pro", &[FxKind::VocalPro, FxKind::MasterPro, FxKind::TapePro, FxKind::SpacePro]),
     ("Voz", &[FxKind::VozAlFrente, FxKind::AntiPop, FxKind::DeEsser, FxKind::Tune]),
     ("Dinámica", &[FxKind::Compressor, FxKind::Limiter, FxKind::Gate, FxKind::Transitorios]),
-    ("EQ y filtros", &[FxKind::Curves, FxKind::Eq, FxKind::FiltroDj, FxKind::AutoFiltro]),
+    ("EQ y filtros", &[FxKind::EqPro, FxKind::Curves, FxKind::Eq, FxKind::FiltroDj, FxKind::AutoFiltro]),
     ("Movimiento", &[FxKind::AutoPan, FxKind::PuertaRitmica, FxKind::Phaser, FxKind::Flanger, FxKind::Chorus]),
     ("Estéreo", &[FxKind::Ancho]),
     ("Tiempo y espacio", &[FxKind::Delay, FxKind::Reverb]),
@@ -67,6 +67,7 @@ pub fn menu_efectos(ui: &mut egui::Ui) -> Option<FxKind> {
 fn describe(k: FxKind) -> &'static str {
     match k {
         FxKind::Eq => "Graves, medios y agudos",
+        FxKind::EqPro => "EQ paramétrico de 8 bandas con analizador",
         FxKind::Compressor => "Controla la dinámica",
         FxKind::Delay => "Ecos con feedback",
         FxKind::Reverb => "Espacio y ambiente",
@@ -1127,7 +1128,7 @@ pub fn icono_fx(p: &Painter, c: Pos2, k: FxKind, color: Color32) {
     let s = Stroke::new(1.7, color);
     let curva = |f: &dyn Fn(f32) -> f32| -> Vec<Pos2> { (0..=16).map(|i| i as f32 / 16.0).map(|t| c + vec2(-9.0 + 18.0 * t, f(t))).collect() };
     match k {
-        FxKind::Eq | FxKind::Curves => {
+        FxKind::Eq | FxKind::EqPro | FxKind::Curves => {
             let f = |t: f32| -5.0 * (-(t - 0.3) * (t - 0.3) * 40.0).exp() + 4.0 * (-(t - 0.75) * (t - 0.75) * 50.0).exp();
             p.add(egui::Shape::line(curva(&f), s));
         }

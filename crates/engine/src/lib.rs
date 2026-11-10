@@ -8,6 +8,7 @@ pub mod pro;
 mod dsp;
 pub mod antipop;
 pub mod dereverb;
+pub mod eq_pro;
 mod sobremuestreo;
 mod reverb_fdn;
 pub mod expresion;

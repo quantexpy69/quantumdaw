@@ -8,6 +8,7 @@ mod audioedit;
 mod chrome;
 mod controlador;
 mod creativo;
+mod ecualizador;
 mod generador;
 mod edicion;
 mod editor_partitura;
@@ -194,6 +195,18 @@ fn user_name() -> String {
     user
 }
 
+/// Carpeta (todavía sin crear) para una canción nueva sin guardar: «Mi canción», «Mi canción 2»…
+fn cancion_sin_guardar() -> PathBuf {
+    let raiz = projects_dir();
+    let base = tr("Mi canción");
+    (1..).map(|n| if n == 1 { raiz.join(base) } else { raiz.join(format!("{base} {n}")) }).find(|d| !d.exists()).unwrap_or_else(|| raiz.join(base))
+}
+
+/// Copias de respaldo que dejaban versiones anteriores («Mi canción.antes-194356»): no se listan.
+fn es_copia_vieja(d: &Path) -> bool {
+    d.file_name().is_some_and(|n| n.to_string_lossy().contains(".antes-"))
+}
+
 fn projects_dir() -> PathBuf {
     let docs = ["Documentos", "Documents"].iter().map(|d| home().join(d)).find(|d| d.is_dir()).unwrap_or_else(home);
     docs.join("Quantum DAW")
@@ -289,7 +302,9 @@ fn main() -> eframe::Result {
     actualizar::limpiar();
     let config = Config::load();
     let welcome = std::env::args().nth(1).is_none() && !config.hide_welcome;
-    let dir = std::env::args().nth(1).map(|a| project::carpeta_de(Path::new(&a))).or_else(|| config.recent.iter().find(|d| project::existe(d)).cloned()).unwrap_or_else(|| projects_dir().join("Demo"));
+    // Sin proyecto reciente se empieza con una canción vacía que no existe en disco hasta guardarla
+    // (antes se creaba sola la carpeta «Demo»).
+    let dir = std::env::args().nth(1).map(|a| project::carpeta_de(Path::new(&a))).or_else(|| config.recent.iter().find(|d| project::existe(d)).cloned()).unwrap_or_else(cancion_sin_guardar);
     widgets::ROUND.store(!config.square, Relaxed);
     i18n::set(config.lang);
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([1500.0, 940.0]).with_app_id("quantum-daw").with_title("QUANTUM");
@@ -850,6 +865,8 @@ struct App {
     carpeta_exportacion: Option<PathBuf>,
     /// Búsqueda de actualizaciones pedida desde el menú: decir también si no hay ninguna.
     avisar_al_dia: bool,
+    /// Nombre y artista de la canción cuando se abrió su menú (para guardarlos solos al cerrarlo).
+    titulo_al_abrir: Option<(String, String)>,
     /// Exportación en curso (en segundo plano, con su ventana de progreso).
     exportando: Option<exportar::EnCurso>,
     drag: Option<timeline::Drag>,
@@ -973,7 +990,7 @@ impl App {
         let clic = (config.clic_nivel, config.clic_acento);
         theme(ctx);
         ctx.set_zoom_factor(if config.ui_scale > 0.0 { config.ui_scale } else { 1.0 });
-        let p = Project::open_or_demo(&dir)?;
+        let p = if project::existe(&dir) { Project::load(&dir)? } else { Project::default() };
         let autoguardado_inicio = Project::autoguardado_pendiente(&dir);
         // El mixer y la biblioteca que quedaron en otra ventana (por ejemplo en otro monitor) vuelven a abrirse así.
         let separadas_inicio = (config.separadas.iter().any(|s| s == "mixer-win"), config.separadas.iter().any(|s| s == "lib-win"));
@@ -1055,6 +1072,7 @@ impl App {
             exportacion: None,
             carpeta_exportacion: None,
             avisar_al_dia: false,
+            titulo_al_abrir: None,
             exportando: None,
             drag: None,
             ctx_region: None,
@@ -1090,7 +1108,8 @@ impl App {
             patron: Default::default(),
             pie: None,
             menu_region: None,
-            show_inspector: true,
+            // Cerrado al abrir: se muestra con su botón o el atajo cuando se quiere.
+            show_inspector: false,
             lib_buscar: String::new(),
             lib_filtro: 0,
             enfocar_ventana: None,

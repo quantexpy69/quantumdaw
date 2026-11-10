@@ -377,16 +377,25 @@ impl App {
                 }
                 // Clic en el nombre: ponerle nombre a la canción (y a su carpeta) y el artista.
                 let b = egui::Button::new(RichText::new(&song).size(12.5).strong().color(TEXT())).fill(ELEVATED()).stroke(Stroke::new(1.0, BORDER())).corner_radius(widgets::rr(3.0)).min_size(vec2(0.0, 24.0));
-                let mut renombrar = false;
+                let (mut renombrar, mut abierto) = (false, false);
+                // Solo se cierra al hacer clic fuera (o con Enter): un clic en el campo de texto no lo cierra.
+                let config = egui::containers::menu::MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
                 egui::containers::menu::MenuButton::from_button(b)
+                    .config(config)
                     .ui(ui, |ui| {
+                        abierto = true;
                         widgets::menu_style(ui);
                         ui.set_min_width(260.0);
                         ui.label(RichText::new(tr("NOMBRE DE LA CANCIÓN")).size(10.0).color(TEXT_DIM()));
                         if self.meta.title.is_empty() {
                             self.meta.title = self.dir.file_name().unwrap_or_default().to_string_lossy().to_string();
                         }
-                        let r = ui.add(egui::TextEdit::singleline(&mut self.meta.title).desired_width(240.0));
+                        if self.titulo_al_abrir.is_none() {
+                            self.titulo_al_abrir = Some((self.meta.title.clone(), self.meta.artist.clone()));
+                            // Al abrir, el cursor ya está en el nombre para escribir.
+                            ui.memory_mut(|m| m.request_focus(egui::Id::new("titulo-cancion")));
+                        }
+                        let r = ui.add(egui::TextEdit::singleline(&mut self.meta.title).id(egui::Id::new("titulo-cancion")).desired_width(240.0));
                         renombrar |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                         ui.label(RichText::new(tr("ARTISTA")).size(10.0).color(TEXT_DIM()));
                         ui.add(egui::TextEdit::singleline(&mut self.meta.artist).desired_width(240.0).hint_text(tr("Opcional")));
@@ -441,7 +450,12 @@ impl App {
                     })
                     .0
                     .on_hover_text(tr("Clic: ponerle nombre a la canción"));
+                // Al cerrarse el menú (clic fuera), el nombre y el artista cambiados se guardan solos.
+                if !abierto && let Some((titulo, artista)) = self.titulo_al_abrir.take() {
+                    renombrar |= titulo != self.meta.title || artista != self.meta.artist;
+                }
                 if renombrar {
+                    self.titulo_al_abrir = None;
                     let nombre = self.meta.title.clone();
                     let r = self.renombrar_carpeta(&nombre);
                     if r.is_ok() {

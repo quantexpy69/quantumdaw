@@ -58,6 +58,8 @@ pub struct Welcome {
     listing: Option<Vec<Listed>>,
     /// Nombre del proyecto nuevo que se escribe en «Abrir».
     nuevo_proyecto: String,
+    /// Proyecto elegido en el apartado «Proyectos» del inicio ("" = canciones sin proyecto).
+    proyecto_elegido: Option<String>,
     /// Búsqueda en las preferencias, audio y MIDI en edición, atajo que se está capturando y carpetas
     /// de plugins revisadas (se leen al abrir su página).
     pub buscar: String,
@@ -83,7 +85,7 @@ type Listed = (String, Option<Collection>, Vec<(PathBuf, Project)>);
 /// Proyectos (carpetas con `proyecto.json` o con canciones dentro) y canciones sueltas de `root`.
 fn scan(root: &Path) -> Vec<Listed> {
     let dirs = |d: &Path| -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        let mut v: Vec<PathBuf> = fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir() && !es_copia_vieja(p)).collect();
         v.sort();
         v
     };
@@ -104,7 +106,7 @@ fn scan(root: &Path) -> Vec<Listed> {
 /// Proyectos (discos, EP…) de la carpeta de proyectos: (nombre, carpeta).
 pub fn proyectos() -> Vec<(String, PathBuf)> {
     let raiz = projects_dir();
-    let mut v: Vec<(String, PathBuf)> = fs::read_dir(&raiz).into_iter().flatten().flatten().map(|e| e.path()).filter(|d| d.is_dir() && !project::existe(d) && (Collection::load(d).is_some() || fs::read_dir(d).into_iter().flatten().flatten().any(|e| project::existe(&e.path())))).map(|d| (d.file_name().unwrap_or_default().to_string_lossy().to_string(), d)).collect();
+    let mut v: Vec<(String, PathBuf)> = fs::read_dir(&raiz).into_iter().flatten().flatten().map(|e| e.path()).filter(|d| d.is_dir() && !es_copia_vieja(d) && !project::existe(d) && (Collection::load(d).is_some() || fs::read_dir(d).into_iter().flatten().flatten().any(|e| project::existe(&e.path())))).map(|d| (d.file_name().unwrap_or_default().to_string_lossy().to_string(), d)).collect();
     v.sort();
     v
 }
@@ -158,6 +160,7 @@ impl Default for Welcome {
             captura: None,
             carpetas: None,
             nuevo_proyecto: String::new(),
+            proyecto_elegido: None,
         }
     }
 }
@@ -801,6 +804,118 @@ impl App {
         }
     }
 
+    /// Apartado «Proyectos» del inicio: a la izquierda los proyectos (discos, EP, clientes) y las
+    /// canciones sueltas; a la derecha las canciones del elegido, para abrirlas con un clic.
+    fn apartado_proyectos(&mut self, ui: &mut egui::Ui, w: &mut Welcome, action: &mut Option<Action>, ancho: f32) {
+        ui.horizontal(|ui| {
+            titulo(ui, "PROYECTOS", "");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new(RichText::new(tr("Organizar…")).size(12.0).color(TEXT_DIM())).frame(false)).on_hover_text(tr("Crear proyectos y mover canciones entre ellos")).clicked() {
+                    w.tab = 2;
+                }
+            });
+        });
+        ui.add_space(6.0);
+        let listing = w.listing.get_or_insert_with(|| scan(&projects_dir())).clone();
+        let marco = || egui::Frame::new().fill(PANEL()).stroke(egui::Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(8.0);
+        if listing.is_empty() {
+            marco().show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(RichText::new(tr("Todavía no hay canciones guardadas en la carpeta de proyectos.")).color(TEXT_DIM()));
+            });
+            return;
+        }
+        let elegido = w.proyecto_elegido.clone().filter(|n| listing.iter().any(|l| &l.0 == n)).unwrap_or_else(|| listing[0].0.clone());
+        let nombre_de = |n: &str| if n.is_empty() { tr("Canciones sin proyecto").to_string() } else { n.to_string() };
+        let izq = (ancho * 0.28).clamp(200.0, 300.0);
+        let alto = 260.0;
+        ui.horizontal_top(|ui| {
+            // Proyectos.
+            marco().show(ui, |ui| {
+                ui.set_width(izq);
+                ui.set_height(alto);
+                egui::ScrollArea::vertical().id_salt("inicio-proyectos").show(ui, |ui| {
+                    for (nombre, _, canciones) in &listing {
+                        let on = *nombre == elegido;
+                        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), egui::Sense::click());
+                        let p = ui.painter();
+                        if on {
+                            p.rect_filled(r, rr(8.0), ACCENT().gamma_multiply(0.18));
+                        } else if resp.hovered() {
+                            p.rect_filled(r, rr(8.0), ELEVATED());
+                        }
+                        let c = if nombre.is_empty() { TEXT_DIM() } else { color_de(nombre) };
+                        p.rect_filled(egui::Rect::from_center_size(r.left_center() + vec2(14.0, 0.0), vec2(10.0, 10.0)), rr(3.0), c);
+                        let recorte = p.with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(34.0, 0.0)));
+                        recorte.text(r.left_center() + vec2(28.0, 0.0), egui::Align2::LEFT_CENTER, nombre_de(nombre), egui::FontId::proportional(13.0), if on { TEXT() } else { TEXT_DIM() });
+                        p.text(r.right_center() - vec2(10.0, 0.0), egui::Align2::RIGHT_CENTER, canciones.len().to_string(), egui::FontId::proportional(11.5), TEXT_DIM());
+                        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            w.proyecto_elegido = Some(nombre.clone());
+                        }
+                    }
+                });
+            });
+            ui.add_space(12.0);
+            // Canciones del proyecto elegido.
+            marco().show(ui, |ui| {
+                // El marco suma sus márgenes y su borde: se descuentan para no salirse por la derecha.
+                ui.set_width(ui.available_width() - 20.0);
+                ui.set_height(alto);
+                // Dentro de la fila (horizontal_top) el contenido se apilaría hacia la derecha.
+                ui.vertical(|ui| {
+                let canciones = listing.iter().find(|l| l.0 == elegido).map(|l| l.2.clone()).unwrap_or_default();
+                // Cabecera de alto fijo (si no, el bloque alineado a la derecha ocupa toda la altura y
+                // deja la lista de canciones fuera de la vista).
+                ui.allocate_ui_with_layout(vec2(ui.available_width(), 26.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.label(RichText::new(nombre_de(&elegido)).size(15.0).strong().color(TEXT()));
+                    ui.label(RichText::new(format!("· {} {}", canciones.len(), tr("canciones"))).size(12.0).color(TEXT_DIM()));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let b = egui::Button::new(RichText::new(tr("+ Nueva canción aquí")).size(12.0).color(BG())).fill(ACCENT()).corner_radius(rr(6.0));
+                        if ui.add(b).on_hover_text(tr("Crea una canción vacía dentro de este proyecto")).clicked() {
+                            let nueva = Welcome { name: tr("Mi canción").into(), author: w.author.clone(), bpm: w.bpm, collection: elegido.clone(), ..Default::default() };
+                            *action = Some(Box::new(move |app: &mut Self| {
+                                let r = app.create_song(&nueva);
+                                app.report(tr("Proyecto creado"), r);
+                            }));
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+                egui::ScrollArea::vertical().id_salt(("inicio-canciones", elegido.clone())).show(ui, |ui| {
+                    for (dir, p) in canciones {
+                        let nombre = if p.meta.title.is_empty() { dir.file_name().unwrap_or_default().to_string_lossy().to_string() } else { p.meta.title.clone() };
+                        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), egui::Sense::click());
+                        let abierta = dir == self.dir;
+                        if abierta {
+                            ui.painter().rect_filled(r, rr(8.0), ACCENT().gamma_multiply(0.12));
+                        } else if resp.hovered() {
+                            ui.painter().rect_filled(r, rr(8.0), ELEVATED());
+                        }
+                        let insignia = egui::Rect::from_min_size(r.left_top() + vec2(8.0, 8.0), vec2(30.0, 30.0));
+                        let c = color_de(&nombre);
+                        ui.painter().rect_filled(insignia, rr(8.0), c.gamma_multiply(0.22));
+                        ui.painter().text(insignia.center(), egui::Align2::CENTER_CENTER, nombre.chars().take(2).collect::<String>().to_uppercase(), egui::FontId::proportional(12.0), c);
+                        let recorte = ui.painter().with_clip_rect(egui::Rect::from_min_max(r.min, r.max - vec2(90.0, 0.0)));
+                        let titulo = if p.meta.artist.is_empty() { nombre.clone() } else { format!("{nombre}  ·  {}", p.meta.artist) };
+                        recorte.text(r.left_center() + vec2(48.0, -8.0), egui::Align2::LEFT_CENTER, titulo, egui::FontId::proportional(13.0), TEXT());
+                        recorte.text(r.left_center() + vec2(48.0, 9.0), egui::Align2::LEFT_CENTER, song_info(&p), egui::FontId::proportional(11.0), TEXT_DIM());
+                        let derecha = if abierta { tr("abierta").to_string() } else { hace(&dir) };
+                        ui.painter().text(r.right_center() - vec2(10.0, 0.0), egui::Align2::RIGHT_CENTER, derecha, egui::FontId::proportional(11.0), TEXT_DIM());
+                        if resp.on_hover_text(dir.display().to_string()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            *action = Some(Box::new(move |app: &mut Self| {
+                                if app.dir != dir {
+                                    let r = app.open_dir(dir);
+                                    app.report("Proyecto abierto", r);
+                                }
+                            }));
+                        }
+                    }
+                });
+                });
+            });
+        });
+    }
+
     /// Panel «Inicio»: saludo, demos, proyecto nuevo, recientes, inicio rápido e instrumentos.
     fn panel_inicio(&mut self, ui: &mut egui::Ui, w: &mut Welcome, action: &mut Option<Action>) {
         let ancho = ui.available_width();
@@ -943,7 +1058,7 @@ impl App {
                 });
                 ui.add_space(6.0);
                 // Las últimas canciones trabajadas: ordenadas por su último guardado (no por haberlas abierto).
-                let mut recientes: Vec<(PathBuf, std::time::SystemTime)> = self.config.recent.iter().filter(|d| project::existe(d)).filter_map(|d| Some((d.clone(), fs::metadata(project::archivo(d)).and_then(|m| m.modified()).ok()?))).collect();
+                let mut recientes: Vec<(PathBuf, std::time::SystemTime)> = self.config.recent.iter().filter(|d| project::existe(d) && !es_copia_vieja(d)).filter_map(|d| Some((d.clone(), fs::metadata(project::archivo(d)).and_then(|m| m.modified()).ok()?))).collect();
                 recientes.sort_by_key(|r| std::cmp::Reverse(r.1));
                 let recientes: Vec<PathBuf> = recientes.into_iter().map(|r| r.0).take(5).collect();
                 egui::Frame::new().fill(PANEL()).stroke(egui::Stroke::new(1.0, BORDER())).corner_radius(rr(12.0)).inner_margin(8.0).show(ui, |ui| {
@@ -993,6 +1108,8 @@ impl App {
                 });
             });
         });
+        ui.add_space(32.0);
+        self.apartado_proyectos(ui, w, action, ancho);
         ui.add_space(32.0);
         // Novedades del blog y tienda, en una sola fila de tarjetas.
         let web = web::contenido();

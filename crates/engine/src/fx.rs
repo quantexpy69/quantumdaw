@@ -13,6 +13,8 @@ use std::{
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum FxKind {
     Eq,
+    /// EQ paramétrico de 8 bandas «analog-matched» con analizador (ver `eq_pro.rs`).
+    EqPro,
     Compressor,
     Delay,
     Reverb,
@@ -64,7 +66,8 @@ const FFT_HOP: usize = 256;
 pub const BANDAS: usize = 96;
 
 impl FxKind {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 31] = [
+        Self::EqPro,
         Self::Eq,
         Self::Curves,
         Self::Compressor,
@@ -118,6 +121,7 @@ impl FxKind {
     pub fn name(self) -> &'static str {
         match self {
             Self::Eq => "EQ 3 bandas",
+            Self::EqPro => "QUANTUM EQ",
             Self::Compressor => "Compresor",
             Self::Delay => "Delay",
             Self::Reverb => "Reverb",
@@ -158,6 +162,7 @@ impl FxKind {
     /// (nombre, mínimo, máximo, valor por defecto) de cada parámetro.
     pub fn params(self) -> &'static [(&'static str, f32, f32, f32)] {
         match self {
+            Self::EqPro => &crate::eq_pro::PARAMS,
             Self::Eq => &[
                 ("Graves dB", -15.0, 15.0, 0.0),
                 ("Medios dB", -15.0, 15.0, 0.0),
@@ -366,6 +371,7 @@ struct State {
     /// Compresor: potencia media (para la detección RMS).
     potencia: f32,
     fdn: Option<Box<crate::reverb_fdn::Fdn>>,
+    eqpro: Option<Box<crate::eq_pro::EqPro>>,
 }
 
 pub struct Fx {
@@ -462,6 +468,7 @@ impl Fx {
             }
             FxKind::Tune => (st.line, st.ana, st.yin) = (vec![[0.0; 2]; 8192], vec![0.0; YIN_W], vec![0.0; YIN_W]),
             FxKind::Curves => st.espectral = Some(Box::new(Espectral::new(sample_rate as f32))),
+            FxKind::EqPro => st.eqpro = Some(Box::new(crate::eq_pro::EqPro::new(sample_rate as f32))),
             // Limitador: retardo de anticipación y ganancia necesaria de cada muestra (10 ms como máximo).
             FxKind::Limiter => {
                 let n = sample_rate as usize / 100 + 2;
@@ -475,7 +482,7 @@ impl Fx {
             _ => {}
         }
         let params = kind.params().iter().map(|p| AtomicF32::new(p.3)).collect();
-        let bandas = |v: f32| if kind == FxKind::Curves { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
+        let bandas = |v: f32| if matches!(kind, FxKind::Curves | FxKind::EqPro) { (0..BANDAS).map(|_| AtomicF32::new(v)).collect() } else { vec![] };
         let (espectro, reduccion, promedio) = (bandas(-120.0), bandas(0.0), bandas(-120.0));
         let medidores = if kind.pro().is_some() { (0..crate::pro::MEDIDORES).map(|_| AtomicF32::new(-120.0)).collect() } else { vec![] };
         Self { kind, params, bypass: false.into(), readout: Default::default(), espectro, reduccion, promedio, sidechain: AtomicU64::new(0), clave: AtomicUsize::new(0), vu: Default::default(), medidores, lv2: None, vst3: None, vivo: Vivo::default(), state: Mutex::new(st) }
@@ -592,6 +599,11 @@ impl Fx {
         let st = &mut *st;
         if let Some(lv2) = st.lv2.as_mut() {
             lv2.procesar(buf, &self.params, &[]);
+            return;
+        }
+        if let Some(eq) = st.eqpro.as_mut() {
+            let p: [f32; crate::eq_pro::N_PARAMS] = std::array::from_fn(|i| self.params.get(i).map_or(crate::eq_pro::PARAMS[i].3, |a| a.get()));
+            eq.procesar(buf, &p, sr, &self.espectro);
             return;
         }
         let p: [f32; 32] = std::array::from_fn(|i| self.params.get(i).map_or(0.0, |a| a.get()));

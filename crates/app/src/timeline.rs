@@ -1722,6 +1722,12 @@ impl App {
                 if widgets::tecla(ui, lado, modo == 4, METER[1], "W").on_hover_text(tr("Escribir la automatización mientras suena")).clicked() {
                     self.s.tracks[i].auto_mode = if modo == 4 { 0 } else { 4 };
                 }
+                if r.height() < 74.0 {
+                    // Pista compacta: el volumen (con su medidor) va en esta misma fila.
+                    let ancho = ui.available_width().max(30.0);
+                    self.fader_de_pista(ui, i, ancho, false);
+                    return;
+                }
                 // Medidor de la pista en una ranura oscura (entrada si está armada o monitoreando).
                 let t = &self.s.tracks[i];
                 let entrada = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo) && (t.params.arm.load(Relaxed) || t.params.monitor.load(Relaxed));
@@ -1735,7 +1741,15 @@ impl App {
             if r.height() < 74.0 {
                 return;
             }
-            // Fila 3: entrada, tomas y el subtítulo.
+            // Fila 3: volumen y panorama, visibles en la altura normal (también en el inspector y el mixer).
+            ui.horizontal(|ui| {
+                let ancho = (zona.width() - 48.0).max(60.0);
+                self.fader_de_pista(ui, i, ancho, true);
+            });
+            if r.height() < 104.0 {
+                return;
+            }
+            // Fila 4: entrada, tomas y el subtítulo.
             ui.horizontal(|ui| {
                 if matches!(self.s.tracks[i].kind, TrackKind::AudioMono | TrackKind::AudioStereo) {
                     self.input_combo(ui, i);
@@ -1758,27 +1772,6 @@ impl App {
                 }
                 ui.add(egui::Label::new(RichText::new(&subtitulo).size(11.0).color(if proxy { METER[0] } else { TEXT_DIM() })).truncate());
             });
-            if r.height() < 104.0 {
-                return;
-            }
-            // Fila 4: volumen y panorama (también en el inspector y el mixer).
-            ui.horizontal(|ui| {
-                let params = self.s.tracks[i].params.clone();
-                let id = self.s.tracks[i].id;
-                // Armada o monitoreando, una pista de audio muestra lo que entra por su entrada (para ver
-                // si llega sonido antes de grabar); si no, lo que suena.
-                let t = &self.s.tracks[i];
-                let entrada = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo) && (params.arm.load(Relaxed) || params.monitor.load(Relaxed));
-                let nivel = if entrada { self.in_levels.get(i) } else { self.levels.get(i) }.copied();
-                let f = widgets::fader_h(ui, &params.gain, (zona.width() - 48.0).max(60.0), nivel);
-                crate::controlador::menu(&f, crate::controlador::Pedido::Destino(crate::controlador::Destino::Volumen(id)));
-                let mut pan = params.pan.get();
-                let p = widgets::pan_knob_chica(ui, &mut pan);
-                crate::controlador::menu(&p, crate::controlador::Pedido::Destino(crate::controlador::Destino::Panorama(id)));
-                if p.changed() {
-                    params.pan.set(pan);
-                }
-            });
             if self.show_auto && r.height() >= 134.0 {
                 let t = &mut self.s.tracks[i];
                 ui.horizontal(|ui| {
@@ -1797,6 +1790,27 @@ impl App {
                 });
             }
         });
+    }
+
+    /// Fader de volumen de la cabecera (con el medidor dentro) y, si `con_pan`, la perilla de panorama.
+    /// Armada o monitoreando, una pista de audio muestra lo que entra por su entrada (para ver si llega
+    /// sonido antes de grabar); si no, lo que suena.
+    fn fader_de_pista(&mut self, ui: &mut egui::Ui, i: usize, ancho: f32, con_pan: bool) {
+        let params = self.s.tracks[i].params.clone();
+        let id = self.s.tracks[i].id;
+        let t = &self.s.tracks[i];
+        let entrada = matches!(t.kind, TrackKind::AudioMono | TrackKind::AudioStereo) && (params.arm.load(Relaxed) || params.monitor.load(Relaxed));
+        let nivel = if entrada { self.in_levels.get(i) } else { self.levels.get(i) }.copied();
+        let f = widgets::fader_h(ui, &params.gain, ancho, nivel);
+        crate::controlador::menu(&f, crate::controlador::Pedido::Destino(crate::controlador::Destino::Volumen(id)));
+        if con_pan {
+            let mut pan = params.pan.get();
+            let p = widgets::pan_knob_chica(ui, &mut pan);
+            crate::controlador::menu(&p, crate::controlador::Pedido::Destino(crate::controlador::Destino::Panorama(id)));
+            if p.changed() {
+                params.pan.set(pan);
+            }
+        }
     }
 
     /// Botón de la cabecera de pista: el instrumento y los plugins que usa, para abrirlos, apagarlos,
