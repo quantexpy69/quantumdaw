@@ -1152,6 +1152,18 @@ fn callback(e: Arc<Engine>, ch: usize, mut r: Rings) -> impl FnMut(&mut [f32], &
                 c.escribir(inp, &midi[..nm], pos, playing, n);
             }
             e.render(&mut buf[..n], pos, playing, false, Live { audio: inp, midi: &midi[..nm] }, None);
+            // Lo que se toca en el propio plugin (el teclado de la ventana de Kontakt, por ejemplo) sale
+            // por su salida MIDI: en una pista armada se graba como lo que llega del teclado externo.
+            for node in e.graph.load().iter() {
+                if let Some(v) = node.plugin.as_ref().and_then(|p| p.vst3.as_ref()) {
+                    let grabar = recording && node.params.arm.load(Relaxed);
+                    v.tomar_salida_midi(|ev| {
+                        if grabar {
+                            _ = r.midi_rec_tx.push((pos, ev));
+                        }
+                    });
+                }
+            }
             if e.scope_on.load(Relaxed) {
                 buf[..n].iter().for_each(|s| _ = r.scope_tx.push((s[0] + s[1]) * 0.5));
             }

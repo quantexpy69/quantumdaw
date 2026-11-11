@@ -189,7 +189,24 @@ pub struct Instancia {
     /// Eventos MIDI de bloques que salieron sin el plugin: van al principio del siguiente bloque
     /// (perder un note on deja la tecla muda; perder un note off deja la nota colgada).
     pendientes: Mutex<Pendientes>,
+    /// Lo que el plugin emite por su salida MIDI (sin bloquear): por ejemplo las teclas que se tocan
+    /// en el teclado de su ventana (Kontakt). Se graban en la pista como las del teclado externo.
+    salida_midi: Option<vst3_host::OutputMidiConsumer>,
     sample_rate: f32,
+}
+
+/// Un evento de la salida MIDI de un plugin en bytes MIDI (notas, controles, rueda de tono y presión).
+fn a_bytes(e: Vst3Midi) -> Option<MidiEvent> {
+    let c = |ch: vst3_host::midi::MidiChannel| ch.as_index() & 0x0F;
+    Some(match e {
+        Vst3Midi::NoteOn { channel, note, velocity } => [0x90 | c(channel), note & 0x7F, velocity.clamp(1, 127)],
+        Vst3Midi::NoteOff { channel, note, velocity } => [0x80 | c(channel), note & 0x7F, velocity & 0x7F],
+        Vst3Midi::ControlChange { channel, controller, value } => [0xB0 | c(channel), controller & 0x7F, value & 0x7F],
+        Vst3Midi::PitchBend { channel, value } => [0xE0 | c(channel), (value & 0x7F) as u8, ((value >> 7) & 0x7F) as u8],
+        Vst3Midi::ChannelAftertouch { channel, pressure } => [0xD0 | c(channel), pressure & 0x7F, 0],
+        Vst3Midi::PolyAftertouch { channel, note, pressure } => [0xA0 | c(channel), note & 0x7F, pressure & 0x7F],
+        _ => return None,
+    })
 }
 
 /// Eventos MIDI guardados sin pedir memoria (se usa en el hilo de audio).
@@ -258,7 +275,8 @@ impl Instancia {
         let entradas = if info.instrumento { 0 } else { 2 };
         let mut bufs = AudioBuffers::new(entradas, salidas, BLOQUE, sample_rate as f64);
         bufs.clear();
-        Ok(Self { info, plugin: Arc::new(Mutex::new(plugin)), bufs: Mutex::new(bufs), avisado: Default::default(), perdidos: Default::default(), pendientes: Default::default(), sample_rate: sample_rate as f32 })
+        let salida_midi = plugin.output_midi_handle();
+        Ok(Self { info, plugin: Arc::new(Mutex::new(plugin)), bufs: Mutex::new(bufs), avisado: Default::default(), perdidos: Default::default(), pendientes: Default::default(), salida_midi, sample_rate: sample_rate as f32 })
     }
 
     /// Procesa un bloque: los eventos MIDI en su posición y el audio de `buf`. Los efectos
@@ -321,6 +339,19 @@ impl Instancia {
         let instrumento = b.inputs.is_empty();
         for (i, s) in buf.iter_mut().take(n).enumerate() {
             *s = if instrumento { [s[0] + l[i], s[1] + r[i]] } else { [l[i], r[i]] };
+        }
+    }
+
+    /// Saca lo que el plugin emitió por su salida MIDI desde la última llamada (sin bloquear ni pedir
+    /// memoria: se usa en el hilo de audio). Hay que llamarla siempre, grabe o no, para que no se
+    /// acumule y aparezca de golpe al empezar a grabar.
+    pub fn tomar_salida_midi(&self, mut f: impl FnMut(MidiEvent)) {
+        if let Some(s) = &self.salida_midi {
+            while let Some(e) = s.pop() {
+                if let Some(b) = a_bytes(e) {
+                    f(b);
+                }
+            }
         }
     }
 
@@ -579,7 +610,13 @@ mod pruebas {
                 }
             })
         };
+        // Lo que el plugin emite por su salida MIDI (p. ej. las teclas de su propio teclado).
+        let salida_midi = inst.plugin.lock().unwrap().output_midi_handle();
+        println!("salida MIDI del plugin: {}", salida_midi.is_some());
         while std::time::Instant::now() < fin && servir_ventana(&ventana, &inst.plugin) {
+            while let Some(e) = salida_midi.as_ref().and_then(|s| s.pop()) {
+                println!("salida: {e:?}");
+            }
             let mut m = Msg { h: 0, m: 0, w: 0, l: 0, t: 0, x: 0, y: 0, p: 0 };
             // SAFETY: `m` tiene el diseño de MSG y los mensajes son de ventanas de este hilo.
             unsafe {
